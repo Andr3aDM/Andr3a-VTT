@@ -80,9 +80,3 @@ La toolbar in basso offre le azioni autonome del giocatore:
 - **Vanilla JavaScript:** Nessun framework esterno (React/Vue).
 - **PeerJS:** Libreria wrapper per WebRTC che gestisce le connessioni P2P e l'invio dei dati binari/testuali a bassa latenza.
 
-## 🚀 Come Pubblicare su GitHub Pages
-1. Fai un Fork o crea un nuovo Repository Pubblico su GitHub.
-2. Fai l'Upload di tutti i file (`index.html`, `player.html`, cartella `js`, cartella `css`).
-3. Vai in **Settings > Pages**.
-4. Imposta *Source* su `Deploy from a branch` e seleziona il branch `main` (o `master`).
-5. Salva. Dopo 2 minuti, il VTT sarà online all'indirizzo fornito da GitHub. Nessun server Node.js o database richiesto!
