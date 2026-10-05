@@ -1,5 +1,97 @@
 # 🎲 D&D P2P Virtual Tabletop (VTT)
 
+*🌍 [Italian Version Below / Versione Italiana in basso](#-versione-italiana)*
+
+A lightweight, free, and serverless Virtual Tabletop designed for Dungeons & Dragons and other TTRPGs. Built to be hosted directly on GitHub Pages with no need for a backend or database.
+
+Communication between the Dungeon Master (DM) and the Players is entirely **Peer-to-Peer (P2P)** via WebRTC technology (using PeerJS).
+
+---
+
+## 🌟 Main Features
+- **Zero Server Costs:** No database to maintain.
+- **Direct Connection:** Players connect directly to the DM's browser via a Room Code.
+- **Touch & Desktop Optimized:** Full support for mice and touchscreens.
+- **Fog of War:** The DM can obscure the map and gradually reveal it to players.
+- **Integrated Initiative Tracker:** Dynamic turn management, with the ability to hide secret monsters from players.
+- **Spells and Areas of Effect (AoE):** Cones, Spheres, and Lines fully rotatable and scalable in *Feet* (ft) or *Meters* (m).
+- **Autonomous Player Control:** Each player can move their token, manage their Aura (e.g., for a Paladin), draw, measure, and cast their own AoE Spells without waiting for the DM.
+- **Bilingual Interface:** Real-time translation switch (IT/EN) available in the app.
+
+---
+
+## 🧙‍♂️ Dungeon Master Guide (`index.html`)
+
+The main page `index.html` is the DM's control panel.
+
+### 1. Game Initialization
+- **Load Map:** Click to load an image from your PC. The map will scale to fit the screen.
+- **Room Code:** In the top right corner, you will find your Room Code (e.g., `DM_1234`). Share it with the players.
+- **Connected Players:** You will see the list of players joining your room update in real-time.
+
+### 2. Toolbar (Left)
+- 🖐️ **Move/Ping (Hand):** Allows you to move tokens and AoE shapes. **Long press** anywhere on the map to generate a **Visual Ping** that all players will see.
+- 🌫️ **Fog (Cloud):**
+  - **Reveal:** Erase the fog (showing the map to players).
+  - **Hide:** Re-apply the fog.
+  - *Brush Size:* A slider to increase or decrease the brush radius.
+- 📏 **Ruler:** Click and drag to measure distances on the map. A button allows switching the calculation from *Feet* to *Meters* and vice versa.
+- ✏️ **Draw:** Freehand drawing on the map (visible to everyone).
+- 📐 **AoE Spells:** Generate Areas of Effect (Cones, Spheres, Lines).
+  - All spells created by the DM can **only** be manipulated by the DM.
+  - You can temporarily hide them from players by unchecking "Visible to Players".
+
+### 3. Token Management
+When you add a token, clicking on it on the map will open the **Selected Token Panel**:
+- Name, Hit Points (HP), and an identifying label for monsters (e.g., "Goblin A").
+- You can assign the **Owner** by typing a connected player's name. Only they will be able to move that token.
+- **Aura:** Activate a glowing circle around the token (useful for magical auras or torches).
+
+### 4. Initiative Tracker
+- Add characters/monsters. You can auto-roll dice ("Roll") or enter the value manually.
+- The **Sort** button orders the turns.
+- The **Next Turn** button advances the turn, highlighting the current character.
+- Checkboxes allow you to keep monsters "Hidden" from players, or display the full Tracker on their screens.
+
+---
+
+## 🗡️ Player Guide (`player.html`)
+
+Players must access the `player.html` page (provided via link by the DM).
+
+### 1. Login
+- **Online Mode:** Enter your Name and the Room Code provided by the DM to sync in real-time.
+- **Offline Mode:** Useful if you are all playing around the same physical table and using a tablet/screen only as a shared digital map.
+
+### 2. Player Tools
+The bottom toolbar provides autonomous actions for the player:
+- 🖐️ **Move / Interact:** Allows dragging their own Token.
+  - **Ping:** Long press on the map to point out a spot to the DM and the party.
+  - **Personal Aura:** A quick click (or tap) on their own Token opens the menu to toggle and adjust their magical/light Aura.
+- ✏️ **Draw:** Freehand drawing with color selection.
+- 📏 **Ruler:** Measure distances (ft/m) to plan tactics.
+- 📐 **AoE Spells (Cone, Sphere, Line):**
+  - Players can summon their own magical areas.
+  - **Exclusive Ownership:** Spells created by the player will have a small **Center Handle** (dot) visible *only* to that player and the DM. Others won't be able to touch it.
+  - **Edit Spell:** Dragging the handle moves the spell. **A single click on the handle** opens the Edit Menu to: enlarge/shrink the area (ft/m), change its color, **rotate it** 360°, or delete it once the spell ends.
+  - *Note:* Players cannot interact in any way with tokens or spells owned by the DM or other players.
+
+---
+
+## 🛠️ Built With
+- **HTML5 Canvas:** For rendering the map, tokens, drawings, and fog.
+- **Vanilla JavaScript:** No external frameworks (React/Vue).
+- **PeerJS:** WebRTC wrapper library handling P2P connections and low-latency binary/text data transmission.
+
+
+
+<br><br>
+
+---
+---
+
+# 🇮🇹 Versione Italiana
+
 Un Virtual Tabletop (Tavolo Virtuale) leggero, gratuito e senza server per giocare a Dungeons & Dragons e altri giochi di ruolo. Progettato per essere ospitato direttamente su GitHub Pages senza bisogno di alcun database o backend.
 
 La comunicazione tra il Dungeon Master (DM) e i Giocatori avviene interamente in modalità **Peer-to-Peer (P2P)** tramite la tecnologia WebRTC (utilizzando PeerJS). 
@@ -7,13 +99,14 @@ La comunicazione tra il Dungeon Master (DM) e i Giocatori avviene interamente in
 ---
 
 ## 🌟 Caratteristiche Principali
-- **Zero Costi Server:** Hostalo gratuitamente (es. GitHub Pages). Nessun database da mantenere.
+- **Zero Costi Server:** Nessun database da mantenere.
 - **Connessione Diretta:** I giocatori si collegano direttamente al browser del DM tramite un Codice Stanza.
 - **Ottimizzato per Touch & Desktop:** Supporto completo a mouse e schermi touch.
 - **Nebbia di Guerra (Fog of War):** Il DM può oscurare la mappa e rivelarla gradualmente ai giocatori.
 - **Tracker Iniziativa Integrato:** Gestione dei turni dinamica, con possibilità di nascondere i mostri segreti ai giocatori.
 - **Magie e Aree di Effetto (AoE):** Coni, Sfere e Linee completamente ruotabili e scalabili in *Feet* (ft) o *Metri* (m).
 - **Controllo Giocatori Autonomo:** Ogni giocatore può muovere la propria pedina, gestire la propria Aura (es. per il Paladino), disegnare, misurare e castare le proprie Magie AoE senza aspettare il DM.
+- **Interfaccia Bilingue:** Traduzione istantanea (IT/EN) disponibile all'interno dell'app.
 
 ---
 
