@@ -1,0 +1,124 @@
+* {
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: #1e1e1e;
+    color: #eee;
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+#sidebar {
+    width: 350px;
+    background-color: #252526;
+    border-right: 1px solid #333;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    z-index: 10;
+}
+
+#sidebar h2 { margin-top: 0; font-size: 1.5rem; color: #4fc3f7; }
+#sidebar h3 { font-size: 1.1rem; border-bottom: 1px solid #444; padding-bottom: 5px; margin-top: 20px;}
+
+.section { margin-bottom: 15px; }
+
+button {
+    background-color: #3a3a3c;
+    color: white;
+    border: 1px solid #555;
+    padding: 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.2s;
+}
+button:hover { background-color: #505050; }
+button.active { background-color: #0288d1; border-color: #0288d1; }
+button.primary-btn { background-color: #388e3c; width: 100%; font-weight: bold; font-size: 16px;}
+
+.file-label {
+    display: block;
+    background-color: #0288d1;
+    color: white;
+    text-align: center;
+    padding: 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+input[type="text"], input[type="number"], select {
+    width: 100%;
+    padding: 8px;
+    margin-top: 5px;
+    background-color: #333;
+    color: white;
+    border: 1px solid #555;
+    border-radius: 4px;
+}
+
+.control-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.tool-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+}
+
+#token-gallery {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+    margin-top: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+    background: #111;
+    padding: 5px;
+    border-radius: 5px;
+}
+
+.gallery-token {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border: 2px solid transparent;
+    cursor: pointer;
+    border-radius: 50%;
+}
+.gallery-token:hover { border-color: #4fc3f7; }
+
+#main-canvas-container {
+    position: absolute;
+    left: 350px;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    background-color: #111;
+    cursor: grab;
+}
+
+#main-canvas-container:active { cursor: grabbing; }
+
+/* The canvases will be injected here via absolute positioning */
+canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+}

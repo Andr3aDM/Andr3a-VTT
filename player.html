@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Andr3a VTT - Schermo Giocatori</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* Nasconde la sidebar per i giocatori e massimizza la mappa */
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        #sidebar { display: none; }
+        #main-canvas-container { left: 0; cursor: default; }
+    </style>
+</head>
+<body>
+    <div id="main-canvas-container">
+        <!-- Canvas layers created by JS -->
+    </div>
+    
+    <div id="player-tracker" style="display:none; position: absolute; z-index: 1000; background: rgba(34, 34, 34, 0.9); border: 2px solid #ffcc00; border-radius: 8px; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); padding: 10px; pointer-events: none;">
+        <strong style="color: #ffcc00; display: block; margin-bottom: 5px; text-align: center;">Ordine di Iniziativa</strong>
+        <div id="player-tracker-list" style="display: flex; gap: 10px; align-items: center; justify-content: center;"></div>
+    </div>
+    
+    <div id="login-overlay" style="position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center;">
+        <div style="background: #222; padding: 20px; border-radius: 8px; border: 2px solid #ffcc00; color: white; width: 300px; text-align: center;">
+            <h2 style="color: #ffcc00; margin-top: 0;">Unisciti alla Partita</h2>
+            <input type="text" id="login-name" placeholder="Il tuo Nome (es: Marco)" style="width: 100%; padding: 8px; margin-bottom: 10px; box-sizing: border-box; background: #333; color: white; border: 1px solid #555;">
+            <input type="text" id="login-room" placeholder="Codice Stanza (es: ABCD-1234)" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box; background: #333; color: white; border: 1px solid #555; text-transform: uppercase;">
+            <button id="btn-login-online" style="width: 100%; padding: 10px; background: #4caf50; color: white; border: none; font-weight: bold; cursor: pointer; margin-bottom: 10px; border-radius:4px;">Connetti Online</button>
+            <hr style="border-color: #555; margin: 15px 0;">
+            <button id="btn-login-offline" style="width: 100%; padding: 10px; background: #555; color: white; border: none; cursor: pointer; border-radius:4px;">Usa Schermo Locale (Offline)</button>
+            <p id="login-status" style="color: #ff5252; font-size: 12px; margin-top:10px;"></p>
+        </div>
+    </div>
+
+    
+    <!-- PLAYER TOKEN PANEL -->
+    <div id="player-token-panel" style="display:none; position: absolute; right: 20px; top: 20px; z-index: 1000; background: rgba(34, 34, 34, 0.9); border: 2px solid #ffcc00; border-radius: 8px; padding: 10px; color: white; width: 200px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+        <strong style="color: #ffcc00; display:block; margin-bottom:10px;">Opzioni Token</strong>
+        
+        <label style="font-size:12px;">Aura Attiva:</label>
+        <input type="checkbox" id="ptoken-aura-active"><br><br>
+        
+        <label style="font-size:12px;">Raggio / Lato:</label>
+        <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+            <input type="number" id="ptoken-aura-size" value="15" step="5" style="width: 100%; background: #222; color: white; border: 1px solid #555; padding: 4px;">
+            <select id="ptoken-aura-unit" style="background: #222; color: white; border: 1px solid #555; padding: 4px;">
+                <option value="ft">ft</option>
+                <option value="m">m</option>
+            </select>
+        </div>
+        
+        <label style="font-size:12px;">Colore Aura:</label>
+        <input type="color" id="ptoken-aura-color" value="#ffff00" style="width: 100%; height: 30px; padding: 0; border: none; background: none; margin-bottom: 10px;">
+        
+        <button id="pbtn-close-token" style="width: 100%; padding: 5px; background: #555; color: white; border: none; cursor: pointer; border-radius:4px;">Chiudi</button>
+    </div>
+
+    
+    <!-- PLAYER SHAPE PANEL -->
+    <div id="player-shape-panel" style="display:none; position: absolute; right: 20px; top: 20px; z-index: 1000; background: rgba(34, 34, 34, 0.9); border: 2px solid #00ffff; border-radius: 8px; padding: 10px; color: white; width: 200px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+        <strong style="color: #00ffff; display:block; margin-bottom:10px;">Opzioni Magia AoE</strong>
+        
+        <label style="font-size:12px;">Dimensione / Lunghezza:</label>
+        <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+            <input type="number" id="pshape-size" value="15" step="5" style="width: 100%; background: #222; color: white; border: 1px solid #555; padding: 4px;">
+            <select id="pshape-unit" style="background: #222; color: white; border: 1px solid #555; padding: 4px;">
+                <option value="ft">ft</option>
+                <option value="m">m</option>
+            </select>
+        </div>
+        
+        <label style="font-size:12px;">Rotazione (°):</label>
+        <input type="range" id="pshape-angle" min="0" max="360" value="0" style="width: 100%; margin-bottom: 10px;">
+        
+        <label style="font-size:12px;">Colore:</label>
+        <input type="color" id="pshape-color" value="#00ffff" style="width: 100%; height: 30px; padding: 0; border: none; background: none; margin-bottom: 10px;">
+        
+        <button id="pbtn-delete-shape" style="width: 100%; padding: 5px; background: #cc0000; color: white; border: none; cursor: pointer; border-radius:4px; margin-bottom: 5px;">Elimina Magia</button>
+        <button id="pbtn-close-shape" style="width: 100%; padding: 5px; background: #555; color: white; border: none; cursor: pointer; border-radius:4px;">Chiudi</button>
+    </div>
+
+    <!-- PLAYER TOOLBAR -->
+    <div id="player-toolbar" style="position: absolute; bottom: 20px; left: 20px; z-index: 1000; background: rgba(34,34,34,0.9); border: 2px solid #ffcc00; border-radius: 8px; padding: 10px; display: flex; gap: 10px; color: white; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+        <input type="color" id="player-color" value="#00ffff" title="Il tuo Colore (per Disegni e Ping)" style="cursor:pointer; width:30px; height:30px; padding:0; border:none; background:none;">
+        <div style="width: 1px; height: 30px; background: #555; margin: 0 5px;"></div>
+        <button class="ptool-btn active" data-tool="move" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Muovi Token">🖐️</button>
+        <button class="ptool-btn" data-tool="draw" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Disegna (Pubblico)">✏️</button>
+        <button class="ptool-btn" data-tool="ruler" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Metro">📏</button>
+        <div style="width: 1px; height: 30px; background: #555; margin: 0 5px;"></div>
+        <button id="pbtn-cone" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Crea Cono">📐</button>
+        <button id="pbtn-sphere" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Crea Sfera">⭕</button>
+        <button id="pbtn-line" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Crea Linea">➖</button>
+    </div>
+
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    <script src="js/engine.js?v=49"></script>
+    <script src="js/network.js?v=1"></script>
+    <script src="js/player.js?v=49"></script>
+</body>
+</html>

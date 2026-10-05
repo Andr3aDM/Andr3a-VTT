@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DM Dashboard - VTT</title>
+    <link rel="stylesheet" href="css/style.css">
+<style>
+        .section h3 { cursor: pointer; user-select: none; }
+        .section h3::after { content: ' ▼'; font-size: 12px; float: right; }
+        .section.collapsed h3::after { content: ' ▲'; }
+        .section.collapsed > *:not(h3) { display: none !important; }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <h2>Andr3a VTT <br><span style="font-size: 14px; color: #ffcc00; font-weight: normal;">DM Console</span></h2>
+        <button id="btn-open-player" class="primary-btn">Apri Schermo Giocatori</button>
+        
+
+        <div class="section" style="margin-top: 15px; border-color: #ffcc00; border-width: 2px; border-style: solid;">
+            <h3 style="color: #ffcc00; margin-top: 0;">Multiplayer Online (P2P)</h3>
+            <button id="btn-host-online" style="width: 100%; background: #ffcc00; color: black; font-weight: bold; margin-bottom: 5px;">Avvia Stanza Online</button>
+            <div id="online-status" style="font-size: 13px; text-align: center; color: #aaa;">Stato: Offline (Locale)</div>
+            <div id="online-players" style="font-size: 12px; margin-top: 5px; color: #888;">Nessun giocatore connesso.</div>
+        </div>
+
+        <div class="section" style="margin-top: 15px;">
+            <h3>Campagne & Salvataggi</h3>
+
+            <div id="campaign-manager">
+                <select id="campaign-select" style="width:100%; margin-bottom:5px;">
+                    <option value="">-- Seleziona Campagna --</option>
+                </select>
+                <div style="display:flex; gap:5px;">
+                    <button id="btn-new-campaign" style="flex:1;">Nuova</button>
+                    <button id="btn-delete-campaign" style="flex:1; background-color: #d32f2f;">Elimina</button>
+                </div>
+                <div style="display:flex; gap:5px; margin-top:5px;">
+                    <button id="btn-export-campaign" style="flex:1; background-color: #f57c00;">Esporta (JSON)</button>
+                    <label class="file-label" style="flex:1; margin:0; padding:10px; font-weight:normal; background-color:#555; text-align:center;">Importa
+                        <input type="file" id="import-upload" accept=".json" style="display:none;">
+                    </label>
+                </div>
+                
+                <div id="map-manager" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid #444;">
+                    <select id="map-select" style="width:100%; margin-bottom:5px;">
+                        <option value="">-- Seleziona Mappa --</option>
+                    </select>
+                    <div style="display:flex; gap:5px;">
+                        <button id="btn-load-map" style="flex:1; background-color:#0288d1;">Carica</button>
+                        <button id="btn-save-map" style="flex:1; background-color:#388e3c;">Salva</button>
+                        <button id="btn-save-new-map" style="flex:1; background-color:#1b5e20;">Salva Nuova</button>
+                    </div>
+                    <div style="display:flex; gap:5px; margin-top:5px;">
+                        <button id="btn-delete-map" style="flex:1; background-color:#d32f2f;">Elimina Mappa Selezionata</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <button id="btn-toggle-tracker" style="width: 100%; margin-bottom: 10px; background: #ffcc00; color: black; font-weight: bold; padding: 5px; cursor: pointer; border-radius: 4px;">Apri Tracker Iniziativa</button>
+            <h3>Mappa & Griglia</h3>
+            <label class="file-label">Carica Mappa
+                <input type="file" id="map-upload" accept="image/*" style="display:none;">
+            </label>
+            <div class="control-group">
+                <div style="width: 100%;">
+                    <label>Celle (px):</label>
+                    <div style="display: flex; gap: 5px; align-items: center;">
+                        <input type="range" id="grid-size-slider" min="20" max="300" value="100" style="flex: 2;">
+                        <input type="number" id="grid-size" value="100" style="flex: 1;">
+                    </div>
+                </div>
+                <div style="display: flex; width: 100%; gap: 5px;">
+                    <div style="flex: 1;"><label>Colore:</label><input type="color" id="grid-color" value="#000000" style="width: 100%;"></div>
+                    <div style="flex: 2;">
+                        <label>Bagliore:</label>
+                        <select id="grid-glow">
+                            <option value="none">Nessuno</option>
+                            <option value="white">Bianco</option>
+                            <option value="black">Nero</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>Strumenti Base <span style='font-size:10px; font-weight:normal;'>(Tieni premuto per Ping)</span></h3>
+            <div class="tool-buttons">
+                <button class="tool-btn active" data-tool="move">Muovi/Seleziona</button>
+                <button class="tool-btn" data-tool="move-grid">Allinea Griglia</button>
+                <button class="tool-btn" data-tool="ruler">Metro (ft/m)</button>
+                <button class="tool-btn" data-tool="draw-public">Disegna (Tutti)</button>
+                <button class="tool-btn" data-tool="draw-private">Disegna (Solo DM)</button>
+                <button class="tool-btn" data-tool="fog-add">Aggiungi Nebbia</button>
+                <button class="tool-btn" data-tool="fog-erase">Cancella Nebbia</button>
+                <button class="tool-btn" data-tool="note">Pin Segreto (DM)</button>
+            </div>
+            <div id="fog-brush-controls" style="display:none; margin-top:10px; padding: 10px; background: #333; border-radius: 5px;">
+                <h4 style="margin: 0 0 5px 0; font-size: 14px;">Impostazioni Nebbia</h4>
+                <div style="display:flex; gap:5px;">
+                    <select id="fog-brush-shape" style="flex:1;" title="Forma pennello">
+                        <option value="circle">Cerchio</option>
+                        <option value="square">Quadrato</option>
+                    </select>
+                    <input type="number" id="fog-brush-size" value="150" step="10" style="flex:1;" title="Dimensione Pennello (px)">
+                </div>
+            </div>
+            <div style="margin-top: 10px;">
+                <button id="btn-reset-fog" style="width: 100%;">Copri tutto di Nebbia</button>
+                <button id="btn-remove-fog" style="width: 100%; margin-top:5px;">Rimuovi tutta la Nebbia</button>
+                <div style="display:flex; gap:5px; margin-top:5px;"><button id="btn-clear-drawings-pub" style="flex:1;">Pulisci Dis. (Pub)</button><button id="btn-clear-drawings-priv" style="flex:1;">Pulisci Dis. (DM)</button></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>Zone d'Effetto (AoE)</h3>
+            <div class="control-group">
+                <select id="aoe-type" style="width: 100%;">
+                    <option value="circle">Cerchio (Sfera/Cilindro)</option>
+                    <option value="cone">Cono</option>
+                    <option value="line">Linea</option>
+                </select>
+                <div style="display: flex; width: 100%; gap: 5px;">
+                    <input type="number" id="aoe-size" value="15" step="1.5" style="flex: 2;" title="Dimensione">
+                    <select id="aoe-unit" style="flex: 1;" title="Unità">
+                        <option value="ft">ft</option>
+                        <option value="m">m</option>
+                    </select>
+                    <input type="color" id="aoe-color" value="#ff0000" style="flex: 1;" title="Colore">
+                </div>
+            </div>
+            <button id="btn-add-aoe" style="width: 100%;">Crea AoE al Centro</button>
+            
+            <div id="selected-shape-controls" style="display: none; margin-top:10px; padding: 10px; background: #333; border-radius: 5px;">
+                <h4 style="margin: 0 0 10px 0;">Modifica AoE Selezionata</h4>
+                <div style="display: flex; gap: 5px; margin-bottom: 5px;">
+                    <button id="btn-shape-rot-left" style="flex:1;">↩️ Ruota sx</button>
+                    <button id="btn-shape-rot-right" style="flex:1;">Ruota dx ↪️</button>
+                </div>
+                <div style="display: flex; gap: 5px;">
+                    <input type="number" id="shape-edit-size" step="5" style="flex:2;" title="Modifica Dimensione">
+                    <select id="shape-edit-unit" style="flex: 1;">
+                        <option value="ft">ft</option>
+                        <option value="m">m</option>
+                    </select>
+                    <button id="btn-delete-shape" style="background-color: #d32f2f; flex:2;">Elimina</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            
+        <div class="section">
+            <h3>Gestione Party</h3>
+            <div style="display: flex; gap: 5px; margin-bottom: 5px;">
+                <input type="text" id="new-player-name" placeholder="Nome PG" style="flex:2;">
+                <button id="btn-add-player" style="flex:1;">Aggiungi</button>
+            </div>
+            <ul id="party-list" style="list-style:none; padding:0; margin:0; max-height: 150px; overflow-y: auto;">
+                <!-- Popolato via JS -->
+            </ul>
+        </div>
+
+        <div class="section">
+            <h3>Tokens</h3>
+            <label class="file-label">Carica Tokens (Cartella/File)
+                <input type="file" id="token-folder-upload" multiple accept="image/*" style="display:none;">
+            </label>
+            <input type="text" id="token-search" placeholder="Cerca token per nome...">
+            <div id="token-gallery"></div>
+            
+            <div class="control-group" style="margin-top:10px;">
+                <label>Impostazioni nuovo Token:</label>
+                <select id="token-size-select" style="margin-bottom: 5px;">
+                    <option value="1">Media/Piccola (1x1)</option>
+                    <option value="2">Grande (2x2)</option>
+                    <option value="3">Enorme (3x3)</option>
+                    <option value="4">Mastodontica (4x4)</option>
+                </select>
+                <select id="token-visibility-select">
+                    <option value="visible">Visibile ai giocatori</option>
+                    <option value="hidden">Nascosto (Invisibile)</option>
+                </select>
+            </div>
+            
+            <div id="selected-token-controls" style="display: none; margin-top:10px; padding: 10px; background: #333; border-radius: 5px;">
+                <h4 style="margin: 0 0 10px 0;">Token Selezionato</h4>
+                <div style="display: flex; gap: 5px; margin-bottom: 5px;">
+                    <select id="token-edit-size" style="flex:1;" title="Modifica Taglia">
+                        <option value="1">Media/Piccola (1x1)</option>
+                        <option value="2">Grande (2x2)</option>
+                        <option value="3">Enorme (3x3)</option>
+                        <option value="4">Mastodontica (4x4)</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 5px; margin-bottom: 5px; align-items:center;">
+                    <select id="token-owner" style="flex:1;" title="Assegna questo token a un giocatore"><option value="">-- Nessuno (Solo DM) --</option></select>
+                </div>
+                <div style="display: flex; gap: 5px;">
+                    <button id="btn-toggle-visibility" style="flex:1;">Nascondi/Rivela</button>
+                    <button id="btn-delete-token" style="background-color: #d32f2f; flex:1;">Elimina</button>
+                </div>
+                
+                <h4 style="margin: 10px 0 5px 0; font-size: 13px; border-top: 1px solid #555; padding-top: 5px;">Punti Ferita (HP)</h4>
+                <div style="display: flex; gap: 5px; margin-bottom: 5px; align-items:center;">
+                    <input type="number" id="token-hp-current" placeholder="Attuali" style="flex:1; width:50px;">
+                    <span style="font-weight:bold;">/</span>
+                    <input type="number" id="token-hp-max" placeholder="Max (0=Off)" style="flex:1; width:50px;">
+                </div>
+                <div style="display: flex; gap: 5px; margin-bottom: 5px; align-items:center;">
+                    <input type="number" id="token-hp-mod" placeholder="Danni/Cure" style="flex:2;">
+                    <button id="btn-apply-hp-dmg" style="flex:1; background:#d32f2f; color:white; font-weight:bold;">-</button>
+                    <button id="btn-apply-hp-heal" style="flex:1; background:#4caf50; color:white; font-weight:bold;">+</button>
+                </div>
+                <div style="margin-bottom: 10px; font-size: 12px; display:flex; align-items:center; gap:5px;">
+                    <input type="checkbox" id="token-hp-visible" checked>
+                    <label for="token-hp-visible">Mostra stato (colori) ai giocatori</label>
+                </div>
+                <h4 style="margin: 5px 0; font-size: 13px;">Aura Mobile</h4>
+                <div style="display: flex; gap: 5px; margin-bottom: 10px; align-items:center;">
+                    <input type="checkbox" id="token-aura-active">
+                    <input type="number" id="token-aura-size" value="20" step="5" min="0" style="flex:2;" title="Raggio Aura">
+                    <select id="token-aura-unit" style="flex:1;">
+                        <option value="ft">ft</option>
+                        <option value="m">m</option>
+                    </select>
+                    <input type="color" id="token-aura-color" value="#ffff00" style="flex:1;">
+                </div>
+                <h4 style="margin: 5px 0; font-size: 13px;">Stato / Condizione</h4>
+                <div style="display: flex; gap: 5px; margin-bottom: 5px; align-items:center;">
+                    <input type="checkbox" id="token-condition-active">
+                    <select id="token-condition-lang" style="flex:1;" title="Lingua">
+                        <option value="it">IT</option>
+                        <option value="en">EN</option>
+                    </select>
+                    <input type="color" id="token-condition-color" value="#ff0000" style="flex:1;">
+                </div>
+                <select id="token-condition-type" style="width:100%;">
+                    <option value="Accecato,Blinded">Accecato / Blinded</option>
+                    <option value="Affascinato,Charmed">Affascinato / Charmed</option>
+                    <option value="Afferrato,Grappled">Afferrato / Grappled</option>
+                    <option value="Assordato,Deafened">Assordato / Deafened</option>
+                    <option value="Avvelenato,Poisoned">Avvelenato / Poisoned</option>
+                    <option value="Inabile,Incapacitated">Inabile / Incapacitated</option>
+                    <option value="Invisibile,Invisible">Invisibile / Invisible</option>
+                    <option value="Paralizzato,Paralyzed">Paralizzato / Paralyzed</option>
+                    <option value="Pietrificato,Petrified">Pietrificato / Petrified</option>
+                    <option value="Privo di sensi,Unconscious">Privo di sensi / Unconscious</option>
+                    <option value="Prono,Prone">Prono / Prone</option>
+                    <option value="Spaventato,Frightened">Spaventato / Frightened</option>
+                    <option value="Stordito,Stunned">Stordito / Stunned</option>
+                    <option value="Trattenuto,Restrained">Trattenuto / Restrained</option>
+                    <option value="Sfinimento,Exhaustion">Sfinimento / Exhaustion</option>
+                </select>
+
+            </div>
+        </div>
+
+        <div id="selected-note-controls" style="display: none; padding: 10px; background: #333; border-radius: 5px; margin-top: 10px;">
+            <h4 style="margin: 0 0 5px 0; color: #ffcc00;">Pin Segreto</h4>
+            <input type="text" id="note-title" placeholder="Titolo (es. Trappola)" style="width:100%; margin-bottom:5px;">
+            <textarea id="note-text" placeholder="Descrizione..." style="width:100%; height:80px; resize:vertical; margin-bottom:5px;"></textarea>
+            <div style="display: flex; gap: 5px;">
+                <button id="btn-delete-note" style="background-color: #d32f2f; flex:1;">Elimina Pin</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="main-canvas-container"></div>
+
+    <!-- Floating Initiative Tracker per DM -->
+    <div id="dm-tracker" style="display:none; position: absolute; top: 20px; right: 20px; width: 300px; background: #222; border: 2px solid #ffcc00; border-radius: 8px; z-index: 1000; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); resize: both; overflow: auto;">
+        <div id="dm-tracker-header" style="background: #333; padding: 10px; cursor: move; border-bottom: 1px solid #555; display: flex; justify-content: space-between; align-items: center; border-radius: 6px 6px 0 0;">
+            <strong style="color: #ffcc00;">Tracker Iniziativa</strong>
+            <div>
+                <button id="btn-collapse-tracker" style="background: transparent; color: white; border: none; font-size: 16px; cursor: pointer; margin-right: 10px;">-</button>
+                <button id="btn-close-tracker" style="background: transparent; color: white; border: none; font-size: 16px; cursor: pointer;">X</button>
+            </div>
+        </div>
+        
+        <div id="dm-tracker-body" style="padding: 10px;">
+            <!-- Controlli Globali -->
+            <div style="margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 5px; font-size: 12px; align-items: center;">
+                <button id="btn-tracker-state" style="flex: 1; background: #4caf50;">Avvia Combattimento</button>
+                <button id="btn-tracker-reset" style="flex: 1; background: #d32f2f;">Ferma/Reset</button>
+            </div>
+            
+            <div style="margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 5px; font-size: 12px; align-items: center; background: #333; padding: 5px; border-radius: 5px;">
+                <label style="flex: 1;"><input type="checkbox" id="tracker-player-visible" checked> Mostra ai Giocatori</label>
+                <select id="tracker-player-pos" style="flex: 1;">
+                    <option value="top">In Alto (Orizz.)</option>
+                    <option value="bottom">In Basso (Orizz.)</option>
+                    <option value="left">A Sinistra (Vert.)</option>
+                    <option value="right">A Destra (Vert.)</option>
+                </select>
+            </div>
+
+            <!-- Header Colonne -->
+            <div style="display: flex; gap: 5px; margin-bottom: 5px; font-weight: bold; font-size: 13px; border-bottom: 1px solid #555; padding-bottom: 5px;">
+                <div style="flex: 2;">Nome</div>
+                <div style="flex: 1; text-align: center;">HP (+/-)</div>
+                <div style="flex: 1; text-align: center;">Iniz.</div>
+                <div style="flex: 1; text-align: center;">Azioni</div>
+            </div>
+
+            <!-- Lista Entità -->
+            <div id="tracker-list" style="max-height: 250px; overflow-y: auto;">
+                <!-- Popolato via JS -->
+            </div>
+            
+            <!-- Controlli Turno (Visibili solo in combat) -->
+            <div id="tracker-combat-controls" style="display: none; margin-top: 10px; gap: 5px;">
+                <button id="btn-prev-turn" style="flex: 1; background: #555;">◀ Precedente</button>
+                <button id="btn-next-turn" style="flex: 2; background: #2196f3; font-weight: bold;">Prossimo Turno ▶</button>
+            </div>
+            
+            <div style="margin-top: 10px; text-align: center;">
+                <button id="btn-add-custom-entity" style="font-size: 11px;">+ Aggiungi Entità Extra</button>
+            </div>
+        </div>
+    </div>
+
+    
+    <script src="js/storage.js?v=23"></script>
+
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    <script src="js/network.js?v=1"></script>
+    <script src="js/engine.js?v=23"></script>
+
+    <script src="js/dm.js?v=23"></script>
+    <script src="js/initiative.js?v=23"></script>
+<script>
+    document.querySelectorAll('.section h3').forEach(h3 => {
+        h3.addEventListener('click', () => {
+            h3.parentElement.classList.toggle('collapsed');
+        });
+    });
+</script>
+</body>
+</html>
