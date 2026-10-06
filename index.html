@@ -62,7 +62,18 @@
         <div class="section">
             <button id="btn-toggle-tracker" style="width: 100%; margin-bottom: 10px; background: #ffcc00; color: black; font-weight: bold; padding: 5px; cursor: pointer; border-radius: 4px;">Apri Tracker Iniziativa</button>
             <h3>Mappa & Griglia</h3>
-            <label class="file-label">Carica Mappa
+            
+            <div style="margin-bottom: 10px; padding: 5px; background: #2c2c2c; border: 1px solid #444; border-radius: 4px; display:flex; flex-direction:column; gap:5px;">
+                <label style="display:flex; align-items:center; gap:5px; cursor:pointer; color: #4caf50; font-weight: bold;">
+                    <input type="checkbox" id="sync-view-toggle"> 
+                    <span data-i18n="Sincronizza Vista Giocatori (Pan/Zoom)">Sincronizza Vista Giocatori (Pan/Zoom)</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:5px; cursor:pointer; color: #ff9800; font-weight: bold;">
+                    <input type="checkbox" id="hide-toolbar-toggle"> 
+                    <span data-i18n="Nascondi Barra Giocatori (Modalit&agrave; TV)">Nascondi Barra Giocatori (Modalit&agrave; TV)</span>
+                </label>
+            </div>
+            <label class="file-label" data-i18n="Carica Mappa">Carica Mappa
                 <input type="file" id="map-upload" accept="image/*" style="display:none;">
             </label>
             <div class="control-group">

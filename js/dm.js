@@ -1,3 +1,13 @@
+function escapeHTML(str) {
+    if (!str) return "";
+    return String(str).replace(/[&<>'"]/g, tag => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+    }[tag]));
+}
 const engine = new VTTEngine('main-canvas-container', true);
 
 // Modalità Offline di base
@@ -12,7 +22,7 @@ document.getElementById('btn-host-online').addEventListener('click', () => {
     
     network.hostRoom().then(id => {
         btn.style.display = 'none';
-        status.innerHTML = `<span style="color:#4caf50; font-weight:bold;">Online!</span><br>Codice Stanza: <b style="color:white; font-size:16px;">${id}</b>`;
+        status.innerHTML = `<span style="color:#4caf50; font-weight:bold;">Online!</span><br>Codice Stanza: <b style="color:white; font-size:16px;">${escapeHTML(id)}</b>`;
     }).catch(err => {
         btn.disabled = false;
         btn.innerText = "Riprova";
@@ -25,7 +35,7 @@ network.onConnect((playerName) => {
     if(playerName) {
         const div = document.getElementById('online-players');
         if(div.innerText === "Nessun giocatore connesso.") div.innerText = "";
-        div.innerHTML += `<div>🟢 ${playerName}</div>`;
+        div.innerHTML += `<div>🟢 ${escapeHTML(playerName)}</div>`;
         syncState(); // Sincronizza il nuovo arrivato
         syncFog();
         if (currentMapBase64) {
@@ -120,6 +130,27 @@ let tokenImages = {};
 let currentMapBase64 = null;
 
 // Inizializza il database locale
+
+
+let isHideToolbarActive = false;
+const hideToolbarBtn = document.getElementById('hide-toolbar-toggle');
+if (hideToolbarBtn) {
+    hideToolbarBtn.addEventListener('change', (e) => {
+        isHideToolbarActive = e.target.checked;
+        syncState(true);
+    });
+}
+
+let isViewSyncActive = false;
+const syncToggleBtn = document.getElementById('sync-view-toggle');
+if (syncToggleBtn) {
+    syncToggleBtn.addEventListener('change', (e) => {
+        isViewSyncActive = e.target.checked;
+        syncState(true);
+    });
+}
+
+
 vttDB.init().then(() => {
     refreshCampaigns();
 });
@@ -146,6 +177,15 @@ function syncState(force = false) {
     }
     lastSyncTime = now;
 
+    let viewSyncData = null;
+    if (typeof isViewSyncActive !== 'undefined' && isViewSyncActive && engine.scale > 0 && engine.container) {
+        viewSyncData = {
+            centerX: (engine.container.clientWidth / 2 - engine.offsetX) / engine.scale,
+            centerY: (engine.container.clientHeight / 2 - engine.offsetY) / engine.scale,
+            scale: engine.scale
+        };
+    }
+
     network.send({
         type: 'STATE_SYNC',
         payload: {
@@ -153,7 +193,9 @@ function syncState(force = false) {
             tokens: engine.tokens.map(t => ({...t, imageObj: null})),
             shapes: engine.shapes,
             initiative: engine.initiative,
-            publicStrokes: engine.publicStrokes
+            publicStrokes: engine.publicStrokes,
+            viewSync: viewSyncData,
+            hideToolbar: typeof isHideToolbarActive !== 'undefined' ? isHideToolbarActive : false
         }
     });
 }

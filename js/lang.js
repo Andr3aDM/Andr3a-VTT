@@ -9,6 +9,8 @@ const dict = {
     "Esporta (JSON)": "Export (JSON)",
     "Importa": "Import",
     "Mappa & Griglia": "Map & Grid",
+    "Sincronizza Vista Giocatori (Pan/Zoom)": "Sync Players View (Pan/Zoom)",
+    "Nascondi Barra Giocatori (Modalità TV)": "Hide Player Toolbar (TV Mode)",
     "-- Seleziona Mappa --": "-- Select Map --",
     "Carica Mappa": "Load Map",
     "Salva Nuova": "Save New",

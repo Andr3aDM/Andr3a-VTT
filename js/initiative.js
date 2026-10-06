@@ -1,3 +1,13 @@
+function escapeHTML(str) {
+    if (!str) return "";
+    return String(str).replace(/[&<>'"]/g, tag => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+    }[tag]));
+}
 // Gestione Party (Salvato in localStorage globale)
 let party = JSON.parse(localStorage.getItem('dnd_party') || '[]');
 
@@ -13,7 +23,7 @@ function renderPartyList() {
         li.style.padding = '5px';
         li.style.borderRadius = '3px';
         
-        li.innerHTML = `<span>${name}</span> <button style="background:red; color:white; border:none; border-radius:3px; cursor:pointer;" onclick="removePartyMember(${index})">X</button>`;
+        li.innerHTML = `<span>${escapeHTML(name)}</span> <button style="background:red; color:white; border:none; border-radius:3px; cursor:pointer;" onclick="removePartyMember(${index})">X</button>`;
         list.appendChild(li);
     });
 }

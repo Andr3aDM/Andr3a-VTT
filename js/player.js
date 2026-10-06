@@ -1,3 +1,4 @@
+let wasViewSyncActive = false;
 const engine = new VTTEngine('main-canvas-container', false); // isDM = false
 let activeToken = null;
 let isDragging = false;
@@ -149,6 +150,24 @@ network.onMessage((data, peerId) => {
         engine.publicStrokes = state.publicStrokes || [];
         engine.shapes = state.shapes || [];
 
+        // --- View Sync Logic ---
+        if (typeof state.hideToolbar !== 'undefined') {
+            const ptb = document.getElementById('player-toolbar');
+            if (ptb) {
+                ptb.style.display = state.hideToolbar ? 'none' : 'flex';
+            }
+        }
+        if (state.viewSync) {
+            wasViewSyncActive = true;
+            engine.scale = state.viewSync.scale;
+            engine.offsetX = engine.container.clientWidth / 2 - state.viewSync.centerX * engine.scale;
+            engine.offsetY = engine.container.clientHeight / 2 - state.viewSync.centerY * engine.scale;
+        } else if (wasViewSyncActive) {
+            wasViewSyncActive = false;
+            engine.fitToScreen();
+        }
+        // -----------------------
+
         const newTokens = [];
         let loadedCount = 0;
         
@@ -224,7 +243,9 @@ network.onMessage((data, peerId) => {
 // Request initial state if opened later
 // Adatta sempre la mappa quando la finestra del giocatore viene ridimensionata o messa a schermo intero
 window.addEventListener('resize', () => {
-    engine.fitToScreen();
+    if (!wasViewSyncActive) {
+        engine.fitToScreen();
+    }
     engine.renderAll();
 });
 
