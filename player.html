@@ -82,9 +82,22 @@
     </div>
 
     <!-- PLAYER TOOLBAR -->
+    
+    <!-- Player Handout Window -->
+    <div id="handout-window" style="display:none; position: absolute; top: 100px; left: calc(50% - 250px); width: 500px; height: 500px; background: #222; border: 2px solid #2196f3; border-radius: 8px; z-index: 1100; flex-direction: column; box-shadow: 0 8px 16px rgba(0,0,0,0.8);  overflow: hidden;">
+        <div id="handout-header" style="background: #333; padding: 10px;  display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #555;">
+            <strong style="color: #2196f3;" data-i18n="Immagine Condivisa">Immagine Condivisa</strong>
+            <button id="btn-handout-close-self" style="background: transparent; color: white; border: none; font-size: 16px; cursor: pointer; padding: 0 5px;">X</button>
+        </div>
+        <div style="flex: 1; padding: 10px; overflow: auto; display: flex; justify-content: center; align-items: center; background: #111;">
+            <img id="handout-image" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+        </div>
+    </div>
+
     <div id="player-toolbar" style="position: absolute; bottom: 20px; left: 20px; z-index: 1000; background: rgba(34,34,34,0.9); border: 2px solid #ffcc00; border-radius: 8px; padding: 10px; display: flex; gap: 10px; color: white; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
         <input type="color" id="player-color" value="#00ffff" title="Il tuo Colore (per Disegni e Ping)" style="cursor:pointer; width:30px; height:30px; padding:0; border:none; background:none;">
-        <div style="width: 1px; height: 30px; background: #555; margin: 0 5px;"></div>
+                            <button id="pbtn-chat" class="ptool-btn" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Chat Log">💬</button>
+          <div style="width: 1px; height: 30px; background: #555; margin: 0 5px;"></div>
         <button class="ptool-btn active" data-tool="move" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Muovi Token">🖐️</button>
         <button class="ptool-btn" data-tool="draw" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Disegna (Pubblico)">✏️</button>
         <button class="ptool-btn" data-tool="ruler" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Metro">📏</button>
@@ -92,12 +105,40 @@
         <button id="pbtn-cone" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Crea Cono">📐</button>
         <button id="pbtn-sphere" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Crea Sfera">⭕</button>
         <button id="pbtn-line" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Crea Linea">➖</button>
+          <button id="pbtn-dice" class="ptool-btn" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Tira Dadi">🎲</button>
+          </div>
+
+
+    <!-- Dadi e Chat Player -->
+    <div id="dice-panel" style="display:none; position: absolute; bottom: 70px; left: 20px; background: rgba(34, 34, 34, 0.95); border: 2px solid #ffcc00; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 1000;">
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 10px;">
+            <button class="roll-btn" data-dice="4" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d4</button>
+            <button class="roll-btn" data-dice="6" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d6</button>
+            <button class="roll-btn" data-dice="8" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d8</button>
+            <button class="roll-btn" data-dice="10" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d10</button>
+            <button class="roll-btn" data-dice="12" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d12</button>
+            <button class="roll-btn" data-dice="20" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d20</button>
+            <button class="roll-btn" data-dice="100" style="grid-column: span 3; padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d100</button>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 14px;">Bonus:</span>
+            <input type="number" id="dice-bonus" value="0" style="width: 50px; background: #111; color: white; border: 1px solid #555; text-align: center;">
+        </div>
     </div>
 
+    <div id="chat-panel" style="display:none; position: absolute; bottom: 70px; left: 180px; background: rgba(0, 0, 0, 0.7); border: 1px solid #444; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 1000; width: 300px; height: 250px; flex-direction: column;">
+        <strong style="margin-bottom: 5px; border-bottom: 1px solid #555; padding-bottom: 5px;">Storico Tiri</strong>
+        <ul id="chat-log" style="list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 5px; font-size: 14px;"></ul>
+    </div>
+    <!-- Fine Dadi -->
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
-    <script src="js/engine.js?v=54"></script>
+    <script src="js/engine.js?v=80"></script>
     <script src="js/network.js?v=1"></script>
-    <script src="js/player.js?v=54"></script>
+    <script src="js/dice.js?v=80"></script>
+    <script src="js/player.js?v=80"></script>
 <script src="js/lang.js?v=1"></script>
+
+    
+
 </body>
 </html>

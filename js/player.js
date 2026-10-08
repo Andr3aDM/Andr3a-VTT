@@ -53,8 +53,9 @@ document.getElementById('btn-login-online').addEventListener('click', () => {
 
 network.onMessage((data, peerId) => {
 
-    if (data.type === 'ping') {
-        engine.pings.push({x: data.x, y: data.y, start: Date.now()});
+    if (data.type === 'ping' || data.type === 'PING') {
+        const pData = data.payload || data;
+        engine.pings.push({x: pData.x, y: pData.y, start: Date.now(), color: pData.color || '#ff0000'});
         engine.renderUI();
     } else if (data.type === 'MAP_UPDATE') {
         const img = new Image();
@@ -62,9 +63,31 @@ network.onMessage((data, peerId) => {
             engine.setMap(img);
         };
         img.src = data.payload;
-    } 
-    else if (data.type === 'STATE_SYNC') {
+    } else if (data.type === 'SHARED_IMAGE_DATA') {
+        if (data.imageId === currentSharedImageId) {
+            document.getElementById('handout-image').src = data.data;
+        }
+    } else if (data.type === 'STATE_SYNC') {
         const state = data.payload;
+        
+        if (state.sharedImageId !== currentSharedImageId) {
+            currentSharedImageId = state.sharedImageId;
+            if (currentSharedImageId) {
+                document.getElementById('handout-window').style.display = 'flex';
+                document.getElementById('handout-image').src = ''; // Clear old
+                network.send({ type: 'REQUEST_IMAGE', imageId: currentSharedImageId });
+            } else {
+                document.getElementById('handout-window').style.display = 'none';
+            }
+        }
+        
+        if (state.sharedImageRect) {
+            const hw = document.getElementById('handout-window');
+            hw.style.left = state.sharedImageRect.left;
+            hw.style.top = state.sharedImageRect.top;
+            hw.style.width = state.sharedImageRect.width;
+            hw.style.height = state.sharedImageRect.height;
+        }
         
         // Sync Grid
         engine.grid = state.grid;
@@ -153,9 +176,15 @@ network.onMessage((data, peerId) => {
         // --- View Sync Logic ---
         if (typeof state.hideToolbar !== 'undefined') {
             const ptb = document.getElementById('player-toolbar');
+
             if (ptb) {
                 ptb.style.display = state.hideToolbar ? 'none' : 'flex';
             }
+            const dp = document.getElementById('dice-panel');
+            if (dp && state.hideToolbar) dp.style.display = 'none';
+            const cp = document.getElementById('chat-panel');
+            if (cp && state.hideToolbar) cp.style.display = 'none';
+
         }
         if (state.viewSync) {
             wasViewSyncActive = true;
@@ -215,7 +244,8 @@ network.onMessage((data, peerId) => {
 
         state.tokens.forEach(t => {
             const existing = engine.tokens.find(et => et.id === t.id);
-            if (existing && existing.src === t.src) {
+            if (existing && (!t.src || existing.src.startsWith(t.src))) {
+                t.src = existing.src;
                 t.imageObj = existing.imageObj;
                 newTokens.push(t);
                 loadedCount++;
@@ -253,6 +283,7 @@ window.addEventListener('resize', () => {
 
 // --- PLAYER TOOLBAR ---
 let currentTool = 'move';
+let currentSharedImageId = null;
 document.querySelectorAll('.ptool-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
         document.querySelectorAll('.ptool-btn').forEach(b => b.style.opacity = '0.5');
@@ -522,7 +553,7 @@ uiLayer.addEventListener('mouseleave', pHandleEnd);
 function updatePlayerShape() {
     if (!window.editingPlayerShape) return;
     
-    const sizeRaw = parseFloat(document.getElementById('pshape-size').value) || 0;
+    let _raw = parseFloat(document.getElementById('pshape-size').value); if(isNaN(_raw)) _raw = 0; const sizeRaw = Math.max(0.1, _raw);
     const unit = document.getElementById('pshape-unit').value;
     const squares = unit === 'ft' ? sizeRaw / 5 : sizeRaw / 1.5;
     const sizeFt = squares * 5;
@@ -543,7 +574,7 @@ document.getElementById('pshape-angle').addEventListener('input', updatePlayerSh
 document.getElementById('pshape-color').addEventListener('input', updatePlayerShape);
 document.getElementById('pshape-unit').addEventListener('change', (e) => {
     const input = document.getElementById('pshape-size');
-    const oldVal = parseFloat(input.value) || 0;
+    let oldVal = parseFloat(input.value); if(isNaN(oldVal)) oldVal = 0;
     if (e.target.value === 'ft') {
         input.step = '5';
         input.value = Math.round(oldVal / 1.5 * 5);
@@ -575,7 +606,7 @@ document.getElementById('pbtn-delete-shape').addEventListener('click', () => {
 function updatePlayerTokenAura() {
     if (!window.editingPlayerToken) return;
     
-    const sizeRaw = parseFloat(document.getElementById('ptoken-aura-size').value) || 0;
+    let _raw = parseFloat(document.getElementById('ptoken-aura-size').value); if(isNaN(_raw)) _raw = 0; const sizeRaw = Math.max(0.1, _raw);
     const unit = document.getElementById('ptoken-aura-unit').value;
     const squares = unit === 'ft' ? sizeRaw / 5 : sizeRaw / 1.5;
     
@@ -602,7 +633,7 @@ document.getElementById('ptoken-aura-active').addEventListener('change', updateP
 document.getElementById('ptoken-aura-size').addEventListener('input', updatePlayerTokenAura);
 document.getElementById('ptoken-aura-unit').addEventListener('change', (e) => {
     const input = document.getElementById('ptoken-aura-size');
-    const oldVal = parseFloat(input.value) || 0;
+    let oldVal = parseFloat(input.value); if(isNaN(oldVal)) oldVal = 0;
     if (e.target.value === 'ft') {
         input.step = '5';
         input.value = Math.round(oldVal / 1.5 * 5);
@@ -619,3 +650,17 @@ document.getElementById('pbtn-close-token').addEventListener('click', () => {
     window.editingPlayerToken = null;
 });
 
+
+
+
+
+
+// Player self close
+document.getElementById('btn-handout-close-self').addEventListener('click', () => {
+    document.getElementById('handout-window').style.display = 'none';
+});
+
+// Inizializza Sistema Dadi
+if (window.setupDiceSystem) {
+    window.setupDiceSystem(false, network);
+}

@@ -34,6 +34,9 @@ const dict = {
     "Metro (ft/m)": "Ruler (ft/m)",
     "Disegna (Tutti)": "Draw (All)",
     "Disegna (Solo DM)": "Draw (DM Only)",
+    "Seleziona (Lazo)": "Select (Lasso)",
+    "+ Aggiungi all'Iniziativa": "+ Add to Initiative"
+
     "Aggiungi Nebbia": "Add Fog",
     "Cancella Nebbia": "Erase Fog",
     "Pin Segreto (DM)": "Secret Pin (DM)",

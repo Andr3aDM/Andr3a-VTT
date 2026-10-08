@@ -61,6 +61,8 @@ class VTTEngine {
         this.ruler = null;
         this.initiative = null;
         this.selectedTokenId = null;
+        this.selectedTokens = new Set();
+        this.lasso = null;
         this.selectedShapeId = null;
 
         window.addEventListener('resize', () => this.resizeUI());
@@ -186,7 +188,7 @@ class VTTEngine {
             if (!this.isDM && !shape.visible) return;
 
             const pixelsPerFoot = this.grid.size / 5;
-            const sizePx = shape.sizeFt * pixelsPerFoot;
+            const sizePx = Math.max(0.1, shape.sizeFt * pixelsPerFoot);
             
             ctx.save();
             ctx.translate(shape.x, shape.y);
@@ -268,6 +270,19 @@ class VTTEngine {
                 ctx.drawImage(token.imageObj, token.x, token.y, token.width, token.height);
                 ctx.globalAlpha = 1.0;
             }
+// Teschio Morte (HP <= 0)
+                if (token.hpCurrent !== undefined && token.hpCurrent !== null && token.hpCurrent !== "" && parseFloat(token.hpCurrent) <= 0) {
+                    ctx.font = `bold ${token.width * 0.7}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#ff3333';
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = Math.max(2, token.width * 0.05);
+                    const skullX = token.x + token.width / 2;
+                    const skullY = token.y + token.height / 2;
+                    ctx.strokeText('💀', skullX, skullY);
+                    ctx.fillText('💀', skullX, skullY);
+                }
         });
 
         // Draw Conditions on top
@@ -382,8 +397,8 @@ class VTTEngine {
                 }
             }
 
-            if (this.isDM && this.selectedTokenId === token.id) {
-                ctx.strokeStyle = '#0288d1';
+            if (this.isDM && (this.selectedTokenId === token.id || this.selectedTokens.has(token.id))) {
+                ctx.strokeStyle = this.selectedTokenId === token.id ? '#0288d1' : '#00bcd4';
                 ctx.lineWidth = 4;
                 ctx.strokeRect(token.x, token.y, token.width, token.height);
             }
@@ -456,8 +471,8 @@ class VTTEngine {
             const maxRadius = 100 * this.scale;
             const radius = maxRadius * Math.easeOutQuad(progress);
             
-            const rgb = (ping.color && ping.color.startsWith('#')) ? 
-                `${parseInt(ping.color.slice(1,3),16)}, ${parseInt(ping.color.slice(3,5),16)}, ${parseInt(ping.color.slice(5,7),16)}` : '255, 0, 0';
+            const rgb = (p.color && p.color.startsWith('#')) ? 
+                `${parseInt(p.color.slice(1,3),16)}, ${parseInt(p.color.slice(3,5),16)}, ${parseInt(p.color.slice(5,7),16)}` : '255, 0, 0';
             ctx.beginPath();
             ctx.arc(px, py, radius, 0, Math.PI * 2);
             ctx.strokeStyle = `rgba(${rgb}, ${1 - progress})`;
@@ -494,7 +509,21 @@ class VTTEngine {
             }
         }
 
+        
+        if (this.lasso) {
+            ctx.strokeStyle = 'rgba(0, 153, 255, 0.8)';
+            ctx.fillStyle = 'rgba(0, 153, 255, 0.2)';
+            ctx.lineWidth = 2;
+            const x = Math.min(this.lasso.startX, this.lasso.endX) * this.scale + this.offsetX;
+            const y = Math.min(this.lasso.startY, this.lasso.endY) * this.scale + this.offsetY;
+            const w = Math.abs(this.lasso.startX - this.lasso.endX) * this.scale;
+            const h = Math.abs(this.lasso.startY - this.lasso.endY) * this.scale;
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeRect(x, y, w, h);
+        }
+        
         if (hasActivePings || hasActiveInitiative) {
+
             requestAnimationFrame(() => this.renderUI());
         }
 

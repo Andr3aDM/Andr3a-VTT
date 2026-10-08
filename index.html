@@ -73,8 +73,11 @@
                     <span data-i18n="Nascondi Barra Giocatori (Modalit&agrave; TV)">Nascondi Barra Giocatori (Modalit&agrave; TV)</span>
                 </label>
             </div>
-            <label class="file-label" data-i18n="Carica Mappa">Carica Mappa
+            <label class="file-label" data-i18n="Carica Mappa" style="margin-bottom: 5px;">Carica Mappa
                 <input type="file" id="map-upload" accept="image/*" style="display:none;">
+            </label>
+            <label class="file-label" style="background: #2196f3; border-color: #1976d2; margin-bottom: 10px;">Condividi Immagine
+                <input type="file" id="share-image-upload" accept="image/*" style="display:none;">
             </label>
             <div class="control-group">
                 <div style="width: 100%;">
@@ -102,6 +105,7 @@
             <h3>Strumenti Base <span style='font-size:10px; font-weight:normal;'>(Tieni premuto per Ping)</span></h3>
             <div class="tool-buttons">
                 <button class="tool-btn active" data-tool="move">Muovi/Seleziona</button>
+                <button class="tool-btn" data-tool="select-lasso">Seleziona (Lazo)</button>
                 <button class="tool-btn" data-tool="move-grid">Allinea Griglia</button>
                 <button class="tool-btn" data-tool="ruler">Metro (ft/m)</button>
                 <button class="tool-btn" data-tool="draw-public">Disegna (Tutti)</button>
@@ -213,7 +217,8 @@
                 </div>
                 <div style="display: flex; gap: 5px;">
                     <button id="btn-toggle-visibility" style="flex:1;">Nascondi/Rivela</button>
-                    <button id="btn-delete-token" style="background-color: #d32f2f; flex:1;">Elimina</button>
+                    <button id="btn-add-to-init" style="width:100%; margin-top:5px; background: #ff9800; color: white; padding: 5px; font-weight: bold; border-radius: 4px; border:none; cursor:pointer;">+ Aggiungi all'Iniziativa</button>
+            <button id="btn-delete-token" style="background-color: #d32f2f; flex:1;">Elimina</button>
                 </div>
                 
                 <h4 style="margin: 10px 0 5px 0; font-size: 13px; border-top: 1px solid #555; padding-top: 5px;">Punti Ferita (HP)</h4>
@@ -284,7 +289,23 @@
     <div id="main-canvas-container"></div>
 
     <!-- Floating Initiative Tracker per DM -->
-    <div id="dm-tracker" style="display:none; position: absolute; top: 20px; right: 20px; width: 300px; background: #222; border: 2px solid #ffcc00; border-radius: 8px; z-index: 1000; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); resize: both; overflow: auto;">
+    
+    <!-- DM Handout Window -->
+    <div id="dm-handout-window" style="display:none; position: absolute; top: 100px; left: calc(50% - 250px); width: 500px; height: 500px; background: #222; border: 2px solid #2196f3; border-radius: 8px; z-index: 1100; flex-direction: column; box-shadow: 0 8px 16px rgba(0,0,0,0.8); resize: both; overflow: hidden;">
+        <div id="dm-handout-header" style="background: #333; padding: 10px; cursor: move; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #555;">
+            <strong style="color: #2196f3;">Immagine Condivisa</strong>
+            <div>
+                <button id="btn-dm-handout-transmit" style="background: #4caf50; color: white; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer; margin-right: 5px; font-weight:bold;">Trasmetti ai Giocatori</button>
+                <button id="btn-dm-handout-close-all" style="background: #d32f2f; color: white; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer; margin-right: 15px; font-weight:bold;">Chiudi per Tutti</button>
+                <button id="btn-dm-handout-close-self" style="background: transparent; color: white; border: none; font-size: 16px; cursor: pointer; padding: 0 5px;">X</button>
+            </div>
+        </div>
+        <div style="flex: 1; padding: 10px; overflow: auto; display: flex; justify-content: center; align-items: center; background: #111;">
+            <img id="dm-handout-image" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+        </div>
+    </div>
+
+    <div id="dm-tracker" style="display:none; position: absolute; top: 20px; left: calc(100vw - 320px); width: 300px; background: #222; border: 2px solid #ffcc00; border-radius: 8px; z-index: 1000; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); resize: both; overflow: auto; flex-direction: column; min-height: 250px;">
         <div id="dm-tracker-header" style="background: #333; padding: 10px; cursor: move; border-bottom: 1px solid #555; display: flex; justify-content: space-between; align-items: center; border-radius: 6px 6px 0 0;">
             <strong style="color: #ffcc00;">Tracker Iniziativa</strong>
             <div>
@@ -293,7 +314,7 @@
             </div>
         </div>
         
-        <div id="dm-tracker-body" style="padding: 10px;">
+        <div id="dm-tracker-body" style="padding: 10px; display: flex; flex-direction: column; flex: 1; min-height: 0;">
             <!-- Controlli Globali -->
             <div style="margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 5px; font-size: 12px; align-items: center;">
                 <button id="btn-tracker-state" style="flex: 1; background: #4caf50;">Avvia Combattimento</button>
@@ -319,7 +340,7 @@
             </div>
 
             <!-- Lista Entità -->
-            <div id="tracker-list" style="max-height: 250px; overflow-y: auto;">
+            <div id="tracker-list" style="flex: 1; overflow-y: auto; min-height: 50px;">
                 <!-- Popolato via JS -->
             </div>
             
@@ -339,9 +360,37 @@
     <script src="js/storage.js?v=23"></script>
 
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    <!-- Dadi e Chat DM -->
+    <div id="dm-floating-tools" style="position: absolute; bottom: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 10px;">
+        <button id="btn-toggle-chat" style="border-radius: 50%; width: 50px; height: 50px; font-size: 24px; background: #222; border: 2px solid #2196f3; color: white; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);" title="Chat Log">💬</button>
+        <button id="btn-toggle-dice" style="border-radius: 50%; width: 50px; height: 50px; font-size: 24px; background: #222; border: 2px solid #ffcc00; color: white; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);" title="Dadi">🎲</button>
+    </div>
+
+    <div id="dice-panel" style="display:none; position: absolute; bottom: 20px; right: 80px; background: rgba(34, 34, 34, 0.95); border: 2px solid #ffcc00; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 1000;">
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 10px;">
+            <button class="roll-btn" data-dice="4" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d4</button>
+            <button class="roll-btn" data-dice="6" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d6</button>
+            <button class="roll-btn" data-dice="8" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d8</button>
+            <button class="roll-btn" data-dice="10" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d10</button>
+            <button class="roll-btn" data-dice="12" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d12</button>
+            <button class="roll-btn" data-dice="20" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d20</button>
+            <button class="roll-btn" data-dice="100" style="grid-column: span 3; padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d100</button>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 14px;">Bonus:</span>
+            <input type="number" id="dice-bonus" value="0" style="width: 50px; background: #111; color: white; border: 1px solid #555; text-align: center;">
+        </div>
+    </div>
+
+    <div id="chat-panel" style="display:none; position: absolute; bottom: 80px; right: 80px; background: rgba(0, 0, 0, 0.7); border: 1px solid #444; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 1000; width: 300px; height: 250px; flex-direction: column;">
+        <strong style="margin-bottom: 5px; border-bottom: 1px solid #555; padding-bottom: 5px;">Storico Tiri</strong>
+        <ul id="chat-log" style="list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 5px; font-size: 14px;"></ul>
+    </div>
+    <!-- Fine Dadi -->
     <script src="js/network.js?v=1"></script>
     <script src="js/engine.js?v=23"></script>
 
+    <script src="js/dice.js?v=80"></script>
     <script src="js/dm.js?v=23"></script>
     <script src="js/initiative.js?v=23"></script>
 <script>
@@ -352,5 +401,8 @@
     });
 </script>
 <script src="js/lang.js?v=1"></script>
+
+    
+
 </body>
 </html>

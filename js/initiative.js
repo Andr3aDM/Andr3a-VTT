@@ -91,7 +91,7 @@ document.addEventListener('touchend', () => isDraggingTracker = false);
 
 document.getElementById('btn-toggle-tracker').addEventListener('click', () => {
     if (trackerDiv.style.display === 'none') {
-        trackerDiv.style.display = 'block';
+        trackerDiv.style.display = 'flex';
         if (!engine.initiative.active && engine.initiative.participants.length === 0) {
             setupInitiative();
         }
@@ -119,11 +119,15 @@ function setupInitiative() {
         });
     });
     
-    // Aggiungi Tokens
+    // Aggiungi Tokens (Filtro selezione intelligente)
+    const hasSelection = engine.selectedTokens && engine.selectedTokens.size > 0;
+    
     engine.tokens.forEach((t, i) => {
+        if (hasSelection && !engine.selectedTokens.has(t.id)) return;
+        
         engine.initiative.participants.push({
             id: 'tok_' + t.id,
-            name: 'Mostro ' + (i+1),
+            name: window.getSmartTokenName(t),
             isToken: true,
             tokenId: t.id,
             isHidden: !t.visible,
@@ -205,17 +209,16 @@ document.getElementById('btn-add-custom-entity').addEventListener('click', () =>
 
 document.getElementById('btn-tracker-state').addEventListener('click', (e) => {
     if (!engine.initiative.active) {
-        // Avvia!
         engine.initiative.active = true;
-        // Sort descending
         engine.initiative.participants.sort((a, b) => (b.init || 0) - (a.init || 0));
         engine.initiative.currentTurnIndex = 0;
         e.target.innerText = 'Riordina/Aggiorna';
         document.getElementById('tracker-combat-controls').style.display = 'flex';
+        if (typeof showToast === 'function') showToast('Combattimento avviato!');
     } else {
-        // Riordina se hanno cambiato i valori
         engine.initiative.participants.sort((a, b) => (b.init || 0) - (a.init || 0));
         engine.initiative.currentTurnIndex = 0;
+        if (typeof showToast === 'function') showToast('Ordine aggiornato!');
     }
     renderTrackerList();
 });
@@ -223,6 +226,8 @@ document.getElementById('btn-tracker-state').addEventListener('click', (e) => {
 document.getElementById('btn-tracker-reset').addEventListener('click', () => {
     engine.initiative.active = false;
     engine.initiative.currentTurnIndex = 0;
+    engine.initiative.participants = []; // Svuota i vecchi partecipanti
+    setupInitiative(); // Ricarica in base alla nuova selezione
     document.getElementById('btn-tracker-state').innerText = 'Avvia Combattimento';
     document.getElementById('tracker-combat-controls').style.display = 'none';
     renderTrackerList();
@@ -255,7 +260,7 @@ renderPartyList();
 document.getElementById('btn-collapse-tracker').addEventListener('click', (e) => {
     const body = document.getElementById('dm-tracker-body');
     if (body.style.display === 'none') {
-        body.style.display = 'block';
+        body.style.display = 'flex';
         e.target.innerText = '-';
     } else {
         body.style.display = 'none';

@@ -52,9 +52,17 @@ network.onMessage((data, peerId) => {
         }
         // Ritardiamo fog e state per dare tempo al giocatore di caricare l'immagine della mappa
         setTimeout(() => {
-            syncState(true);
+            syncState(true, true);
             syncFog();
         }, 200);
+} else if (data.type === 'REQUEST_IMAGE') {
+        if (engine.sharedImageId === data.imageId && engine.sharedImageData) {
+            network.send({
+                type: 'SHARED_IMAGE_DATA',
+                imageId: engine.sharedImageId,
+                data: engine.sharedImageData
+            }, peerId);
+        }
     } else if (data.type === 'PLAYER_MOVE_TOKEN' || data.type === 'PLAYER_END_TOKEN') {
         const payload = data.payload;
         const token = engine.tokens.find(t => t.id === payload.id);
@@ -75,7 +83,13 @@ network.onMessage((data, peerId) => {
             engine.renderAll();
             syncState(data.type === 'PLAYER_END_TOKEN');
         }
-    } else if (data.type === 'PING') {
+    
+    } else if (data.type === 'DICE_ROLL') {
+        if (window.appendRollToChat) {
+            window.appendRollToChat(data.payload.player, data.payload.dice, data.payload.bonus, data.payload.result);
+            document.getElementById('chat-panel').style.display = 'flex';
+        }
+} else if (data.type === 'PING') {
         engine.pings.push({x: data.payload.x, y: data.payload.y, start: Date.now(), color: data.payload.color || '#ff0000'});
         engine.renderUI();
         // Rimbalza a tutti gli altri giocatori
@@ -129,6 +143,28 @@ let activeStroke = null;
 let tokenImages = {};
 let currentMapBase64 = null;
 
+
+window.getSmartTokenName = function(t) {
+    if (t.owner) return t.owner;
+    let baseName = t.originalName || 'Mostro';
+    baseName = baseName.replace(/\.[^/.]+$/, ""); // Rimuove l'estensione (es. .jpg)
+    
+    let count = 0;
+    if (engine.initiative && engine.initiative.participants) {
+        engine.initiative.participants.forEach(p => {
+            if (p.tokenId === t.id) return;
+            if (p.name === baseName || p.name.startsWith(baseName + ' ')) {
+                count++;
+            }
+        });
+    }
+    
+    if (count > 0 || baseName.toLowerCase() === 'mostro') {
+        return baseName + ' ' + (count + 1);
+    }
+    return baseName;
+};
+
 // Inizializza il database locale
 
 
@@ -158,14 +194,14 @@ vttDB.init().then(() => {
 let lastSyncTime = 0;
 let syncTimeout = null;
 
-function syncState(force = false) {
+function syncState(force = false, sendFullImages = false) {
     const now = Date.now();
     // Limita l'invio a massimo 25 frame al secondo (ogni 40ms) per non intasare la rete P2P
     if (!force && now - lastSyncTime < 40) {
         if (!syncTimeout) {
             syncTimeout = setTimeout(() => {
                 syncTimeout = null;
-                syncState(true);
+                syncState(true, false);
             }, 40);
         }
         return;
@@ -190,12 +226,25 @@ function syncState(force = false) {
         type: 'STATE_SYNC',
         payload: {
             grid: engine.grid,
-            tokens: engine.tokens.map(t => ({...t, imageObj: null})),
+            tokens: engine.tokens.map(t => {
+                const copy = {...t, imageObj: null};
+                if (!sendFullImages && copy.src && copy.src.length > 200) {
+                    copy.src = copy.src.substring(0, 50);
+                }
+                return copy;
+            }),
             shapes: engine.shapes,
             initiative: engine.initiative,
             publicStrokes: engine.publicStrokes,
             viewSync: viewSyncData,
-            hideToolbar: typeof isHideToolbarActive !== 'undefined' ? isHideToolbarActive : false
+            hideToolbar: typeof isHideToolbarActive !== 'undefined' ? isHideToolbarActive : false,
+            sharedImageId: engine.sharedImageId || null,
+            sharedImageRect: {
+                left: document.getElementById('dm-handout-window').style.left || 'calc(50% - 250px)',
+                top: document.getElementById('dm-handout-window').style.top || '100px',
+                width: document.getElementById('dm-handout-window').style.width || '500px',
+                height: document.getElementById('dm-handout-window').style.height || '500px'
+            }
         }
     });
 }
@@ -237,6 +286,12 @@ document.getElementById('map-upload').addEventListener('change', (e) => {
         reader.readAsDataURL(file);
     }
 });
+
+
+// Inizializza Sistema Dadi
+if (window.setupDiceSystem) {
+    window.setupDiceSystem(true, network);
+}
 
 // -- LOGICA CAMPAGNE E SALVATAGGI --
 
@@ -318,7 +373,8 @@ document.getElementById('btn-save-new-map').addEventListener('click', async () =
         fogBase64: engine.getFogBase64(),
         offsetX: engine.offsetX,
         offsetY: engine.offsetY,
-        scale: engine.scale
+        scale: engine.scale,
+        sharedImageId: engine.sharedImageId || null
     };
 
     const savedMap = await vttDB.saveMap(campaignId, name, currentMapBase64, state);
@@ -347,7 +403,8 @@ document.getElementById('btn-save-map').addEventListener('click', async () => {
         fogBase64: engine.getFogBase64(),
         offsetX: engine.offsetX,
         offsetY: engine.offsetY,
-        scale: engine.scale
+        scale: engine.scale,
+        sharedImageId: engine.sharedImageId || null
     };
 
     await vttDB.saveMap(campaignId, currentLoadedMapName, currentMapBase64, state, currentLoadedMapId);
@@ -375,8 +432,9 @@ document.getElementById('btn-load-map').addEventListener('click', () => {
         
         engine.grid = state.grid || engine.grid;
         if (state.grid) {
-            document.getElementById('grid-size').value = state.grid.size;
-            document.getElementById('grid-color').value = state.grid.color;
+              document.getElementById('grid-size').value = state.grid.size;
+              if (document.getElementById('grid-size-slider')) document.getElementById('grid-size-slider').value = state.grid.size;
+              document.getElementById('grid-color').value = state.grid.color;
             document.getElementById('grid-glow').value = state.grid.glow;
         }
         engine.publicStrokes = state.publicStrokes || [];
@@ -396,7 +454,7 @@ document.getElementById('btn-load-map').addEventListener('click', () => {
                     t.imageObj = tImg;
                     engine.tokens.push(t);
                     engine.renderAll();
-                    syncState();
+                    syncState(true, true);
                 };
                 tImg.src = t.src;
             });
@@ -591,6 +649,7 @@ function addTokenToMap(name, src) {
 
         const token = {
             id: 'token_' + Date.now(),
+            originalName: name,
             x: snappedX,
             y: snappedY,
             width: pxSize,
@@ -602,7 +661,7 @@ function addTokenToMap(name, src) {
         };
         engine.tokens.push(token);
         engine.renderAll();
-        syncState();
+        syncState(true, true);
     };
     imgObj.src = src;
 }
@@ -696,8 +755,7 @@ function updateTokenAuraCond() {
     const token = engine.tokens.find(t => t.id === engine.selectedTokenId);
     if (!token) return;
     
-    let sizeRaw = parseFloat(document.getElementById('token-aura-size').value) || 0;
-    if (sizeRaw < 0) sizeRaw = 0;
+    let _raw = parseFloat(document.getElementById('token-aura-size').value); if(isNaN(_raw)) _raw = 0; let sizeRaw = Math.max(0.1, _raw);
     
     const unit = document.getElementById('token-aura-unit').value;
     const squares = unit === 'ft' ? sizeRaw / 5 : sizeRaw / 1.5;
@@ -731,7 +789,7 @@ document.getElementById('token-aura-active').addEventListener('change', updateTo
 document.getElementById('token-aura-size').addEventListener('input', updateTokenAuraCond);
 document.getElementById('token-aura-unit').addEventListener('change', (e) => {
     const input = document.getElementById('token-aura-size');
-    const oldVal = parseFloat(input.value) || 0;
+    let oldVal = parseFloat(input.value); if(isNaN(oldVal)) oldVal = 0;
     if (e.target.value === 'ft') {
         input.step = '5';
         input.value = Math.round(oldVal / 1.5 * 5);
@@ -769,7 +827,7 @@ document.getElementById('btn-delete-note').addEventListener('click', () => {
 // AoE Logic
 document.getElementById('btn-add-aoe').addEventListener('click', () => {
     const type = document.getElementById('aoe-type').value;
-    const rawSize = parseFloat(document.getElementById('aoe-size').value) || 15;
+    let _raw = parseFloat(document.getElementById('aoe-size').value); if(isNaN(_raw)) _raw = 15; const rawSize = Math.max(0.1, _raw);
     const unit = document.getElementById('aoe-unit').value;
     const sizeFt = unit === 'm' ? (rawSize / 1.5) * 5 : rawSize;
     const color = document.getElementById('aoe-color').value;
@@ -802,7 +860,7 @@ document.getElementById('btn-shape-rot-right').addEventListener('click', () => {
 function updateShapeSize() {
     const shape = engine.shapes.find(s => s.id === engine.selectedShapeId);
     if (shape) { 
-        const rawSize = parseFloat(document.getElementById('shape-edit-size').value) || 15;
+        let _raw = parseFloat(document.getElementById('shape-edit-size').value); if(isNaN(_raw)) _raw = 0; const rawSize = Math.max(0.1, _raw);
         const unit = document.getElementById('shape-edit-unit').value;
         shape.sizeFt = unit === 'm' ? (rawSize / 1.5) * 5 : rawSize;
         engine.renderAll(); syncState(); 
@@ -811,7 +869,7 @@ function updateShapeSize() {
 document.getElementById('shape-edit-size').addEventListener('input', updateShapeSize);
 document.getElementById('shape-edit-unit').addEventListener('change', (e) => {
     const input = document.getElementById('shape-edit-size');
-    const oldVal = parseFloat(input.value) || 0;
+    let oldVal = parseFloat(input.value); if(isNaN(oldVal)) oldVal = 0;
     if (e.target.value === 'ft') {
         input.step = '5';
         input.value = Math.round(oldVal / 1.5 * 5);
@@ -884,16 +942,27 @@ function handleStart(e) {
     const worldPos = engine.screenToWorld(pos.x, pos.y);
     isDragging = true;
 
+    if (currentTool === 'select-lasso') {
+        engine.lasso = { startX: worldPos.x, startY: worldPos.y, endX: worldPos.x, endY: worldPos.y };
+        if (!e.shiftKey) {
+            engine.selectedTokens.clear();
+            engine.selectedTokenId = null;
+            document.getElementById('selected-token-controls').style.display = 'none';
+        }
+        engine.renderAll();
+        if (pingTimeout) { clearTimeout(pingTimeout); pingTimeout = null; }
+        return;
+    }
+
+
     // Ping Timer
     startMouseX = pos.x;
     startMouseY = pos.y;
     pingTimeout = setTimeout(() => {
         pingTimeout = null;
-        engine.pings.push({x: worldPos.x, y: worldPos.y, start: Date.now()});
+        engine.pings.push({x: worldPos.x, y: worldPos.y, start: Date.now(), color: '#ffcc00'});
         engine.renderUI();
-        if (typeof channel !== 'undefined') {
-            network.send({ type: 'ping', x: worldPos.x, y: worldPos.y });
-        }
+        network.send({ type: 'PING', payload: { x: worldPos.x, y: worldPos.y, color: '#ffcc00' } });
     }, 800);
 
     if (currentTool === 'move') {
@@ -948,8 +1017,28 @@ function handleStart(e) {
                 document.getElementById('note-title').value = ent.title || "";
                 document.getElementById('note-text').value = ent.text || "";
             } else if (clickedEntity.type === 'token') {
-                engine.selectedTokenId = ent.id;
-                document.getElementById('selected-token-controls').style.display = 'block';
+                if (e.shiftKey) {
+                    if (engine.selectedTokens.has(ent.id)) {
+                        engine.selectedTokens.delete(ent.id);
+                        if (engine.selectedTokenId === ent.id) engine.selectedTokenId = null;
+                        document.getElementById('selected-token-controls').style.display = engine.selectedTokenId ? 'block' : 'none';
+                        activeStroke = null;
+                    } else {
+                        engine.selectedTokens.add(ent.id);
+                        engine.selectedTokenId = ent.id;
+                        activeStroke = ent;
+                    }
+                } else {
+                    if (!engine.selectedTokens.has(ent.id)) {
+                        engine.selectedTokens.clear();
+                        engine.selectedTokens.add(ent.id);
+                    }
+                    engine.selectedTokenId = ent.id;
+                    activeStroke = ent;
+                }
+                
+                if (engine.selectedTokenId === ent.id) {
+                    document.getElementById('selected-token-controls').style.display = 'block';
                 document.getElementById('token-edit-size').value = ent.sizeMultiplier || 1;
                 // Popola il menu a tendina dei proprietari
                 const ownerSelect = document.getElementById('token-owner');
@@ -996,6 +1085,7 @@ function handleStart(e) {
                     document.getElementById('token-condition-lang').value = cond.lang || 'it';
                     document.getElementById('token-condition-color').value = cond.color || '#ff0000';
                 }
+            }
             } else if (clickedEntity.type === 'shape') {
                 engine.selectedShapeId = ent.id;
                 document.getElementById('selected-shape-controls').style.display = 'block';
@@ -1005,6 +1095,12 @@ function handleStart(e) {
             }
             activeStroke = ent; 
         } else {
+            if (!e.shiftKey) {
+                engine.selectedTokens.clear();
+                engine.selectedTokenId = null;
+                document.getElementById('selected-token-controls').style.display = 'none';
+                engine.renderAll();
+            }
             isPanning = true;
             startPanX = pos.x - engine.offsetX;
             startPanY = pos.y - engine.offsetY;
@@ -1061,6 +1157,14 @@ function handleMove(e) {
         engine.brushPreview = null;
     }
 
+    
+    if (currentTool === 'select-lasso' && engine.lasso) {
+        engine.lasso.endX = worldPos.x;
+        engine.lasso.endY = worldPos.y;
+        engine.renderUI();
+        return;
+    }
+
     if (!isDragging && !isPanning) {
         if (currentTool.startsWith('fog-')) engine.renderAll();
         return;
@@ -1114,6 +1218,106 @@ function handleMove(e) {
 }
 
 function handleEnd(e) {
+
+    if (currentTool === 'select-lasso' && engine.lasso) {
+        const minX = Math.min(engine.lasso.startX, engine.lasso.endX);
+        const maxX = Math.max(engine.lasso.startX, engine.lasso.endX);
+        const minY = Math.min(engine.lasso.startY, engine.lasso.endY);
+        const maxY = Math.max(engine.lasso.startY, engine.lasso.endY);
+        
+        if (maxX - minX < 5 && maxY - minY < 5) {
+            let clicked = null;
+            for (let i = engine.tokens.length - 1; i >= 0; i--) {
+                const t = engine.tokens[i];
+                if (engine.lasso.startX >= t.x && engine.lasso.startX <= t.x + t.width &&
+                    engine.lasso.startY >= t.y && engine.lasso.startY <= t.y + t.height) {
+                    clicked = t;
+                    break;
+                }
+            }
+            if (clicked) {
+                if (e.shiftKey) {
+                    if (engine.selectedTokens.has(clicked.id)) {
+                        engine.selectedTokens.delete(clicked.id);
+                        if (engine.selectedTokenId === clicked.id) engine.selectedTokenId = null;
+                    } else {
+                        engine.selectedTokens.add(clicked.id);
+                        engine.selectedTokenId = clicked.id;
+                    }
+                } else {
+                    engine.selectedTokens.clear();
+                    engine.selectedTokens.add(clicked.id);
+                    engine.selectedTokenId = clicked.id;
+                }
+            } else if (!e.shiftKey) {
+                engine.selectedTokens.clear();
+                engine.selectedTokenId = null;
+            }
+        } else {
+            if (!e.shiftKey) { engine.selectedTokens.clear(); }
+            engine.tokens.forEach(t => {
+                const tCenterX = t.x + t.width/2;
+                const tCenterY = t.y + t.height/2;
+                if (tCenterX >= minX && tCenterX <= maxX && tCenterY >= minY && tCenterY <= maxY) {
+                    engine.selectedTokens.add(t.id);
+                }
+            });
+            if (engine.selectedTokens.size > 0) {
+                engine.selectedTokenId = Array.from(engine.selectedTokens).pop();
+            }
+        }
+        
+        engine.lasso = null;
+        isDragging = false;
+        
+        if (engine.selectedTokenId) {
+            const ent = engine.tokens.find(t => t.id === engine.selectedTokenId);
+            if(ent) {
+                document.getElementById('selected-token-controls').style.display = 'block';
+                document.getElementById('token-edit-size').value = ent.sizeMultiplier || 1;
+                document.getElementById('token-hp-current').value = ent.hpCurrent !== undefined ? ent.hpCurrent : '';
+                document.getElementById('token-hp-max').value = ent.hpMax || 0;
+                document.getElementById('token-hp-visible').checked = ent.hpVisibleToPlayers !== false;
+                
+                const ownerSelect = document.getElementById('token-owner');
+                ownerSelect.innerHTML = '<option value="">-- Nessuno (Solo DM) --</option>';
+                let players = [];
+                for (let k in network.connections) {
+                    if (network.connections[k].name) players.push(network.connections[k].name);
+                }
+                if (ent.owner && !players.includes(ent.owner)) players.push(ent.owner);
+                players.forEach(pName => {
+                    const opt = document.createElement('option');
+                    opt.value = pName;
+                    opt.innerText = pName;
+                    ownerSelect.appendChild(opt);
+                });
+                ownerSelect.value = ent.owner || '';
+                
+                if (ent.condition) {
+                    document.getElementById('token-condition-active').checked = !!ent.condition.active;
+                    document.getElementById('token-condition-type').value = ent.condition.type || 'Accecato,Blinded';
+                    document.getElementById('token-condition-lang').value = ent.condition.lang || 'it';
+                    document.getElementById('token-condition-color').value = ent.condition.color || '#ff0000';
+                } else {
+                    document.getElementById('token-condition-active').checked = false;
+                }
+                if (ent.aura) {
+                    document.getElementById('token-aura-active').checked = !!ent.aura.active;
+                    document.getElementById('token-aura-size').value = ent.aura.sizeRaw || 20;
+                    document.getElementById('token-aura-unit').value = ent.aura.unit || 'ft';
+                    document.getElementById('token-aura-color').value = ent.aura.color || '#ffff00';
+                } else {
+                    document.getElementById('token-aura-active').checked = false;
+                }
+            }
+        } else {
+            document.getElementById('selected-token-controls').style.display = 'none';
+        }
+        engine.renderAll();
+        return;
+    }
+
     if (pingTimeout) {
         clearTimeout(pingTimeout);
         pingTimeout = null;
@@ -1149,3 +1353,149 @@ function handleEnd(e) {
     activeStroke = null;
     engine.renderAll();
 }
+
+
+const btnAddToInit = document.getElementById('btn-add-to-init');
+if(btnAddToInit) {
+    btnAddToInit.addEventListener('click', () => {
+        if (!engine.initiative || !engine.initiative.participants) return alert("Avvia prima l'iniziativa col tasto giallo in alto!");
+        if (!engine.selectedTokens || engine.selectedTokens.size === 0) return alert("Seleziona almeno un token prima!");
+        
+        let roll = prompt("Inserisci il valore di Iniziativa per il/i token selezionati:", "10");
+        if (roll === null) return;
+        
+        let count = 0;
+        engine.selectedTokens.forEach(tokenId => {
+            const t = engine.tokens.find(tok => tok.id === tokenId);
+            if (t) {
+                const existing = engine.initiative.participants.find(p => p.tokenId === t.id);
+                if (existing) {
+                    existing.init = parseFloat(roll) || 0;
+                } else {
+                    engine.initiative.participants.push({
+                        id: 'tok_' + t.id,
+                        name: window.getSmartTokenName(t),
+                        isToken: true,
+                        tokenId: t.id,
+                        isHidden: !t.visible,
+                        init: parseFloat(roll) || 0,
+                        hpCurrent: t.hpCurrent,
+                        hpMax: t.hpMax
+                    });
+                }
+                count++;
+            }
+        });
+        
+        engine.initiative.participants.sort((a, b) => {
+            const valA = parseFloat(a.init) || 0;
+            const valB = parseFloat(b.init) || 0;
+            return valB - valA;
+        });
+        
+        if (typeof renderTrackerList === 'function') renderTrackerList();
+        syncState(true);
+        if (typeof showToast === 'function') showToast(`Aggiunti ${count} token all'Iniziativa!`);
+    });
+}
+
+
+function showToast(msg) {
+    let t = document.getElementById('toast-msg');
+    if(!t) {
+        t = document.createElement('div');
+        t.id = 'toast-msg';
+        t.style.position = 'fixed';
+        t.style.top = '20px';
+        t.style.left = '50%';
+        t.style.transform = 'translateX(-50%)';
+        t.style.background = 'rgba(76, 175, 80, 0.9)';
+        t.style.color = 'white';
+        t.style.padding = '10px 20px';
+        t.style.borderRadius = '5px';
+        t.style.zIndex = '10000';
+        t.style.fontWeight = 'bold';
+        t.style.transition = 'opacity 0.3s';
+        t.style.pointerEvents = 'none';
+        document.body.appendChild(t);
+    }
+    t.innerText = msg;
+    t.style.opacity = '1';
+    setTimeout(() => { t.style.opacity = '0'; }, 3000);
+}
+
+
+
+// --- LOGICA CONDIVISIONE IMMAGINI (HANDOUTS) ---
+engine.sharedImageId = null;
+engine.sharedImageData = null;
+
+document.getElementById('share-image-upload').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const base64 = ev.target.result;
+            engine.sharedImageId = null;
+              engine.sharedImageData = base64;
+              // Mostra al DM
+              document.getElementById('dm-handout-image').src = base64;
+              document.getElementById('dm-handout-window').style.display = 'flex';
+        };
+        reader.readAsDataURL(file);
+    }
+    e.target.value = '';
+});
+
+
+document.getElementById('btn-dm-handout-transmit').addEventListener('click', () => {
+    if (engine.sharedImageData) {
+        engine.sharedImageId = 'img_' + Date.now();
+        syncState(true);
+        if (typeof showToast === 'function') showToast("Immagine trasmessa ai giocatori!");
+    } else {
+        if (typeof showToast === 'function') showToast("Carica prima un'immagine!");
+    }
+});
+
+
+document.getElementById('btn-dm-handout-close-self').addEventListener('click', () => {
+    document.getElementById('dm-handout-window').style.display = 'none';
+});
+
+document.getElementById('btn-dm-handout-close-all').addEventListener('click', () => {
+    engine.sharedImageId = null;
+    engine.sharedImageData = null;
+    document.getElementById('dm-handout-window').style.display = 'none';
+    syncState(true);
+    if (typeof showToast === 'function') showToast("Immagine rimossa per tutti.");
+});
+
+// Dragging logic for DM Handout Window
+let isDraggingHandoutDM = false;
+let handoutDMOffsetX = 0, handoutDMOffsetY = 0;
+const dmHandoutWindow = document.getElementById('dm-handout-window');
+document.getElementById('dm-handout-header').addEventListener('mousedown', (e) => {
+    if(e.target.tagName.toLowerCase() === 'button') return;
+    isDraggingHandoutDM = true;
+    handoutDMOffsetX = e.clientX - dmHandoutWindow.getBoundingClientRect().left;
+    handoutDMOffsetY = e.clientY - dmHandoutWindow.getBoundingClientRect().top;
+});
+document.addEventListener('mousemove', (e) => {
+    if (!isDraggingHandoutDM) return;
+    dmHandoutWindow.style.left = (e.clientX - handoutDMOffsetX) + 'px';
+    dmHandoutWindow.style.top = (e.clientY - handoutDMOffsetY) + 'px';
+    dmHandoutWindow.style.right = 'auto';
+    syncState(false);
+});
+document.addEventListener('mouseup', () => isDraggingHandoutDM = false);
+
+
+
+// Sincronizza geometria handout
+const handoutResizeObserver = new ResizeObserver(() => {
+    if (document.getElementById('dm-handout-window').style.display !== 'none') {
+        syncState(false);
+    }
+});
+handoutResizeObserver.observe(document.getElementById('dm-handout-window'));
