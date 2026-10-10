@@ -2,47 +2,48 @@
 
 // Funzione globale per rendere trascinabili i pannelli
 window.makeDraggable = function(panel, handle = null) {
-    let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+    let startX = 0, startY = 0;
+    let initialTop = 0, initialLeft = 0;
     const dragElement = handle || panel;
     
     dragElement.style.cursor = 'move';
     
     dragElement.onmousedown = function(e) {
-        // Evita il drag se clicchiamo su un bottone o input
         if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.classList.contains('roll-btn')) return;
-        
         e.preventDefault();
         
-        // Risoluzione Salto: Prima di muovere, convertiamo bottom/right in top/left assoluti
-        if (panel.style.bottom && panel.style.bottom !== 'auto' || panel.style.right && panel.style.right !== 'auto') {
-            const rect = panel.getBoundingClientRect();
-            panel.style.bottom = 'auto';
-            panel.style.right = 'auto';
-            panel.style.top = rect.top + "px";
-            panel.style.left = rect.left + "px";
-        }
+        const rect = panel.getBoundingClientRect();
+        panel.style.bottom = 'auto';
+        panel.style.right = 'auto';
         
-        pos3 = e.clientX;
-        pos4 = e.clientY;
+        initialTop = rect.top;
+        initialLeft = rect.left;
+        
+        panel.style.top = initialTop + "px";
+        panel.style.left = initialLeft + "px";
+        
+        startX = e.clientX;
+        startY = e.clientY;
+        
         document.onmouseup = closeDragElement;
         document.onmousemove = elementDrag;
     };
 
     function elementDrag(e) {
         e.preventDefault();
-        pos1 = pos3 - e.clientX;
-        pos2 = pos4 - e.clientY;
-        pos3 = e.clientX;
-        pos4 = e.clientY;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
         
-        // Ora possiamo calcolare l'offset top/left in sicurezza
-        panel.style.top = (panel.offsetTop - pos2) + "px";
-        panel.style.left = (panel.offsetLeft - pos1) + "px";
+        panel.style.top = (initialTop + dy) + "px";
+        panel.style.left = (initialLeft + dx) + "px";
     }
 
     function closeDragElement() {
         document.onmouseup = null;
         document.onmousemove = null;
+        // Aggiorna le coordinate iniziali se rinizia un drag
+        initialTop = parseFloat(panel.style.top) || 0;
+        initialLeft = parseFloat(panel.style.left) || 0;
     }
 };
 
@@ -104,11 +105,12 @@ window.setupDiceSystem = function(isDM, networkObj) {
             // Appendi localmente
             window.appendRollToChat(pName, dice, bonus, result);
             
-            // Invia agli altri
-            if (networkObj && networkObj.send) {
+            // Invia agli altri (solo se NON è il master)
+            if (!isDM && networkObj && networkObj.send) {
                 networkObj.send({
                     type: 'DICE_ROLL',
                     payload: {
+                        id: Date.now() + '_' + Math.random(),
                         player: pName,
                         dice: dice,
                         bonus: bonus,

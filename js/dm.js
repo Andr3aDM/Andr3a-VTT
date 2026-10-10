@@ -86,9 +86,13 @@ network.onMessage((data, peerId) => {
     
     } else if (data.type === 'DICE_ROLL') {
         if (window.appendRollToChat) {
+            if (window.lastRollId === data.payload.id) return;
+            window.lastRollId = data.payload.id;
             window.appendRollToChat(data.payload.player, data.payload.dice, data.payload.bonus, data.payload.result);
             document.getElementById('chat-panel').style.display = 'flex';
         }
+        // Rimbalza il tiro del giocatore a tutti gli altri giocatori!
+        network.send(data);
 } else if (data.type === 'PING') {
         engine.pings.push({x: data.payload.x, y: data.payload.y, start: Date.now(), color: data.payload.color || '#ff0000'});
         engine.renderUI();
@@ -114,6 +118,7 @@ network.onMessage((data, peerId) => {
         const s = engine.shapes.find(x => x.id === data.payload.id);
         if (s) {
             s.sizeFt = data.payload.sizeFt;
+            if (data.payload.widthFt !== undefined) s.widthFt = data.payload.widthFt;
             s.angle = data.payload.angle;
             s.color = data.payload.color;
             engine.renderAll();
@@ -140,6 +145,8 @@ let isPanning = false;
 let startPanX = 0;
 let startPanY = 0;
 let activeStroke = null;
+let activeLaser = null;
+let lastLaserSync = 0;
 let tokenImages = {};
 let currentMapBase64 = null;
 
@@ -168,6 +175,36 @@ window.getSmartTokenName = function(t) {
 // Inizializza il database locale
 
 
+
+let isLockMapActive = false;
+const lockMapBtn = document.getElementById('lock-map-toggle');
+if (lockMapBtn) {
+    lockMapBtn.addEventListener('change', (e) => {
+        isLockMapActive = e.target.checked;
+        syncState(true);
+    });
+}
+
+const hpStyleBtn = document.getElementById('hp-display-style');
+if (hpStyleBtn) {
+    // Inizializza subito lo stile dell'engine
+    engine.hpDisplayStyle = hpStyleBtn.value;
+    hpStyleBtn.addEventListener('change', (e) => {
+        engine.hpDisplayStyle = e.target.value;
+        engine.renderAll();
+        syncState(true);
+    });
+}
+
+const condStyleBtn = document.getElementById('condition-display-style');
+if (condStyleBtn) {
+    engine.conditionDisplayStyle = condStyleBtn.value;
+    condStyleBtn.addEventListener('change', (e) => {
+        engine.conditionDisplayStyle = e.target.value;
+        engine.renderAll();
+        syncState(true);
+    });
+}
 let isHideToolbarActive = false;
 const hideToolbarBtn = document.getElementById('hide-toolbar-toggle');
 if (hideToolbarBtn) {
@@ -222,9 +259,13 @@ function syncState(force = false, sendFullImages = false) {
         };
     }
 
+    const hpDisplayStyle = document.getElementById('hp-display-style') ? document.getElementById('hp-display-style').value : 'bar';
+    const conditionDisplayStyle = document.getElementById('condition-display-style') ? document.getElementById('condition-display-style').value : 'concentric';
     network.send({
         type: 'STATE_SYNC',
         payload: {
+            hpDisplayStyle: hpDisplayStyle,
+            conditionDisplayStyle: conditionDisplayStyle,
             grid: engine.grid,
             tokens: engine.tokens.map(t => {
                 const copy = {...t, imageObj: null};
@@ -238,6 +279,7 @@ function syncState(force = false, sendFullImages = false) {
             publicStrokes: engine.publicStrokes,
             viewSync: viewSyncData,
             hideToolbar: typeof isHideToolbarActive !== 'undefined' ? isHideToolbarActive : false,
+            lockMap: typeof isLockMapActive !== 'undefined' ? isLockMapActive : false,
             sharedImageId: engine.sharedImageId || null,
             sharedImageRect: {
                 left: document.getElementById('dm-handout-window').style.left || 'calc(50% - 250px)',
@@ -768,19 +810,7 @@ function updateTokenAuraCond() {
         color: document.getElementById('token-aura-color').value
     };
     
-    const cType = document.getElementById('token-condition-type').value;
-    const cLang = document.getElementById('token-condition-lang').value;
-    const parts = cType.split(','); // "Accecato,Blinded"
-    const text = cLang === 'it' ? parts[0] : parts[1];
-    
-    token.condition = {
-        active: document.getElementById('token-condition-active').checked,
-        type: cType,
-        lang: cLang,
-        color: document.getElementById('token-condition-color').value,
-        text: text
-    };
-    
+    // Ora la condizione si aggiorna tramite pulsante dedicato
     engine.renderAll();
     syncState();
 }
@@ -802,10 +832,88 @@ document.getElementById('token-aura-unit').addEventListener('change', (e) => {
 });
 document.getElementById('token-aura-color').addEventListener('input', updateTokenAuraCond);
 
-document.getElementById('token-condition-active').addEventListener('change', updateTokenAuraCond);
-document.getElementById('token-condition-type').addEventListener('change', updateTokenAuraCond);
-document.getElementById('token-condition-lang').addEventListener('change', updateTokenAuraCond);
-document.getElementById('token-condition-color').addEventListener('input', updateTokenAuraCond);
+// listeners per l'aura
+// Condizioni rimosse dal vecchio listener
+
+window.renderConditionsList = function() {
+    const listDiv = document.getElementById('active-conditions-list');
+    listDiv.innerHTML = '';
+    const token = engine.tokens.find(t => t.id === engine.selectedTokenId);
+    if (!token) return;
+    
+    // Migrazione al volo se aveva la vecchia condizione singola
+    if (token.condition && !token.conditions) {
+        if (token.condition.active) {
+            token.conditions = [token.condition];
+        } else {
+            token.conditions = [];
+        }
+        delete token.condition;
+    }
+    if (!token.conditions) token.conditions = [];
+    
+    token.conditions.forEach((cond, index) => {
+        const d = document.createElement('div');
+        d.style.display = 'flex';
+        d.style.justifyContent = 'space-between';
+        d.style.alignItems = 'center';
+        d.style.background = '#333';
+        d.style.padding = '2px 5px';
+        d.style.borderRadius = '3px';
+        d.style.borderLeft = '4px solid ' + cond.color;
+        
+        const span = document.createElement('span');
+        span.style.fontSize = '12px';
+        span.innerText = cond.text;
+        
+        const btn = document.createElement('button');
+        btn.innerText = 'X';
+        btn.style.background = '#f44336';
+        btn.style.color = 'white';
+        btn.style.border = 'none';
+        btn.style.borderRadius = '3px';
+        btn.style.cursor = 'pointer';
+        
+        btn.onclick = () => {
+            token.conditions.splice(index, 1);
+            renderConditionsList();
+            engine.renderAll();
+            syncState();
+        };
+        
+        d.appendChild(span);
+        d.appendChild(btn);
+        listDiv.appendChild(d);
+    });
+}
+
+document.getElementById('btn-add-condition').addEventListener('click', () => {
+    const token = engine.tokens.find(t => t.id === engine.selectedTokenId);
+    if (!token) return;
+    
+    const cType = document.getElementById('token-condition-type').value;
+    const cLang = document.getElementById('token-condition-lang').value;
+    const parts = cType.split(',');
+    const text = cLang === 'it' ? parts[0] : parts[1];
+    
+    if (!token.conditions) {
+        if (token.condition && token.condition.active) token.conditions = [token.condition];
+        else token.conditions = [];
+        delete token.condition;
+    }
+    
+    token.conditions.push({
+        type: cType,
+        lang: cLang,
+        color: document.getElementById('token-condition-color').value,
+        text: text
+    });
+    
+    renderConditionsList();
+    engine.renderAll();
+    syncState();
+});
+
 
 document.getElementById('note-title').addEventListener('input', () => {
     if(selectedNote) selectedNote.title = document.getElementById('note-title').value;
@@ -824,12 +932,18 @@ document.getElementById('btn-delete-note').addEventListener('click', () => {
     syncState();
 });
 
+document.getElementById('aoe-type').addEventListener('change', (e) => {
+    document.getElementById('aoe-width').style.display = e.target.value === 'line' ? 'block' : 'none';
+});
+
 // AoE Logic
 document.getElementById('btn-add-aoe').addEventListener('click', () => {
     const type = document.getElementById('aoe-type').value;
     let _raw = parseFloat(document.getElementById('aoe-size').value); if(isNaN(_raw)) _raw = 15; const rawSize = Math.max(0.1, _raw);
     const unit = document.getElementById('aoe-unit').value;
     const sizeFt = unit === 'm' ? (rawSize / 1.5) * 5 : rawSize;
+    let _w = parseFloat(document.getElementById('aoe-width').value); if(isNaN(_w)) _w = 5; _w = Math.max(0.1, _w);
+    const widthFt = unit === 'm' ? (_w / 1.5) * 5 : _w;
     const color = document.getElementById('aoe-color').value;
     const centerWorld = engine.screenToWorld(engine.layers.ui.width/2, engine.layers.ui.height/2);
 
@@ -839,6 +953,7 @@ document.getElementById('btn-add-aoe').addEventListener('click', () => {
         x: centerWorld.x,
         y: centerWorld.y,
         sizeFt: sizeFt,
+        widthFt: widthFt,
         color: color,
         angle: 0,
         visible: true
@@ -859,24 +974,36 @@ document.getElementById('btn-shape-rot-right').addEventListener('click', () => {
 
 function updateShapeSize() {
     const shape = engine.shapes.find(s => s.id === engine.selectedShapeId);
-    if (shape) { 
+    if (shape) {
         let _raw = parseFloat(document.getElementById('shape-edit-size').value); if(isNaN(_raw)) _raw = 0; const rawSize = Math.max(0.1, _raw);
+        let _w = parseFloat(document.getElementById('shape-edit-width').value); if(isNaN(_w)) _w = 5; _w = Math.max(0.1, _w);
         const unit = document.getElementById('shape-edit-unit').value;
         shape.sizeFt = unit === 'm' ? (rawSize / 1.5) * 5 : rawSize;
+        shape.widthFt = unit === 'm' ? (_w / 1.5) * 5 : _w;
         engine.renderAll(); syncState(); 
     }
 }
 document.getElementById('shape-edit-size').addEventListener('input', updateShapeSize);
+document.getElementById('shape-edit-width').addEventListener('input', updateShapeSize);
 document.getElementById('shape-edit-unit').addEventListener('change', (e) => {
+    const shape = engine.shapes.find(s => s.id === engine.selectedShapeId);
+    if (!shape) return;
     const input = document.getElementById('shape-edit-size');
+    const inputW = document.getElementById('shape-edit-width');
     let oldVal = parseFloat(input.value); if(isNaN(oldVal)) oldVal = 0;
+    let oldW = parseFloat(inputW.value); if(isNaN(oldW)) oldW = 5;
     if (e.target.value === 'ft') {
         input.step = '5';
         input.value = Math.round(oldVal / 1.5 * 5);
+        inputW.step = '1';
+        inputW.value = Math.round(oldW / 1.5 * 5);
     } else {
         input.step = '1.5';
         let newVal = (oldVal / 5 * 1.5);
         input.value = Number.isInteger(newVal) ? newVal : newVal.toFixed(1);
+        inputW.step = '0.5';
+        let newW = (oldW / 5 * 1.5);
+        inputW.value = Number.isInteger(newW) ? newW : newW.toFixed(1);
     }
     updateShapeSize();
 });
@@ -933,9 +1060,11 @@ function handleStart(e) {
     const pos = getEventPos(e);
     
     if (e.button === 1 || e.button === 2) {
-        isPanning = true;
-        startPanX = pos.x - engine.offsetX;
-        startPanY = pos.y - engine.offsetY;
+        if (!document.getElementById('lock-dm-map-toggle').checked) {
+            isPanning = true;
+            startPanX = pos.x - engine.offsetX;
+            startPanY = pos.y - engine.offsetY;
+        }
         return;
     }
 
@@ -1079,19 +1208,18 @@ function handleStart(e) {
                     document.getElementById('token-aura-size').step = (aura.unit || 'ft') === 'ft' ? '5' : '1.5';
                     document.getElementById('token-aura-color').value = aura.color || '#ffff00';
                     
-                    const cond = token.condition || {};
-                    document.getElementById('token-condition-active').checked = !!cond.active;
-                    document.getElementById('token-condition-type').value = cond.type || 'Accecato,Blinded';
-                    document.getElementById('token-condition-lang').value = cond.lang || 'it';
-                    document.getElementById('token-condition-color').value = cond.color || '#ff0000';
+                    if (window.renderConditionsList) window.renderConditionsList();
                 }
             }
             } else if (clickedEntity.type === 'shape') {
                 engine.selectedShapeId = ent.id;
                 document.getElementById('selected-shape-controls').style.display = 'block';
+                document.getElementById('shape-edit-width').style.display = ent.type === 'line' ? 'block' : 'none';
                 document.getElementById('shape-edit-unit').value = 'ft';
                 document.getElementById('shape-edit-size').step = '5';
+                document.getElementById('shape-edit-width').step = '1';
                 document.getElementById('shape-edit-size').value = Math.round(ent.sizeFt * 10) / 10;
+                document.getElementById('shape-edit-width').value = ent.widthFt !== undefined ? Math.round(ent.widthFt * 10) / 10 : 5;
             }
             activeStroke = ent; 
         } else {
@@ -1101,9 +1229,11 @@ function handleStart(e) {
                 document.getElementById('selected-token-controls').style.display = 'none';
                 engine.renderAll();
             }
-            isPanning = true;
-            startPanX = pos.x - engine.offsetX;
-            startPanY = pos.y - engine.offsetY;
+            if (!document.getElementById('lock-dm-map-toggle').checked) {
+                isPanning = true;
+                startPanX = pos.x - engine.offsetX;
+                startPanY = pos.y - engine.offsetY;
+            }
         }
     } else if (currentTool === 'note') {
         engine.notes.push({ x: worldPos.x, y: worldPos.y, title: '', text: '' });
@@ -1126,8 +1256,22 @@ function handleStart(e) {
         };
         if (currentTool === 'draw-public') engine.publicStrokes.push(activeStroke);
         else engine.privateStrokes.push(activeStroke);
+    } else if (currentTool === 'laser') {
+        activeLaser = {
+            id: Date.now() + '_' + Math.random(),
+            color: '#00ffcc',
+            active: true,
+            points: [{x: worldPos.x, y: worldPos.y, t: Date.now()}]
+        };
+        const colors = ['#ff0055', '#00ffcc', '#ffff00', '#ff8800', '#ff00ff', '#55ff00'];
+        activeLaser.color = colors[Math.floor(Math.random() * colors.length)];
+        if (typeof isDM !== 'undefined' && isDM) activeLaser.color = '#ff0055'; // DM is red
+        
+        if (!engine.lasers) engine.lasers = [];
+        engine.lasers.push(activeLaser);
+        
+        engine.renderUI();
     } else if (currentTool.startsWith('fog-')) {
-        activeStroke = [worldPos];
         const shape = document.getElementById('fog-brush-shape').value;
         const size = parseInt(document.getElementById('fog-brush-size').value) || 150;
         engine.drawFogStroke([worldPos, {x: worldPos.x+0.1, y: worldPos.y}], currentTool === 'fog-erase', shape, size);
@@ -1203,6 +1347,12 @@ function handleMove(e) {
         engine.ruler.endX = worldPos.x;
         engine.ruler.endY = worldPos.y;
         engine.renderAll();
+    } else if (currentTool === 'laser' && activeLaser) {
+        activeLaser.points.push({x: worldPos.x, y: worldPos.y, t: Date.now()});
+        if (Date.now() - lastLaserSync > 50) {
+            network.send({ type: 'LASER_SYNC', payload: activeLaser });
+            lastLaserSync = Date.now();
+        }
     } else if (currentTool.startsWith('draw-')) {
         activeStroke.points.push(worldPos);
         engine.renderAll();
@@ -1294,14 +1444,7 @@ function handleEnd(e) {
                 });
                 ownerSelect.value = ent.owner || '';
                 
-                if (ent.condition) {
-                    document.getElementById('token-condition-active').checked = !!ent.condition.active;
-                    document.getElementById('token-condition-type').value = ent.condition.type || 'Accecato,Blinded';
-                    document.getElementById('token-condition-lang').value = ent.condition.lang || 'it';
-                    document.getElementById('token-condition-color').value = ent.condition.color || '#ff0000';
-                } else {
-                    document.getElementById('token-condition-active').checked = false;
-                }
+                if (window.renderConditionsList) window.renderConditionsList();
                 if (ent.aura) {
                     document.getElementById('token-aura-active').checked = !!ent.aura.active;
                     document.getElementById('token-aura-size').value = ent.aura.sizeRaw || 20;
@@ -1343,6 +1486,12 @@ function handleEnd(e) {
         syncState(true);
     } else if (currentTool === 'ruler') {
         engine.ruler = null;
+    } else if (currentTool === 'laser') {
+        if (activeLaser) {
+            activeLaser.active = false;
+            network.send({ type: 'LASER_SYNC', payload: activeLaser });
+            activeLaser = null;
+        }
     } else if (currentTool.startsWith('draw-')) {
         syncState();
     } else if (currentTool.startsWith('fog-')) {

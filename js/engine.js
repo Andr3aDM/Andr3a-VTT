@@ -207,9 +207,11 @@ class VTTEngine {
                 ctx.arc(0, 0, sizePx, -halfAngle, halfAngle, false);
                 ctx.closePath();
             } else if (shape.type === 'line') {
-                // Line standard 5ft width
-                const halfWidth = 2.5 * pixelsPerFoot;
+                const widthFt = shape.widthFt || 5;
+                const halfWidth = (widthFt / 2) * pixelsPerFoot;
                 ctx.rect(0, -halfWidth, sizePx, halfWidth * 2);
+            } else if (shape.type === 'square') {
+                ctx.rect(-sizePx/2, -sizePx/2, sizePx, sizePx);
             }
             ctx.fill();
             ctx.stroke();
@@ -269,6 +271,38 @@ class VTTEngine {
                 }
                 ctx.drawImage(token.imageObj, token.x, token.y, token.width, token.height);
                 ctx.globalAlpha = 1.0;
+                
+                // Draw Aura if enabled
+                const style = this.hpDisplayStyle || 'bar';
+                if (style === 'aura' || style === 'both') {
+                    if (this.isDM || token.hpVisibleToPlayers !== false) {
+                        if (token.hpMax && token.hpMax > 0 && token.hpCurrent !== undefined && token.hpCurrent !== null && token.hpCurrent > 0) {
+                            const percent = Math.max(0, Math.min(1, token.hpCurrent / token.hpMax));
+                            if (percent < 1.0) {
+                                let barColor = '#4caf50';
+                                if (percent <= 0.66 && percent > 0.33) barColor = '#ffeb3b';
+                                else if (percent <= 0.33) barColor = '#f44336';
+                                
+                                if (!this.tintCanvas) {
+                                    this.tintCanvas = document.createElement('canvas');
+                                    this.tintCtx = this.tintCanvas.getContext('2d');
+                                }
+                                this.tintCanvas.width = token.width;
+                                this.tintCanvas.height = token.height;
+                                this.tintCtx.clearRect(0, 0, token.width, token.height);
+                                this.tintCtx.drawImage(token.imageObj, 0, 0, token.width, token.height);
+                                this.tintCtx.globalCompositeOperation = 'source-in';
+                                this.tintCtx.fillStyle = barColor;
+                                this.tintCtx.fillRect(0, 0, token.width, token.height);
+                                
+                                ctx.save();
+                                ctx.globalAlpha = 0.35;
+                                ctx.drawImage(this.tintCanvas, token.x, token.y);
+                                ctx.restore();
+                            }
+                        }
+                    }
+                }
             }
 // Teschio Morte (HP <= 0)
                 if (token.hpCurrent !== undefined && token.hpCurrent !== null && token.hpCurrent !== "" && parseFloat(token.hpCurrent) <= 0) {
@@ -293,63 +327,128 @@ class VTTEngine {
             const py = token.y;
             const sizePx = token.width;
             
-            if (token.condition && token.condition.active) {
-                const condRadius = sizePx/2 + 10; // 10px padding
+                        let activeConditions = [];
+            if (token.conditions && token.conditions.length > 0) {
+                activeConditions = token.conditions;
+            } else if (token.condition && token.condition.active) {
+                activeConditions = [token.condition];
+            }
+            
+            if (activeConditions.length > 0) {
                 const cx = px + sizePx/2;
                 const cy = py + sizePx/2;
+                const style = this.conditionDisplayStyle || 'concentric';
                 
                 ctx.save();
                 ctx.translate(cx, cy);
                 
-                // Anello
-                ctx.beginPath();
-                ctx.arc(0, 0, condRadius, 0, Math.PI * 2);
-                ctx.strokeStyle = token.condition.color;
-                ctx.lineWidth = 4;
-                ctx.stroke();
-                
-                // Testo curvo
-                let text = (token.condition.text || "CONDIZIONE").toUpperCase() + "  •  ";
-                ctx.font = `bold 16px Arial`;
-                ctx.fillStyle = "white";
-                ctx.strokeStyle = "black";
-                ctx.lineWidth = 3;
-                ctx.textBaseline = "middle";
-                ctx.textAlign = "center";
-                
-                const textWidth = ctx.measureText(text).width;
-                const circumference = 2 * Math.PI * condRadius;
-                
-                // Quante volte la scritta entra interamente nella circonferenza aggiungendo respiro extra?
-                let repeats = Math.floor(circumference / (textWidth + 15));
-                if (repeats < 1) repeats = 1;
-                
-                const arcPerRepeat = (2 * Math.PI) / repeats;
-                
-                for (let r = 0; r < repeats; r++) {
-                    let currentAngle = -Math.PI / 2 + r * arcPerRepeat;
+                if (style === 'concentric') {
+                    activeConditions.forEach((cond, index) => {
+                        const condRadius = sizePx/2 + 10 + (index * 20); // Ogni anello è più largo di 20px
+                        
+                        // Anello
+                        ctx.beginPath();
+                        ctx.arc(0, 0, condRadius, 0, Math.PI * 2);
+                        ctx.strokeStyle = cond.color;
+                        ctx.lineWidth = 4;
+                        ctx.stroke();
+                        
+                        // Testo curvo
+                        let text = (cond.text || "CONDIZIONE").toUpperCase() + "  •  ";
+                        ctx.font = `bold 16px Arial`;
+                        ctx.fillStyle = "white";
+                        ctx.strokeStyle = "black";
+                        ctx.lineWidth = 3;
+                        ctx.textBaseline = "middle";
+                        ctx.textAlign = "center";
+                        
+                        const textWidth = ctx.measureText(text).width;
+                        const circumference = 2 * Math.PI * condRadius;
+                        
+                        let repeats = Math.floor(circumference / (textWidth + 15));
+                        if (repeats < 1) repeats = 1;
+                        
+                        const arcPerRepeat = (2 * Math.PI) / repeats;
+                        
+                        for (let r = 0; r < repeats; r++) {
+                            let currentAngle = -Math.PI / 2 + r * arcPerRepeat;
+                            
+                            for (let i = 0; i < text.length; i++) {
+                                const char = text[i];
+                                const charWidth = ctx.measureText(char).width;
+                                const angle = charWidth / condRadius;
+                                
+                                ctx.save();
+                                ctx.rotate(currentAngle + angle/2);
+                                ctx.translate(0, -condRadius);
+                                ctx.strokeText(char, 0, 0);
+                                ctx.fillText(char, 0, 0);
+                                ctx.restore();
+                                
+                                currentAngle += angle;
+                            }
+                        }
+                    });
+                } else if (style === 'segmented') {
+                    const condRadius = sizePx/2 + 10;
+                    const numConds = activeConditions.length;
+                    const arcLen = (2 * Math.PI) / numConds;
                     
-                    for (let i = 0; i < text.length; i++) {
-                        const char = text[i];
-                        const charWidth = ctx.measureText(char).width;
-                        const angle = charWidth / condRadius;
+                    // Disegna gli spicchi colorati
+                    for (let i = 0; i < numConds; i++) {
+                        ctx.beginPath();
+                        ctx.arc(0, 0, condRadius, i * arcLen, (i + 1) * arcLen);
+                        ctx.strokeStyle = activeConditions[i].color;
+                        ctx.lineWidth = 4;
+                        ctx.stroke();
+                    }
+                    
+                    // Testo curvo unito
+                    let text = activeConditions.map(c => (c.text || "").toUpperCase()).join(" • ") + " • ";
+                    ctx.font = `bold 16px Arial`;
+                    ctx.fillStyle = "white";
+                    ctx.strokeStyle = "black";
+                    ctx.lineWidth = 3;
+                    ctx.textBaseline = "middle";
+                    ctx.textAlign = "center";
+                    
+                    const textWidth = ctx.measureText(text).width;
+                    const circumference = 2 * Math.PI * condRadius;
+                    
+                    let repeats = Math.floor(circumference / (textWidth + 15));
+                    if (repeats < 1) repeats = 1;
+                    
+                    const arcPerRepeat = (2 * Math.PI) / repeats;
+                    
+                    for (let r = 0; r < repeats; r++) {
+                        let currentAngle = -Math.PI / 2 + r * arcPerRepeat;
                         
-                        ctx.save();
-                        ctx.rotate(currentAngle + angle/2);
-                        ctx.translate(0, -condRadius);
-                        ctx.strokeText(char, 0, 0);
-                        ctx.fillText(char, 0, 0);
-                        ctx.restore();
-                        
-                        currentAngle += angle;
+                        for (let i = 0; i < text.length; i++) {
+                            const char = text[i];
+                            const charWidth = ctx.measureText(char).width;
+                            const angle = charWidth / condRadius;
+                            
+                            ctx.save();
+                            ctx.rotate(currentAngle + angle/2);
+                            ctx.translate(0, -condRadius);
+                            ctx.strokeText(char, 0, 0);
+                            ctx.fillText(char, 0, 0);
+                            ctx.restore();
+                            
+                            currentAngle += angle;
+                        }
                     }
                 }
+                
                 ctx.restore();
             }
 
             
             // Health Bar
-            if (token.hpMax && token.hpMax > 0) {
+            const hpStyle = this.hpDisplayStyle || 'bar';
+            const showBar = this.isDM || hpStyle === 'bar' || hpStyle === 'both';
+            
+            if (showBar && token.hpMax && token.hpMax > 0) {
                 if (this.isDM || token.hpVisibleToPlayers !== false) {
                     const hpMax = token.hpMax;
                     const hpCurr = token.hpCurrent || 0;
@@ -363,7 +462,8 @@ class VTTEngine {
                     }
                     if (percent >= 1.0) barColor = '#00bcd4'; // Celeste
                     
-                    const barHeight = 8;
+                    const isDMBar = this.isDM;
+                    const barHeight = isDMBar ? 16 : 8;
                     const barY = token.y + token.height - barHeight - 2;
                     const barWidth = token.width - 4;
                     const barX = token.x + 2;
@@ -380,11 +480,11 @@ class VTTEngine {
                         ctx.fillRect(barX, barY, fillWidth, barHeight);
                         
                         ctx.fillStyle = 'white';
-                        ctx.font = '9px Arial';
+                        ctx.font = 'bold 12px Arial';
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
                         ctx.strokeStyle = 'black';
-                        ctx.lineWidth = 2;
+                        ctx.lineWidth = 3;
                         const text = `${hpCurr}/${hpMax}`;
                         ctx.strokeText(text, token.x + token.width/2, barY + barHeight/2 + 1);
                         ctx.fillText(text, token.x + token.width/2, barY + barHeight/2 + 1);
@@ -453,6 +553,52 @@ class VTTEngine {
 
         const now = Date.now();
         let hasActivePings = false;
+        let hasActiveLasers = false;
+        
+        if (!this.lasers) this.lasers = [];
+        
+        for (let i = this.lasers.length - 1; i >= 0; i--) {
+            const laser = this.lasers[i];
+            // Rimuovi punti vecchi di 5 secondi
+            laser.points = laser.points.filter(p => now - p.t < 5000);
+            
+            if (laser.points.length === 0 && !laser.active) {
+                this.lasers.splice(i, 1);
+                continue;
+            }
+            if (laser.points.length > 0) hasActiveLasers = true;
+            
+            if (laser.points.length > 1) {
+                ctx.save();
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.lineWidth = 6 * this.scale;
+                
+                // Effetto Neon
+                ctx.shadowBlur = 12 * this.scale;
+                ctx.shadowColor = laser.color || '#ff00ff';
+                ctx.strokeStyle = laser.color || '#ff00ff';
+                
+                ctx.beginPath();
+                for (let j = 0; j < laser.points.length; j++) {
+                    const pt = laser.points[j];
+                    const px = pt.x * this.scale + this.offsetX;
+                    const py = pt.y * this.scale + this.offsetY;
+                    
+                    if (j === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.stroke();
+                
+                // Anima interna bianca (laser)
+                ctx.lineWidth = 2 * this.scale;
+                ctx.strokeStyle = '#ffffff';
+                ctx.shadowBlur = 0;
+                ctx.stroke();
+                
+                ctx.restore();
+            }
+        }
         
         for (let i = this.pings.length - 1; i >= 0; i--) {
             const p = this.pings[i];
@@ -522,7 +668,7 @@ class VTTEngine {
             ctx.strokeRect(x, y, w, h);
         }
         
-        if (hasActivePings || hasActiveInitiative) {
+        if (hasActivePings || hasActiveInitiative || hasActiveLasers) {
 
             requestAnimationFrame(() => this.renderUI());
         }

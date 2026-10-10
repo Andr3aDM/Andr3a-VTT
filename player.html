@@ -44,7 +44,7 @@
         
         <label style="font-size:12px;">Raggio / Lato:</label>
         <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-            <input type="number" id="ptoken-aura-size" value="15" step="5" style="width: 100%; background: #222; color: white; border: 1px solid #555; padding: 4px;">
+            <input type="number" id="ptoken-aura-size" value="15" step="5" min="0" style="width: 100%; background: #222; color: white; border: 1px solid #555; padding: 4px;">
             <select id="ptoken-aura-unit" style="background: #222; color: white; border: 1px solid #555; padding: 4px;">
                 <option value="ft">ft</option>
                 <option value="m">m</option>
@@ -64,7 +64,8 @@
         
         <label style="font-size:12px;">Dimensione / Lunghezza:</label>
         <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-            <input type="number" id="pshape-size" value="15" step="5" style="width: 100%; background: #222; color: white; border: 1px solid #555; padding: 4px;">
+            <input type="number" id="pshape-size" value="15" step="5" min="0" style="width: 100%; background: #222; color: white; border: 1px solid #555; padding: 4px;" title="Dimensione / Lunghezza">
+            <input type="number" id="pshape-width" value="5" step="1" min="0" style="width: 100%; background: #222; color: white; border: 1px solid #555; padding: 4px; display: none;" title="Spessore (solo Linea)">
             <select id="pshape-unit" style="background: #222; color: white; border: 1px solid #555; padding: 4px;">
                 <option value="ft">ft</option>
                 <option value="m">m</option>
@@ -101,10 +102,12 @@
         <button class="ptool-btn active" data-tool="move" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Muovi Token">🖐️</button>
         <button class="ptool-btn" data-tool="draw" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Disegna (Pubblico)">✏️</button>
         <button class="ptool-btn" data-tool="ruler" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Metro">📏</button>
+        <button class="ptool-btn" data-tool="laser" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Puntatore Laser">⚡</button>
         <div style="width: 1px; height: 30px; background: #555; margin: 0 5px;"></div>
         <button id="pbtn-cone" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Crea Cono">📐</button>
         <button id="pbtn-sphere" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Crea Sfera">⭕</button>
         <button id="pbtn-line" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Crea Linea">➖</button>
+        <button id="pbtn-square" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Crea Quadrato">🔲</button>
           <button id="pbtn-dice" class="ptool-btn" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Tira Dadi">🎲</button>
           </div>
 
@@ -132,10 +135,10 @@
     </div>
     <!-- Fine Dadi -->
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
-    <script src="js/engine.js?v=80"></script>
+    <script src="js/engine.js?v=104"></script>
     <script src="js/network.js?v=1"></script>
-    <script src="js/dice.js?v=80"></script>
-    <script src="js/player.js?v=80"></script>
+    <script src="js/dice.js?v=104"></script>
+    <script src="js/player.js?v=104"></script>
 <script src="js/lang.js?v=1"></script>
 
     

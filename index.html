@@ -72,6 +72,14 @@
                     <input type="checkbox" id="hide-toolbar-toggle"> 
                     <span data-i18n="Nascondi Barra Giocatori (Modalit&agrave; TV)">Nascondi Barra Giocatori (Modalit&agrave; TV)</span>
                 </label>
+                <label style="display:flex; align-items:center; gap:5px; cursor:pointer; color: #4caf50; font-weight: bold;">
+                    <input type="checkbox" id="lock-dm-map-toggle"> 
+                    <span>Blocca Movimento Mappa Master</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:5px; cursor:pointer; color: #f44336; font-weight: bold;">
+                    <input type="checkbox" id="lock-map-toggle"> 
+                    <span data-i18n="Blocca Mappa Player">Blocca Mappa Player</span>
+                </label>
             </div>
             <label class="file-label" data-i18n="Carica Mappa" style="margin-bottom: 5px;">Carica Mappa
                 <input type="file" id="map-upload" accept="image/*" style="display:none;">
@@ -113,6 +121,7 @@
                 <button class="tool-btn" data-tool="fog-add">Aggiungi Nebbia</button>
                 <button class="tool-btn" data-tool="fog-erase">Cancella Nebbia</button>
                 <button class="tool-btn" data-tool="note">Pin Segreto (DM)</button>
+                <button class="tool-btn" data-tool="laser">Puntatore Laser</button>
             </div>
             <div id="fog-brush-controls" style="display:none; margin-top:10px; padding: 10px; background: #333; border-radius: 5px;">
                 <h4 style="margin: 0 0 5px 0; font-size: 14px;">Impostazioni Nebbia</h4>
@@ -138,9 +147,11 @@
                     <option value="circle">Cerchio (Sfera/Cilindro)</option>
                     <option value="cone">Cono</option>
                     <option value="line">Linea</option>
+                    <option value="square">Quadrato (Cubo)</option>
                 </select>
                 <div style="display: flex; width: 100%; gap: 5px;">
-                    <input type="number" id="aoe-size" value="15" step="1.5" style="flex: 2;" title="Dimensione">
+                    <input type="number" id="aoe-size" value="15" step="1.5" min="0" style="flex: 2;" title="Dimensione">
+                    <input type="number" id="aoe-width" value="5" step="1" min="0" style="flex: 1; display: none;" title="Spessore (solo Linea)">
                     <select id="aoe-unit" style="flex: 1;" title="Unità">
                         <option value="ft">ft</option>
                         <option value="m">m</option>
@@ -157,7 +168,8 @@
                     <button id="btn-shape-rot-right" style="flex:1;">Ruota dx ↪️</button>
                 </div>
                 <div style="display: flex; gap: 5px;">
-                    <input type="number" id="shape-edit-size" step="5" style="flex:2;" title="Modifica Dimensione">
+                    <input type="number" id="shape-edit-size" step="5" min="0" style="flex:2;" title="Modifica Dimensione">
+                    <input type="number" id="shape-edit-width" step="1" min="0" style="flex:1; display:none;" title="Spessore (solo Linea)">
                     <select id="shape-edit-unit" style="flex: 1;">
                         <option value="ft">ft</option>
                         <option value="m">m</option>
@@ -202,6 +214,22 @@
                 </select>
             </div>
             
+            
+            
+            <div class="control-group">
+                <label style="font-size:12px; font-weight:bold; color:#00bcd4;">Stile PV Token (Lato Giocatori):</label>
+                <select id="hp-display-style" style="width: 100%; background: #222; color: white; border: 1px solid #555; padding: 4px; margin-top: 5px; margin-bottom: 10px;">
+                    <option value="bar">Solo Barra (Classico)</option>
+                    <option value="aura">Solo Alone (Immersivo)</option>
+                    <option value="both">Barra + Alone</option>
+                </select>
+                
+                <label style="font-size:12px; font-weight:bold; color:#00bcd4;">Stile Condizioni Multiple:</label>
+                <select id="condition-display-style" style="width: 100%; background: #222; color: white; border: 1px solid #555; padding: 4px; margin-top: 5px;">
+                    <option value="concentric">Anelli Concentrici</option>
+                    <option value="segmented">Anello Singolo (Spicchi)</option>
+                </select>
+            </div>
             <div id="selected-token-controls" style="display: none; margin-top:10px; padding: 10px; background: #333; border-radius: 5px;">
                 <h4 style="margin: 0 0 10px 0;">Token Selezionato</h4>
                 <div style="display: flex; gap: 5px; margin-bottom: 5px;">
@@ -248,12 +276,12 @@
                 </div>
                 <h4 style="margin: 5px 0; font-size: 13px;">Stato / Condizione</h4>
                 <div style="display: flex; gap: 5px; margin-bottom: 5px; align-items:center;">
-                    <input type="checkbox" id="token-condition-active">
                     <select id="token-condition-lang" style="flex:1;" title="Lingua">
                         <option value="it">IT</option>
                         <option value="en">EN</option>
                     </select>
                     <input type="color" id="token-condition-color" value="#ff0000" style="flex:1;">
+                    <button id="btn-add-condition" class="action-btn" style="flex:1; padding:2px;">+ Aggiungi</button>
                 </div>
                 <select id="token-condition-type" style="width:100%;">
                     <option value="Accecato,Blinded">Accecato / Blinded</option>
@@ -272,6 +300,8 @@
                     <option value="Trattenuto,Restrained">Trattenuto / Restrained</option>
                     <option value="Sfinimento,Exhaustion">Sfinimento / Exhaustion</option>
                 </select>
+                <div id="active-conditions-list" style="display:flex; flex-direction:column; gap:2px; margin-top:5px; max-height:80px; overflow-y:auto;">
+                </div>
 
             </div>
         </div>
@@ -390,7 +420,7 @@
     <script src="js/network.js?v=1"></script>
     <script src="js/engine.js?v=23"></script>
 
-    <script src="js/dice.js?v=80"></script>
+    <script src="js/dice.js?v=104"></script>
     <script src="js/dm.js?v=23"></script>
     <script src="js/initiative.js?v=23"></script>
 <script>

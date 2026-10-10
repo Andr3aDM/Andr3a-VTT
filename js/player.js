@@ -3,8 +3,14 @@ const engine = new VTTEngine('main-canvas-container', false); // isDM = false
 let activeToken = null;
 let isDragging = false;
 let activeStroke = null;
+let activeLaser = null;
+let lastLaserSync = 0;
 let pingTimeout = null;
 let startMouseX = 0;
+let isPanning = false;
+let startPanX = 0;
+let startPanY = 0;
+let isMapLocked = false;
 let startMouseY = 0;
 
 // Login logic
@@ -53,7 +59,24 @@ document.getElementById('btn-login-online').addEventListener('click', () => {
 
 network.onMessage((data, peerId) => {
 
-    if (data.type === 'ping' || data.type === 'PING') {
+    if (data.type === 'DICE_ROLL') {
+        if (data.payload.player !== network.playerName && window.appendRollToChat) {
+            if (window.lastRollId === data.payload.id) return;
+            window.lastRollId = data.payload.id;
+            window.appendRollToChat(data.payload.player, data.payload.dice, data.payload.bonus, data.payload.result);
+            document.getElementById('chat-panel').style.display = 'flex';
+        }
+    } else if (data.type === 'LASER_SYNC') {
+        if (!engine.lasers) engine.lasers = [];
+        const existing = engine.lasers.find(l => l.id === data.payload.id);
+        if (existing) {
+            existing.points = data.payload.points;
+            existing.active = data.payload.active;
+        } else {
+            engine.lasers.push(data.payload);
+        }
+        engine.renderUI();
+    } else if (data.type === 'ping' || data.type === 'PING') {
         const pData = data.payload || data;
         engine.pings.push({x: pData.x, y: pData.y, start: Date.now(), color: pData.color || '#ff0000'});
         engine.renderUI();
@@ -89,6 +112,12 @@ network.onMessage((data, peerId) => {
             hw.style.height = state.sharedImageRect.height;
         }
         
+        // Sync HP Display Style
+        engine.hpDisplayStyle = state.hpDisplayStyle || 'bar';
+        
+        // Sync Condition Style
+        engine.conditionDisplayStyle = state.conditionDisplayStyle || 'concentric';
+
         // Sync Grid
         engine.grid = state.grid;
 
@@ -186,6 +215,15 @@ network.onMessage((data, peerId) => {
             if (cp && state.hideToolbar) cp.style.display = 'none';
 
         }
+        
+        if (typeof state.lockMap !== 'undefined') {
+            const wasLocked = isMapLocked;
+            isMapLocked = state.lockMap;
+            if (isMapLocked && !wasLocked) {
+                engine.fitToScreen();
+            }
+        }
+
         if (state.viewSync) {
             wasViewSyncActive = true;
             engine.scale = state.viewSync.scale;
@@ -302,6 +340,7 @@ function spawnShape(type) {
         type: type === 'sphere' ? 'circle' : type,
         x: centerPos.x, y: centerPos.y,
         sizeFt: 15,
+        widthFt: type === 'line' ? 5 : undefined,
         angle: 0,
         visible: true,
         owner: network.playerName,
@@ -312,6 +351,7 @@ function spawnShape(type) {
 document.getElementById('pbtn-cone').addEventListener('click', () => spawnShape('cone'));
 document.getElementById('pbtn-sphere').addEventListener('click', () => spawnShape('sphere'));
 document.getElementById('pbtn-line').addEventListener('click', () => spawnShape('line'));
+document.getElementById('pbtn-square').addEventListener('click', () => spawnShape('square'));
 
 
 // --- PLAYER INPUT LOGIC ---
@@ -325,7 +365,8 @@ function getEventPos(e) {
 }
 
 function pHandleStart(e) {
-    if (!network.playerName && currentTool === 'move') return; // Se offline no-name e vuole muovere
+    // Rimosso blocco offline no-name per permettere il panning
+    e.preventDefault();
     const pos = getEventPos(e);
     
     // Track per capire se è un click o un drag
@@ -336,38 +377,32 @@ function pHandleStart(e) {
         startMouseX = e.clientX;
         startMouseY = e.clientY;
     }
+    
+    if (!isMapLocked && (e.button === 1 || e.button === 2)) {
+        isPanning = true;
+        startPanX = pos.x - engine.offsetX;
+        startPanY = pos.y - engine.offsetY;
+        return;
+    }
+    
     const worldPos = engine.screenToWorld(pos.x, pos.y);
     
-    if (currentTool === 'move') {
-        // Cerca token di proprietà
-        for (let i = engine.tokens.length - 1; i >= 0; i--) {
-            const t = engine.tokens[i];
-            if (t.owner === network.playerName && 
-                worldPos.x >= t.x && worldPos.x <= t.x + t.width &&
-                worldPos.y >= t.y && worldPos.y <= t.y + t.height) {
-                
-                activeToken = { type: 'token', ref: t };
-                isDragging = true;
-                e.preventDefault();
-                return;
-            }
-        }        // Cerca shape per il maniglione centrale (raggio 15px) e solo se di proprietà
-        for (let i = engine.shapes.length - 1; i >= 0; i--) {
-            const s = engine.shapes[i];
-            if (!s.visible) continue;
-            
-            // RIGOROSO: Cliccabile solo se l'owner è ESATTAMENTE il giocatore corrente
-            if (s.owner !== network.playerName) continue;
-
-            const dist = Math.hypot(worldPos.x - s.x, worldPos.y - s.y);
-            // Il maniglione è disegnato con raggio 10, usiamo 20 per comodità touch
-            if (dist <= 20 / engine.scale) {
-                activeToken = { type: 'shape', ref: s };
-                isDragging = true;
-                e.preventDefault();
-                return;
-            }
-        }
+    if (currentTool === 'laser') {
+        isDragging = true;
+        activeLaser = {
+            id: Date.now() + '_' + Math.random(),
+            color: '#00ffcc',
+            active: true,
+            points: [{x: worldPos.x, y: worldPos.y, t: Date.now()}]
+        };
+        const colors = ['#ff0055', '#00ffcc', '#ffff00', '#ff8800', '#ff00ff', '#55ff00'];
+        activeLaser.color = colors[Math.floor(Math.random() * colors.length)];
+        
+        if (!engine.lasers) engine.lasers = [];
+        engine.lasers.push(activeLaser);
+        
+        engine.renderUI();
+        return;
     }
     
     if (currentTool === 'draw') {
@@ -378,7 +413,6 @@ function pHandleStart(e) {
             width: 10,
             points: [worldPos]
         };
-        e.preventDefault();
         return;
     }
     
@@ -386,24 +420,63 @@ function pHandleStart(e) {
         isDragging = true;
         engine.ruler = { startX: worldPos.x, startY: worldPos.y, endX: worldPos.x, endY: worldPos.y };
         engine.renderUI();
-        e.preventDefault();
         return;
     }
     
-    // Ping on long press
+    if (currentTool === 'move') {
+        let hitEntity = false;
+        
+        // Cerca token di proprietà
+        for (let i = engine.tokens.length - 1; i >= 0; i--) {
+            const t = engine.tokens[i];
+            if (t.owner === network.playerName && 
+                worldPos.x >= t.x && worldPos.x <= t.x + t.width &&
+                worldPos.y >= t.y && worldPos.y <= t.y + t.height) {
+                
+                activeToken = { type: 'token', ref: t };
+                isDragging = true;
+                hitEntity = true;
+                return;
+            }
+        }
+        
+        // Cerca shape
+        for (let i = engine.shapes.length - 1; i >= 0; i--) {
+            const s = engine.shapes[i];
+            if (!s.visible) continue;
+            if (s.owner !== network.playerName) continue;
+
+            const dist = Math.hypot(worldPos.x - s.x, worldPos.y - s.y);
+            if (dist <= 20 / engine.scale) {
+                activeToken = { type: 'shape', ref: s };
+                isDragging = true;
+                hitEntity = true;
+                return;
+            }
+        }
+        
+        // Se non ha colpito nulla, avvia il pan
+        if (!hitEntity && !isMapLocked) {
+            isPanning = true;
+            startPanX = pos.x - engine.offsetX;
+            startPanY = pos.y - engine.offsetY;
+        }
+    }
+    
+    // Ping Timer (solo se non sta draggando qualcosa)
     if (currentTool === 'move' && !isDragging) {
         pingTimeout = setTimeout(() => {
+            pingTimeout = null;
             const pColor = document.getElementById('player-color').value;
-            // Ping locale
             engine.pings.push({x: worldPos.x, y: worldPos.y, start: Date.now(), color: pColor});
             engine.renderUI();
-            // Ping remoto
             network.send({type: 'PING', payload: {x: worldPos.x, y: worldPos.y, color: pColor}});
         }, 500);
     }
 }
 
 function pHandleMove(e) {
+    const pos = getEventPos(e);
     const moveRawX = e.touches ? e.touches[0].clientX : e.clientX;
     const moveRawY = e.touches ? e.touches[0].clientY : e.clientY;
     
@@ -411,9 +484,17 @@ function pHandleMove(e) {
         clearTimeout(pingTimeout);
         pingTimeout = null;
     }
-    if (!isDragging) return;
+    
+    if (!isDragging && !isPanning) return;
     e.preventDefault();
-    const pos = getEventPos(e);
+    
+    if (isPanning) {
+        engine.offsetX = pos.x - startPanX;
+        engine.offsetY = pos.y - startPanY;
+        engine.renderAll();
+        return;
+    }
+    
     const worldPos = engine.screenToWorld(pos.x, pos.y);
     
     if (currentTool === 'move' && activeToken) {
@@ -445,6 +526,13 @@ function pHandleMove(e) {
             }
         }
     }
+    else if (currentTool === 'laser' && activeLaser) {
+        activeLaser.points.push({x: worldPos.x, y: worldPos.y, t: Date.now()});
+        if (Date.now() - lastLaserSync > 50) {
+            network.send({ type: 'LASER_SYNC', payload: activeLaser });
+            lastLaserSync = Date.now();
+        }
+    }
     else if (currentTool === 'draw' && activeStroke) {
         activeStroke.points.push(worldPos);
         engine.renderAll();
@@ -473,6 +561,10 @@ function pHandleEnd(e) {
     if (pingTimeout) {
         clearTimeout(pingTimeout);
         pingTimeout = null;
+    }
+    if (isPanning) {
+        isPanning = false;
+        return;
     }
     if (!isDragging) return;
     isDragging = false;
@@ -520,13 +612,26 @@ function pHandleEnd(e) {
             }
             if (Math.abs(endX - startMouseX) < 10 && Math.abs(endY - startMouseY) < 10) {
                 document.getElementById('player-shape-panel').style.display = 'block';
-                document.getElementById('pshape-size').value = activeToken.ref.sizeFt || 15;
+                document.getElementById('pshape-width').style.display = activeToken.ref.type === 'line' ? 'block' : 'none';
+                let sVal = activeToken.ref.sizeFt || 15;
+                let wVal = activeToken.ref.widthFt || 5;
+                if (document.getElementById('pshape-unit').value === 'm') {
+                    sVal = (sVal / 5) * 1.5;
+                    wVal = (wVal / 5) * 1.5;
+                }
+                document.getElementById('pshape-size').value = Number.isInteger(sVal) ? sVal : sVal.toFixed(1);
+                document.getElementById('pshape-width').value = Number.isInteger(wVal) ? wVal : wVal.toFixed(1);
                 document.getElementById('pshape-angle').value = activeToken.ref.angle || 0;
                 document.getElementById('pshape-color').value = activeToken.ref.color || '#00ffff';
                 window.editingPlayerShape = activeToken.ref;
             }
         }
         activeToken = null;
+    }
+    else if (currentTool === 'laser' && activeLaser) {
+        activeLaser.active = false;
+        network.send({ type: 'LASER_SYNC', payload: activeLaser });
+        activeLaser = null;
     }
     else if (currentTool === 'draw' && activeStroke) {
         network.send({
@@ -541,6 +646,23 @@ function pHandleEnd(e) {
     }
 }
 
+
+uiLayer.addEventListener('contextmenu', e => e.preventDefault());
+
+uiLayer.addEventListener('wheel', (e) => {
+    if (isMapLocked) return;
+    e.preventDefault();
+    const pos = getEventPos(e);
+    const worldPosBefore = engine.screenToWorld(pos.x, pos.y);
+    
+    if (e.deltaY < 0) engine.scale *= 1.1;
+    else engine.scale /= 1.1;
+    
+    engine.offsetX = pos.x - worldPosBefore.x * engine.scale;
+    engine.offsetY = pos.y - worldPosBefore.y * engine.scale;
+    engine.renderAll();
+});
+
 uiLayer.addEventListener('mousedown', pHandleStart);
 uiLayer.addEventListener('touchstart', pHandleStart, {passive: false});
 uiLayer.addEventListener('mousemove', pHandleMove);
@@ -554,11 +676,11 @@ function updatePlayerShape() {
     if (!window.editingPlayerShape) return;
     
     let _raw = parseFloat(document.getElementById('pshape-size').value); if(isNaN(_raw)) _raw = 0; const sizeRaw = Math.max(0.1, _raw);
+    let _w = parseFloat(document.getElementById('pshape-width').value); if(isNaN(_w)) _w = 5; _w = Math.max(0.1, _w);
     const unit = document.getElementById('pshape-unit').value;
-    const squares = unit === 'ft' ? sizeRaw / 5 : sizeRaw / 1.5;
-    const sizeFt = squares * 5;
     
-    window.editingPlayerShape.sizeFt = sizeFt;
+    window.editingPlayerShape.sizeFt = unit === 'm' ? (sizeRaw / 1.5) * 5 : sizeRaw;
+    window.editingPlayerShape.widthFt = unit === 'm' ? (_w / 1.5) * 5 : _w;
     window.editingPlayerShape.angle = parseInt(document.getElementById('pshape-angle').value) || 0;
     window.editingPlayerShape.color = document.getElementById('pshape-color').value;
     window.editingPlayerShape._lastLocalEdit = Date.now();
@@ -570,18 +692,26 @@ function updatePlayerShape() {
     });
 }
 document.getElementById('pshape-size').addEventListener('input', updatePlayerShape);
+document.getElementById('pshape-width').addEventListener('input', updatePlayerShape);
 document.getElementById('pshape-angle').addEventListener('input', updatePlayerShape);
 document.getElementById('pshape-color').addEventListener('input', updatePlayerShape);
 document.getElementById('pshape-unit').addEventListener('change', (e) => {
     const input = document.getElementById('pshape-size');
+    const inputW = document.getElementById('pshape-width');
     let oldVal = parseFloat(input.value); if(isNaN(oldVal)) oldVal = 0;
+    let oldW = parseFloat(inputW.value); if(isNaN(oldW)) oldW = 5;
     if (e.target.value === 'ft') {
         input.step = '5';
         input.value = Math.round(oldVal / 1.5 * 5);
+        inputW.step = '1';
+        inputW.value = Math.round(oldW / 1.5 * 5);
     } else {
         input.step = '1.5';
         let newVal = (oldVal / 5 * 1.5);
         input.value = Number.isInteger(newVal) ? newVal : newVal.toFixed(1);
+        inputW.step = '0.5';
+        let newW = (oldW / 5 * 1.5);
+        inputW.value = Number.isInteger(newW) ? newW : newW.toFixed(1);
     }
     updatePlayerShape();
 });
