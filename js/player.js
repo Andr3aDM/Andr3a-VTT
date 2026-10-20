@@ -12,6 +12,29 @@ let startPanX = 0;
 let startPanY = 0;
 let isMapLocked = false;
 let startMouseY = 0;
+const tokenImageCache = new Map();
+
+function createFallbackTokenBadge(name) {
+    const fbCanvas = document.createElement('canvas');
+    fbCanvas.width = 64;
+    fbCanvas.height = 64;
+    const fctx = fbCanvas.getContext('2d');
+    fctx.fillStyle = '#546e7a';
+    fctx.beginPath();
+    fctx.arc(32, 32, 28, 0, Math.PI * 2);
+    fctx.fill();
+    fctx.lineWidth = 3;
+    fctx.strokeStyle = '#ffffff';
+    fctx.stroke();
+    fctx.fillStyle = '#ffffff';
+    fctx.font = 'bold 28px sans-serif';
+    fctx.textAlign = 'center';
+    fctx.textBaseline = 'middle';
+    fctx.fillText((name || '?').charAt(0).toUpperCase(), 32, 32);
+    const fbImg = new Image();
+    fbImg.src = fbCanvas.toDataURL();
+    return fbImg;
+}
 
 // Login logic
 document.getElementById('btn-login-offline').addEventListener('click', () => {
@@ -22,6 +45,25 @@ document.getElementById('btn-login-offline').addEventListener('click', () => {
     network.startOffline();
     network.send({ type: 'PLAYER_READY' });
 });
+
+// Auto-login per Modalità TV / Schermo Locale aperto da Regia Master (?mode=tv)
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('mode') === 'tv') {
+    const tvName = "Tavolo TV";
+    network.playerName = tvName;
+    engine.localPlayerName = tvName;
+    const loginOverlay = document.getElementById('login-overlay');
+    if (loginOverlay) loginOverlay.style.display = 'none';
+    network.startOffline();
+    network.send({ type: 'PLAYER_READY' });
+}
+
+// Prefill codice stanza se passato come parametro URL (?room=...)
+const roomParam = urlParams.get('room');
+if (roomParam) {
+    const roomInput = document.getElementById('login-room');
+    if (roomInput) roomInput.value = roomParam;
+}
 
 document.getElementById('btn-login-online').addEventListener('click', () => {
     try {
@@ -63,8 +105,9 @@ network.onMessage((data, peerId) => {
         if (data.payload.player !== network.playerName && window.appendRollToChat) {
             if (window.lastRollId === data.payload.id) return;
             window.lastRollId = data.payload.id;
-            window.appendRollToChat(data.payload.player, data.payload.dice, data.payload.bonus, data.payload.result);
-            document.getElementById('chat-panel').style.display = 'flex';
+            window.appendRollToChat(data.payload);
+            const cp = document.getElementById('chat-panel');
+            if (cp) cp.style.display = 'flex';
         }
     } else if (data.type === 'LASER_SYNC') {
         if (!engine.lasers) engine.lasers = [];
@@ -78,12 +121,19 @@ network.onMessage((data, peerId) => {
         engine.renderUI();
     } else if (data.type === 'ping' || data.type === 'PING') {
         const pData = data.payload || data;
+        const pingId = pData.id || (pData.x + '_' + pData.y + '_' + (pData.t || ''));
+        if (window.lastReceivedPlayerPingId === pingId) return;
+        window.lastReceivedPlayerPingId = pingId;
         engine.pings.push({x: pData.x, y: pData.y, start: Date.now(), color: pData.color || '#ff0000'});
         engine.renderUI();
     } else if (data.type === 'MAP_UPDATE') {
         const img = new Image();
         img.onload = () => {
             engine.setMap(img);
+            if (engine.pendingFogImage) {
+                engine.applyFogImage(engine.pendingFogImage);
+                engine.pendingFogImage = null;
+            }
         };
         img.src = data.payload;
     } else if (data.type === 'SHARED_IMAGE_DATA') {
@@ -92,6 +142,9 @@ network.onMessage((data, peerId) => {
         }
     } else if (data.type === 'STATE_SYNC') {
         const state = data.payload;
+        if (state.audioState && window.syncPlayerAudio) {
+            window.syncPlayerAudio(state.audioState);
+        }
         
         if (state.sharedImageId !== currentSharedImageId) {
             currentSharedImageId = state.sharedImageId;
@@ -203,18 +256,7 @@ network.onMessage((data, peerId) => {
         engine.shapes = state.shapes || [];
 
         // --- View Sync Logic ---
-        if (typeof state.hideToolbar !== 'undefined') {
-            const ptb = document.getElementById('player-toolbar');
-
-            if (ptb) {
-                ptb.style.display = state.hideToolbar ? 'none' : 'flex';
-            }
-            const dp = document.getElementById('dice-panel');
-            if (dp && state.hideToolbar) dp.style.display = 'none';
-            const cp = document.getElementById('chat-panel');
-            if (cp && state.hideToolbar) cp.style.display = 'none';
-
-        }
+        // Nota: la visibilità della barra strumenti è gestita localmente dal giocatore / schermo TV tramite togglePlayerToolbar
         
         if (typeof state.lockMap !== 'undefined') {
             const wasLocked = isMapLocked;
@@ -235,23 +277,24 @@ network.onMessage((data, peerId) => {
         }
         // -----------------------
 
-        const newTokens = [];
-        let loadedCount = 0;
-        
         if (state.tokens.length === 0) {
             engine.tokens = [];
             engine.renderAll();
             return;
         }
 
+        const newTokens = new Array(state.tokens.length);
+        let loadedCount = 0;
+
         const finishLoading = () => {
+            const finalTokens = newTokens.filter(Boolean);
             if (activeToken) {
                 const dragId = activeToken.ref.id;
                 const dragX = activeToken.ref.x;
                 const dragY = activeToken.ref.y;
                 const dragEdit = activeToken.ref._lastLocalEdit;
                 
-                engine.tokens = newTokens;
+                engine.tokens = finalTokens;
                 
                 if (activeToken.type === 'token') {
                     const found = engine.tokens.find(tok => tok.id === dragId);
@@ -275,36 +318,80 @@ network.onMessage((data, peerId) => {
                     }
                 }
             } else {
-                engine.tokens = newTokens;
+                engine.tokens = finalTokens;
             }
             engine.renderAll();
         };
 
-        state.tokens.forEach(t => {
+        const markTokenReady = (index, tokenObj) => {
+            newTokens[index] = tokenObj;
+            loadedCount++;
+            if (loadedCount === state.tokens.length) {
+                finishLoading();
+            }
+        };
+
+        state.tokens.forEach((t, idx) => {
             const existing = engine.tokens.find(et => et.id === t.id);
-            if (existing && (!t.src || existing.src.startsWith(t.src))) {
+
+            // Caso 1: Stesso ID token già presente in mappa con immagine già pronta
+            if (existing && existing.imageObj && (!t.src || existing.src === t.src || (existing.src && t.src && existing.src.startsWith(t.src)))) {
                 t.src = existing.src;
                 t.imageObj = existing.imageObj;
-                newTokens.push(t);
-                loadedCount++;
-                if (loadedCount === state.tokens.length) {
-                    finishLoading();
-                }
-            } else {
-                const img = new Image();
-                img.onload = () => {
-                    t.imageObj = img;
-                    newTokens.push(t);
-                    loadedCount++;
-                    if (loadedCount === state.tokens.length) {
-                        finishLoading();
-                    }
-                };
-                img.src = t.src;
+                markTokenReady(idx, t);
+                return;
             }
+
+            // Caso 2: Immagine già in cache globale del client per lo stesso src
+            if (t.src && tokenImageCache.has(t.src)) {
+                t.imageObj = tokenImageCache.get(t.src);
+                markTokenReady(idx, t);
+                return;
+            }
+
+            // Caso 3: Immagine già caricata da un ALTRO token in mappa (es. TOKEN DUPLICATO con Ctrl+D!)
+            const sameSrcToken = engine.tokens.find(et => et.imageObj && et.src && t.src && et.src === t.src);
+            if (sameSrcToken) {
+                t.imageObj = sameSrcToken.imageObj;
+                tokenImageCache.set(t.src, sameSrcToken.imageObj);
+                markTokenReady(idx, t);
+                return;
+            }
+
+            // Caso 4: Se il pacchetto non include src (es. drag in tempo reale) ma c'è un token esistente
+            if (!t.src && existing && existing.imageObj) {
+                t.src = existing.src;
+                t.imageObj = existing.imageObj;
+                markTokenReady(idx, t);
+                return;
+            }
+
+            // Caso 5: Nessun src fornito e nessun existing -> fallback badge istantaneo
+            if (!t.src) {
+                t.imageObj = createFallbackTokenBadge(t.name);
+                markTokenReady(idx, t);
+                return;
+            }
+
+            // Caso 6: Nuova immagine da caricare (token da compendio, nuova pedina da libreria, ecc.)
+            const img = new Image();
+            img.onload = () => {
+                t.imageObj = img;
+                tokenImageCache.set(t.src, img);
+                markTokenReady(idx, t);
+            };
+            img.onerror = () => {
+                console.warn("Impossibile caricare immagine per token:", t.name);
+                t.imageObj = createFallbackTokenBadge(t.name);
+                markTokenReady(idx, t);
+            };
+            img.src = t.src;
         });
-    }else if (data.type === 'FOG_SYNC') {
-        engine.applyFogImage(data.payload);
+    } else if (data.type === 'FOG_SYNC') {
+        engine.pendingFogImage = data.payload;
+        if (engine.mapImage) {
+            engine.applyFogImage(data.payload);
+        }
     }
 });
 
@@ -352,6 +439,53 @@ document.getElementById('pbtn-cone').addEventListener('click', () => spawnShape(
 document.getElementById('pbtn-sphere').addEventListener('click', () => spawnShape('sphere'));
 document.getElementById('pbtn-line').addEventListener('click', () => spawnShape('line'));
 document.getElementById('pbtn-square').addEventListener('click', () => spawnShape('square'));
+
+// --- GESTIONE BARRA STRUMENTI PLAYER & TV (DEFAULT NASCOSTA) ---
+const btnToggleToolbar = document.getElementById('btn-toggle-toolbar');
+const ptb = document.getElementById('player-toolbar');
+const btnCloseToolbar = document.getElementById('pbtn-close-toolbar');
+
+function togglePlayerToolbar(forceState) {
+    if (!ptb) return;
+    const isCurrentlyOpen = ptb.style.display === 'flex';
+    const nextState = typeof forceState === 'boolean' ? forceState : !isCurrentlyOpen;
+    ptb.style.display = nextState ? 'flex' : 'none';
+    if (btnToggleToolbar) {
+        btnToggleToolbar.classList.toggle('active', nextState);
+        btnToggleToolbar.innerHTML = nextState ? '✕' : '🛠️';
+        btnToggleToolbar.title = nextState ? 'Nascondi Strumenti (Tasto H)' : 'Mostra Strumenti (Tasto H)';
+    }
+    // Se chiusa, chiudi anche i sottomenu aperti (dadi, chat, audio)
+    if (!nextState) {
+        const dp = document.getElementById('dice-panel');
+        if (dp) dp.style.display = 'none';
+        const cp = document.getElementById('chat-panel');
+        if (cp) cp.style.display = 'none';
+        const ap = document.getElementById('player-audio-panel');
+        if (ap) ap.style.display = 'none';
+    }
+}
+
+if (btnToggleToolbar) {
+    btnToggleToolbar.addEventListener('click', (e) => {
+        e.stopPropagation();
+        togglePlayerToolbar();
+    });
+}
+if (btnCloseToolbar) {
+    btnCloseToolbar.addEventListener('click', (e) => {
+        e.stopPropagation();
+        togglePlayerToolbar(false);
+    });
+}
+
+// Scorciatoia da tastiera 'H' per mostrare/nascondere la barra strumenti
+window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT')) return;
+    if (e.key === 'h' || e.key === 'H') {
+        togglePlayerToolbar();
+    }
+});
 
 
 // --- PLAYER INPUT LOGIC ---
@@ -467,10 +601,10 @@ function pHandleStart(e) {
     if (currentTool === 'move' && !isDragging) {
         pingTimeout = setTimeout(() => {
             pingTimeout = null;
-            const pColor = document.getElementById('player-color').value;
-            engine.pings.push({x: worldPos.x, y: worldPos.y, start: Date.now(), color: pColor});
+            const pId = 'p_ping_' + Date.now();
+            engine.pings.push({id: pId, x: worldPos.x, y: worldPos.y, start: Date.now(), color: pColor});
             engine.renderUI();
-            network.send({type: 'PING', payload: {x: worldPos.x, y: worldPos.y, color: pColor}});
+            network.send({type: 'PING', payload: {id: pId, x: worldPos.x, y: worldPos.y, color: pColor, t: Date.now()}});
         }, 500);
     }
 }
@@ -793,4 +927,9 @@ document.getElementById('btn-handout-close-self').addEventListener('click', () =
 // Inizializza Sistema Dadi
 if (window.setupDiceSystem) {
     window.setupDiceSystem(false, network);
+}
+
+// Inizializza Sistema Audio & Soundboard
+if (window.setupAudioSystem) {
+    window.setupAudioSystem(false, network);
 }

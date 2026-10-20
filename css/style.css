@@ -102,6 +102,13 @@ input[type="text"], input[type="number"], select {
 }
 .gallery-token:hover { border-color: #4fc3f7; }
 
+.gallery-token-card:hover {
+    border-color: #00897b !important;
+    background: #252525 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.5);
+}
+
 #main-canvas-container {
     position: absolute;
     left: 350px;

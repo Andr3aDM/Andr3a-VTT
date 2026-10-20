@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>DM Dashboard - VTT</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=2">
 <style>
         .section h3 { cursor: pointer; user-select: none; }
         .section h3::after { content: ' ▼'; font-size: 12px; float: right; }
@@ -15,98 +15,8 @@
 <body>
     <div id="sidebar">
         <h2>Andr3a VTT <br><span style="font-size: 14px; color: #ffcc00; font-weight: normal;">DM Console</span></h2>
-        <button id="btn-open-player" class="primary-btn">Apri Schermo Giocatori</button>
-        
-
-        <div class="section" style="margin-top: 15px; border-color: #ffcc00; border-width: 2px; border-style: solid;">
-            <h3 style="color: #ffcc00; margin-top: 0;">Multiplayer Online (P2P)</h3>
-            <button id="btn-host-online" style="width: 100%; background: #ffcc00; color: black; font-weight: bold; margin-bottom: 5px;">Avvia Stanza Online</button>
-            <div id="online-status" style="font-size: 13px; text-align: center; color: #aaa;">Stato: Offline (Locale)</div>
-            <div id="online-players" style="font-size: 12px; margin-top: 5px; color: #888;">Nessun giocatore connesso.</div>
-        </div>
-
-        <div class="section" style="margin-top: 15px;">
-            <h3>Campagne & Salvataggi</h3>
-
-            <div id="campaign-manager">
-                <select id="campaign-select" style="width:100%; margin-bottom:5px;">
-                    <option value="">-- Seleziona Campagna --</option>
-                </select>
-                <div style="display:flex; gap:5px;">
-                    <button id="btn-new-campaign" style="flex:1;">Nuova</button>
-                    <button id="btn-delete-campaign" style="flex:1; background-color: #d32f2f;">Elimina</button>
-                </div>
-                <div style="display:flex; gap:5px; margin-top:5px;">
-                    <button id="btn-export-campaign" style="flex:1; background-color: #f57c00;">Esporta (JSON)</button>
-                    <label class="file-label" style="flex:1; margin:0; padding:10px; font-weight:normal; background-color:#555; text-align:center;">Importa
-                        <input type="file" id="import-upload" accept=".json" style="display:none;">
-                    </label>
-                </div>
-                
-                <div id="map-manager" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid #444;">
-                    <select id="map-select" style="width:100%; margin-bottom:5px;">
-                        <option value="">-- Seleziona Mappa --</option>
-                    </select>
-                    <div style="display:flex; gap:5px;">
-                        <button id="btn-load-map" style="flex:1; background-color:#0288d1;">Carica</button>
-                        <button id="btn-save-map" style="flex:1; background-color:#388e3c;">Salva</button>
-                        <button id="btn-save-new-map" style="flex:1; background-color:#1b5e20;">Salva Nuova</button>
-                    </div>
-                    <div style="display:flex; gap:5px; margin-top:5px;">
-                        <button id="btn-delete-map" style="flex:1; background-color:#d32f2f;">Elimina Mappa Selezionata</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="section">
-            <button id="btn-toggle-tracker" style="width: 100%; margin-bottom: 10px; background: #ffcc00; color: black; font-weight: bold; padding: 5px; cursor: pointer; border-radius: 4px;">Apri Tracker Iniziativa</button>
-            <h3>Mappa & Griglia</h3>
-            
-            <div style="margin-bottom: 10px; padding: 5px; background: #2c2c2c; border: 1px solid #444; border-radius: 4px; display:flex; flex-direction:column; gap:5px;">
-                <label style="display:flex; align-items:center; gap:5px; cursor:pointer; color: #4caf50; font-weight: bold;">
-                    <input type="checkbox" id="sync-view-toggle"> 
-                    <span data-i18n="Sincronizza Vista Giocatori (Pan/Zoom)">Sincronizza Vista Giocatori (Pan/Zoom)</span>
-                </label>
-                <label style="display:flex; align-items:center; gap:5px; cursor:pointer; color: #ff9800; font-weight: bold;">
-                    <input type="checkbox" id="hide-toolbar-toggle"> 
-                    <span data-i18n="Nascondi Barra Giocatori (Modalit&agrave; TV)">Nascondi Barra Giocatori (Modalit&agrave; TV)</span>
-                </label>
-                <label style="display:flex; align-items:center; gap:5px; cursor:pointer; color: #4caf50; font-weight: bold;">
-                    <input type="checkbox" id="lock-dm-map-toggle"> 
-                    <span>Blocca Movimento Mappa Master</span>
-                </label>
-                <label style="display:flex; align-items:center; gap:5px; cursor:pointer; color: #f44336; font-weight: bold;">
-                    <input type="checkbox" id="lock-map-toggle"> 
-                    <span data-i18n="Blocca Mappa Player">Blocca Mappa Player</span>
-                </label>
-            </div>
-            <label class="file-label" data-i18n="Carica Mappa" style="margin-bottom: 5px;">Carica Mappa
-                <input type="file" id="map-upload" accept="image/*" style="display:none;">
-            </label>
-            <label class="file-label" style="background: #2196f3; border-color: #1976d2; margin-bottom: 10px;">Condividi Immagine
-                <input type="file" id="share-image-upload" accept="image/*" style="display:none;">
-            </label>
-            <div class="control-group">
-                <div style="width: 100%;">
-                    <label>Celle (px):</label>
-                    <div style="display: flex; gap: 5px; align-items: center;">
-                        <input type="range" id="grid-size-slider" min="20" max="300" value="100" style="flex: 2;">
-                        <input type="number" id="grid-size" value="100" style="flex: 1;">
-                    </div>
-                </div>
-                <div style="display: flex; width: 100%; gap: 5px;">
-                    <div style="flex: 1;"><label>Colore:</label><input type="color" id="grid-color" value="#000000" style="width: 100%;"></div>
-                    <div style="flex: 2;">
-                        <label>Bagliore:</label>
-                        <select id="grid-glow">
-                            <option value="none">Nessuno</option>
-                            <option value="white">Bianco</option>
-                            <option value="black">Nero</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
+        <div style="margin-top: 10px; margin-bottom: 10px;">
+            <button id="btn-toggle-tracker" style="width: 100%; background: #ffcc00; color: black; font-weight: bold; padding: 7px; cursor: pointer; border-radius: 4px; border: none; font-size: 13px;">⚔️ Tracker Iniziativa</button>
         </div>
 
         <div class="section">
@@ -140,79 +50,15 @@
             </div>
         </div>
 
-        <div class="section">
-            <h3>Zone d'Effetto (AoE)</h3>
-            <div class="control-group">
-                <select id="aoe-type" style="width: 100%;">
-                    <option value="circle">Cerchio (Sfera/Cilindro)</option>
-                    <option value="cone">Cono</option>
-                    <option value="line">Linea</option>
-                    <option value="square">Quadrato (Cubo)</option>
-                </select>
-                <div style="display: flex; width: 100%; gap: 5px;">
-                    <input type="number" id="aoe-size" value="15" step="1.5" min="0" style="flex: 2;" title="Dimensione">
-                    <input type="number" id="aoe-width" value="5" step="1" min="0" style="flex: 1; display: none;" title="Spessore (solo Linea)">
-                    <select id="aoe-unit" style="flex: 1;" title="Unità">
-                        <option value="ft">ft</option>
-                        <option value="m">m</option>
-                    </select>
-                    <input type="color" id="aoe-color" value="#ff0000" style="flex: 1;" title="Colore">
-                </div>
-            </div>
-            <button id="btn-add-aoe" style="width: 100%;">Crea AoE al Centro</button>
-            
-            <div id="selected-shape-controls" style="display: none; margin-top:10px; padding: 10px; background: #333; border-radius: 5px;">
-                <h4 style="margin: 0 0 10px 0;">Modifica AoE Selezionata</h4>
-                <div style="display: flex; gap: 5px; margin-bottom: 5px;">
-                    <button id="btn-shape-rot-left" style="flex:1;">↩️ Ruota sx</button>
-                    <button id="btn-shape-rot-right" style="flex:1;">Ruota dx ↪️</button>
-                </div>
-                <div style="display: flex; gap: 5px;">
-                    <input type="number" id="shape-edit-size" step="5" min="0" style="flex:2;" title="Modifica Dimensione">
-                    <input type="number" id="shape-edit-width" step="1" min="0" style="flex:1; display:none;" title="Spessore (solo Linea)">
-                    <select id="shape-edit-unit" style="flex: 1;">
-                        <option value="ft">ft</option>
-                        <option value="m">m</option>
-                    </select>
-                    <button id="btn-delete-shape" style="background-color: #d32f2f; flex:2;">Elimina</button>
-                </div>
-            </div>
-        </div>
 
-        <div class="section">
-            
-        <div class="section">
-            <h3>Gestione Party</h3>
-            <div style="display: flex; gap: 5px; margin-bottom: 5px;">
-                <input type="text" id="new-player-name" placeholder="Nome PG" style="flex:2;">
-                <button id="btn-add-player" style="flex:1;">Aggiungi</button>
-            </div>
-            <ul id="party-list" style="list-style:none; padding:0; margin:0; max-height: 150px; overflow-y: auto;">
-                <!-- Popolato via JS -->
-            </ul>
-        </div>
+
+
 
         <div class="section">
             <h3>Tokens</h3>
-            <label class="file-label">Carica Tokens (Cartella/File)
-                <input type="file" id="token-folder-upload" multiple accept="image/*" style="display:none;">
-            </label>
-            <input type="text" id="token-search" placeholder="Cerca token per nome...">
-            <div id="token-gallery"></div>
-            
-            <div class="control-group" style="margin-top:10px;">
-                <label>Impostazioni nuovo Token:</label>
-                <select id="token-size-select" style="margin-bottom: 5px;">
-                    <option value="1">Media/Piccola (1x1)</option>
-                    <option value="2">Grande (2x2)</option>
-                    <option value="3">Enorme (3x3)</option>
-                    <option value="4">Mastodontica (4x4)</option>
-                </select>
-                <select id="token-visibility-select">
-                    <option value="visible">Visibile ai giocatori</option>
-                    <option value="hidden">Nascosto (Invisibile)</option>
-                </select>
-            </div>
+            <button id="btn-open-tokens-sidebar" type="button" style="width: 100%; margin: 4px 0 10px 0; background: #00897b; color: white; font-weight: bold; padding: 7px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); transition: 0.15s;" title="Apri la Libreria Token per caricare cartelle e inserire pedine">
+                ♟️ Libreria & Nuovi Token
+            </button>
             
             
             
@@ -226,81 +72,122 @@
                 
                 <label style="font-size:12px; font-weight:bold; color:#00bcd4;">Stile Condizioni Multiple:</label>
                 <select id="condition-display-style" style="width: 100%; background: #222; color: white; border: 1px solid #555; padding: 4px; margin-top: 5px;">
-                    <option value="concentric">Anelli Concentrici</option>
+                    <option value="concentric">Anelli Concentrici (Testo Curvo)</option>
                     <option value="segmented">Anello Singolo (Spicchi)</option>
+                    <option value="pills">Pillole con Nome (es. Prono)</option>
+                    <option value="badges">Badge Icone Grandi (Alto Contrasto)</option>
+                    <option value="both">Anelli + Badge Icone</option>
                 </select>
             </div>
-            <div id="selected-token-controls" style="display: none; margin-top:10px; padding: 10px; background: #333; border-radius: 5px;">
-                <h4 style="margin: 0 0 10px 0;">Token Selezionato</h4>
-                <div style="display: flex; gap: 5px; margin-bottom: 5px;">
-                    <select id="token-edit-size" style="flex:1;" title="Modifica Taglia">
-                        <option value="1">Media/Piccola (1x1)</option>
-                        <option value="2">Grande (2x2)</option>
-                        <option value="3">Enorme (3x3)</option>
-                        <option value="4">Mastodontica (4x4)</option>
+            <div id="selected-token-controls" style="display: none; margin-top:8px; padding: 8px 10px; background: #2a2a2a; border-radius: 6px; border: 1px solid #444;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
+                    <h4 style="margin: 0; font-size: 13px; color: #ffca28; display:flex; align-items:center; gap:5px;">🎯 Token Selezionato</h4>
+                </div>
+
+                <!-- Riga 1: Nome & Visibilità Targhetta -->
+                <div style="display: flex; gap: 5px; margin-bottom: 6px;">
+                    <input type="text" id="token-name-edit" placeholder="Nome (es. Goblin 1)" style="flex: 1.8; min-width: 0; padding: 4px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 12px;" title="Nome visualizzato nella targhetta">
+                    <select id="token-name-visibility" style="flex: 1.2; min-width: 0; padding: 4px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px;" title="Visibilità Targhetta Nome">
+                        <option value="all">Nome: A tutti</option>
+                        <option value="dm">Nome: Solo DM</option>
+                        <option value="hidden">Nome: Spento</option>
                     </select>
                 </div>
-                <div style="display: flex; gap: 5px; margin-bottom: 5px; align-items:center;">
-                    <select id="token-owner" style="flex:1;" title="Assegna questo token a un giocatore"><option value="">-- Nessuno (Solo DM) --</option></select>
+
+                <!-- Riga 2: Taglia & Giocatore (50% / 50%) -->
+                <div style="display: flex; gap: 5px; margin-bottom: 6px;">
+                    <select id="token-edit-size" style="flex:1; min-width: 0; padding: 4px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px;" title="Modifica Taglia">
+                        <option value="1">Taglia: Media (1x1)</option>
+                        <option value="2">Taglia: Grande (2x2)</option>
+                        <option value="3">Taglia: Enorme (3x3)</option>
+                        <option value="4">Taglia: Mastod. (4x4)</option>
+                    </select>
+                    <select id="token-owner" style="flex:1; min-width: 0; padding: 4px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px;" title="Assegna questo token a un giocatore">
+                        <option value="">👤 Solo DM</option>
+                    </select>
                 </div>
-                <div style="display: flex; gap: 5px;">
-                    <button id="btn-toggle-visibility" style="flex:1;">Nascondi/Rivela</button>
-                    <button id="btn-add-to-init" style="width:100%; margin-top:5px; background: #ff9800; color: white; padding: 5px; font-weight: bold; border-radius: 4px; border:none; cursor:pointer;">+ Aggiungi all'Iniziativa</button>
-            <button id="btn-delete-token" style="background-color: #d32f2f; flex:1;">Elimina</button>
+
+                <!-- Riga 3: 4 Azioni Rapide Token (Duplica, Visibilità, Iniziativa, Elimina) -->
+                <div style="display: flex; gap: 4px; margin-bottom: 8px;">
+                    <button id="btn-duplicate-token" style="flex:1.1; padding: 5px 2px; font-size: 11px; white-space: nowrap; background: #00897b; color: white; font-weight: bold; border-radius: 3px; border:none; cursor:pointer;" title="Duplica Token (Ctrl+D)">📋 Duplica</button>
+                    <button id="btn-toggle-visibility" style="flex:1; padding: 5px 2px; font-size: 11px; white-space: nowrap; cursor: pointer; background: #3a3a3a; color: white; border: 1px solid #555; border-radius: 3px;" title="Mostra/Nascondi ai Giocatori">👁️ Visib.</button>
+                    <button id="btn-add-to-init" style="flex:1.1; padding: 5px 2px; font-size: 11px; white-space: nowrap; background: #e65100; color: white; font-weight: bold; border-radius: 3px; border:none; cursor:pointer;" title="Aggiungi al Tracker di Iniziativa">⚔️ + Iniz.</button>
+                    <button id="btn-delete-token" style="flex:0.8; padding: 5px 2px; font-size: 11px; white-space: nowrap; background: #c62828; color: white; border-radius: 3px; border:none; cursor:pointer;" title="Elimina Token">🗑️ Del</button>
                 </div>
                 
-                <h4 style="margin: 10px 0 5px 0; font-size: 13px; border-top: 1px solid #555; padding-top: 5px;">Punti Ferita (HP)</h4>
-                <div style="display: flex; gap: 5px; margin-bottom: 5px; align-items:center;">
-                    <input type="number" id="token-hp-current" placeholder="Attuali" style="flex:1; width:50px;">
-                    <span style="font-weight:bold;">/</span>
-                    <input type="number" id="token-hp-max" placeholder="Max (0=Off)" style="flex:1; width:50px;">
+                <!-- Riga 4: Punti Ferita (HP) Header + Checkbox -->
+                <div style="display:flex; justify-content:space-between; align-items:center; margin: 6px 0 4px 0; border-top: 1px solid #444; padding-top: 5px;">
+                    <span style="font-size: 11px; font-weight: bold; color: #ef5350;">❤️ Punti Ferita</span>
+                    <label style="font-size: 11px; display:flex; align-items:center; gap:4px; cursor:pointer; color:#bbb;" title="Mostra barra/alone di salute ai giocatori">
+                        <input type="checkbox" id="token-hp-visible" checked>
+                        <span>Visibile a giocatori</span>
+                    </label>
                 </div>
-                <div style="display: flex; gap: 5px; margin-bottom: 5px; align-items:center;">
-                    <input type="number" id="token-hp-mod" placeholder="Danni/Cure" style="flex:2;">
-                    <button id="btn-apply-hp-dmg" style="flex:1; background:#d32f2f; color:white; font-weight:bold;">-</button>
-                    <button id="btn-apply-hp-heal" style="flex:1; background:#4caf50; color:white; font-weight:bold;">+</button>
+                <!-- Riga 4B: Controlli HP unificati in una riga -->
+                <div style="display: flex; gap: 4px; margin-bottom: 6px; align-items:center;">
+                    <input type="number" id="token-hp-current" placeholder="Att" style="width: 44px; padding: 3px 2px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 12px; text-align: center;" title="HP Attuali">
+                    <span style="font-weight:bold; color: #888;">/</span>
+                    <input type="number" id="token-hp-max" placeholder="Max" style="width: 44px; padding: 3px 2px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 12px; text-align: center;" title="HP Massimi (0=Off)">
+                    <span style="color:#555; margin: 0 1px;">|</span>
+                    <input type="number" id="token-hp-mod" placeholder="± Danno" style="flex:1; min-width: 40px; padding: 3px 4px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px;" title="Valore Danno (-) o Cura (+)">
+                    <button id="btn-apply-hp-dmg" style="width: 25px; height: 25px; background:#c62828; color:white; font-weight:bold; border:none; border-radius:3px; cursor:pointer;" title="Applica Danno">-</button>
+                    <button id="btn-apply-hp-heal" style="width: 25px; height: 25px; background:#2e7d32; color:white; font-weight:bold; border:none; border-radius:3px; cursor:pointer;" title="Applica Cura">+</button>
                 </div>
-                <div style="margin-bottom: 10px; font-size: 12px; display:flex; align-items:center; gap:5px;">
-                    <input type="checkbox" id="token-hp-visible" checked>
-                    <label for="token-hp-visible">Mostra stato (colori) ai giocatori</label>
+
+                <!-- Riga 4C: CA e Scheda Statistiche Mostro -->
+                <div style="display: flex; gap: 4px; margin-bottom: 6px; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 2px; flex: 0.9;" title="Classe Armatura (CA)">
+                        <span style="font-size: 11px; font-weight: bold; color: #4fc3f7;">🛡️ CA:</span>
+                        <input type="number" id="token-ac" placeholder="CA" min="0" style="width: 44px; padding: 3px 2px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 12px; text-align: center;">
+                    </div>
+                    <button id="btn-open-statblock" type="button" style="flex: 1.4; padding: 4px 6px; font-size: 11px; font-weight: bold; background: #0277bd; color: white; border: none; border-radius: 3px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; justify-content: center; gap: 4px;" title="Apri o Assegna Scheda Statistiche Mostro">
+                        <span>📜 Scheda Mostro</span>
+                    </button>
                 </div>
-                <h4 style="margin: 5px 0; font-size: 13px;">Aura Mobile</h4>
-                <div style="display: flex; gap: 5px; margin-bottom: 10px; align-items:center;">
-                    <input type="checkbox" id="token-aura-active">
-                    <input type="number" id="token-aura-size" value="20" step="5" min="0" style="flex:2;" title="Raggio Aura">
-                    <select id="token-aura-unit" style="flex:1;">
+
+                <!-- Riga 5: Aura Mobile Compatta -->
+                <div style="display: flex; gap: 5px; margin-bottom: 6px; align-items:center; border-top: 1px solid #444; padding-top: 5px;">
+                    <label style="display:flex; align-items:center; gap:4px; font-size:11px; font-weight:bold; color: #ffee58; cursor:pointer; white-space:nowrap;" title="Attiva/Disattiva Aura">
+                        <input type="checkbox" id="token-aura-active">
+                        <span>✨ Aura:</span>
+                    </label>
+                    <input type="number" id="token-aura-size" value="20" step="5" min="0" style="width: 46px; padding: 3px 2px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px; text-align: center;" title="Raggio Aura">
+                    <select id="token-aura-unit" style="padding: 3px 2px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px;">
                         <option value="ft">ft</option>
                         <option value="m">m</option>
                     </select>
-                    <input type="color" id="token-aura-color" value="#ffff00" style="flex:1;">
+                    <input type="color" id="token-aura-color" value="#ffff00" style="width: 28px; height: 24px; border: none; border-radius: 3px; cursor: pointer; background: transparent; padding: 0;" title="Colore Aura">
                 </div>
-                <h4 style="margin: 5px 0; font-size: 13px;">Stato / Condizione</h4>
-                <div style="display: flex; gap: 5px; margin-bottom: 5px; align-items:center;">
-                    <select id="token-condition-lang" style="flex:1;" title="Lingua">
-                        <option value="it">IT</option>
-                        <option value="en">EN</option>
-                    </select>
-                    <input type="color" id="token-condition-color" value="#ff0000" style="flex:1;">
-                    <button id="btn-add-condition" class="action-btn" style="flex:1; padding:2px;">+ Aggiungi</button>
-                </div>
-                <select id="token-condition-type" style="width:100%;">
-                    <option value="Accecato,Blinded">Accecato / Blinded</option>
-                    <option value="Affascinato,Charmed">Affascinato / Charmed</option>
-                    <option value="Afferrato,Grappled">Afferrato / Grappled</option>
-                    <option value="Assordato,Deafened">Assordato / Deafened</option>
-                    <option value="Avvelenato,Poisoned">Avvelenato / Poisoned</option>
-                    <option value="Inabile,Incapacitated">Inabile / Incapacitated</option>
-                    <option value="Invisibile,Invisible">Invisibile / Invisible</option>
-                    <option value="Paralizzato,Paralyzed">Paralizzato / Paralyzed</option>
-                    <option value="Pietrificato,Petrified">Pietrificato / Petrified</option>
-                    <option value="Privo di sensi,Unconscious">Privo di sensi / Unconscious</option>
-                    <option value="Prono,Prone">Prono / Prone</option>
-                    <option value="Spaventato,Frightened">Spaventato / Frightened</option>
-                    <option value="Stordito,Stunned">Stordito / Stunned</option>
-                    <option value="Trattenuto,Restrained">Trattenuto / Restrained</option>
-                    <option value="Sfinimento,Exhaustion">Sfinimento / Exhaustion</option>
-                </select>
-                <div id="active-conditions-list" style="display:flex; flex-direction:column; gap:2px; margin-top:5px; max-height:80px; overflow-y:auto;">
+
+                <!-- Riga 6: Stato / Condizione -->
+                <div style="border-top: 1px solid #444; padding-top: 5px;">
+                    <div style="display: flex; gap: 4px; margin-bottom: 5px; align-items:center;">
+                        <select id="token-condition-type" style="flex:1; min-width:0; padding: 3px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px;" title="Seleziona Condizione">
+                            <option value="Accecato,Blinded">Accecato / Blinded</option>
+                            <option value="Affascinato,Charmed">Affascinato / Charmed</option>
+                            <option value="Afferrato,Grappled">Afferrato / Grappled</option>
+                            <option value="Assordato,Deafened">Assordato / Deafened</option>
+                            <option value="Avvelenato,Poisoned">Avvelenato / Poisoned</option>
+                            <option value="Inabile,Incapacitated">Inabile / Incapacitated</option>
+                            <option value="Invisibile,Invisible">Invisibile / Invisible</option>
+                            <option value="Paralizzato,Paralyzed">Paralizzato / Paralyzed</option>
+                            <option value="Pietrificato,Petrified">Pietrificato / Petrified</option>
+                            <option value="Privo di sensi,Unconscious">Privo di sensi / Unconscious</option>
+                            <option value="Prono,Prone">Prono / Prone</option>
+                            <option value="Spaventato,Frightened">Spaventato / Frightened</option>
+                            <option value="Stordito,Stunned">Stordito / Stunned</option>
+                            <option value="Trattenuto,Restrained">Trattenuto / Restrained</option>
+                            <option value="Sfinimento,Exhaustion">Sfinimento / Exhaustion</option>
+                        </select>
+                        <select id="token-condition-lang" style="width: 40px; padding: 3px 1px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px;" title="Lingua tag">
+                            <option value="it">IT</option>
+                            <option value="en">EN</option>
+                        </select>
+                        <input type="color" id="token-condition-color" value="#ff0000" style="width: 25px; height: 24px; border:none; border-radius: 3px; cursor: pointer; background: transparent; padding: 0;" title="Colore Condizione">
+                        <button id="btn-add-condition" class="action-btn" style="padding: 3px 8px; font-size: 11px; font-weight: bold; background: #00bcd4; color: white; border: none; border-radius: 3px; cursor: pointer;" title="Aggiungi Condizione">+ Aggiungi</button>
+                    </div>
+                    <div id="active-conditions-list" style="display:flex; flex-direction:column; gap:2px; max-height:75px; overflow-y:auto;">
+                    </div>
                 </div>
 
             </div>
@@ -332,6 +219,92 @@
         </div>
         <div style="flex: 1; padding: 10px; overflow: auto; display: flex; justify-content: center; align-items: center; background: #111;">
             <img id="dm-handout-image" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+        </div>
+    </div>
+
+    <!-- DM Monster Statblock & Compendium Window -->
+    <div id="dm-statblock-window" style="display:none; position: absolute; top: 50px; left: calc(50% - 240px); width: 480px; max-height: 85vh; background: #1c1c1c; border: 2px solid #b71c1c; border-radius: 8px; z-index: 1100; flex-direction: column; box-shadow: 0 8px 24px rgba(0,0,0,0.85); resize: both; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <div id="dm-statblock-header" style="background: #2a1b1b; padding: 8px 12px; cursor: move; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #b71c1c; user-select: none;">
+            <strong style="color: #ef5350; font-size: 13px; display:flex; align-items:center; gap: 6px;">
+                <span>📜</span> <span>Compendio & Scheda Mostro</span>
+            </strong>
+            <div style="display:flex; align-items:center; gap: 6px;">
+                <button id="btn-statblock-json-import" style="background: #333; color: #4db6ac; border: 1px solid #555; padding: 2px 7px; font-size: 11px; border-radius: 3px; cursor: pointer;" title="Incolla JSON da 5e.tools">📥 Incolla JSON</button>
+                <button id="btn-close-statblock" style="background: transparent; color: #bbb; border: none; font-size: 16px; cursor: pointer; padding: 0 4px;" title="Chiudi">✕</button>
+            </div>
+        </div>
+
+        <!-- Barra di ricerca compendio -->
+        <div style="padding: 8px 10px; background: #222; border-bottom: 1px solid #333; position: relative;">
+            <div style="display: flex; gap: 6px;">
+                <input type="text" id="statblock-search-input" placeholder="🔍 Cerca mostro in inglese (es. Goblin, Dragon, Wolf)..." style="flex: 1; padding: 6px 8px; background: #111; color: white; border: 1px solid #555; border-radius: 4px; font-size: 12px; box-sizing: border-box;">
+                <button id="btn-statblock-search" style="background: #b71c1c; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">Cerca</button>
+            </div>
+            <!-- Tendina dei risultati ricerca -->
+            <div id="statblock-search-results" style="display: none; position: absolute; top: 100%; left: 10px; right: 10px; max-height: 200px; overflow-y: auto; background: #181818; border: 1px solid #b71c1c; border-radius: 0 0 6px 6px; z-index: 1200; box-shadow: 0 6px 12px rgba(0,0,0,0.8);"></div>
+        </div>
+
+        <!-- Area contenuto scheda (Scrollabile) -->
+        <div id="statblock-content" style="flex: 1; overflow-y: auto; padding: 12px; background: #181818; color: #ddd; font-size: 12px;">
+            <!-- Placeholder iniziale se nessun mostro selezionato -->
+            <div id="statblock-placeholder" style="text-align: center; color: #777; padding: 40px 10px;">
+                Cerca un mostro dalla barra in alto oppure seleziona un token che ha già una scheda associata.
+            </div>
+            <!-- Dettaglio vero e proprio -->
+            <div id="statblock-details" style="display: none;"></div>
+        </div>
+
+        <!-- Barra Azioni Inferiore -->
+        <div id="statblock-footer" style="padding: 8px 10px; background: #222; border-top: 1px solid #333; display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 0 2px;">
+                <label style="color: #aaa; display: flex; align-items: center; gap: 5px; cursor: pointer;" title="Se disattivato, i tiri della scheda saranno segreti per il DM">
+                    <input type="checkbox" id="statblock-rolls-public" checked style="cursor: pointer; margin: 0;">
+                    <span style="color: #81d4fa; font-weight: 500;">👁️ Invia tiri ai Giocatori</span>
+                </label>
+                <span style="color: #888; font-size: 10px;">Clicca sui dadi 🎲 per tirare</span>
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center;">
+                <button id="btn-assign-statblock" style="flex: 1.5; background: #2e7d32; color: white; border: none; padding: 7px 10px; font-size: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;" title="Assegna questa scheda e i relativi PV/CA al token selezionato">
+                    <span>⚡ Assegna al Token Selezionato</span>
+                </button>
+                <button id="btn-spawn-statblock-token" style="flex: 1; background: #0277bd; color: white; border: none; padding: 7px 10px; font-size: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;" title="Crea direttamente un nuovo token sulla mappa">
+                    <span>♟️ Crea Token</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale per incollare JSON da 5e.tools -->
+    <div id="modal-json-import" style="display:none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.75); z-index: 2000; align-items: center; justify-content: center;">
+        <div style="background: #222; border: 2px solid #00897b; border-radius: 8px; width: 460px; padding: 15px; color: white; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.85);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <strong style="color: #4db6ac; font-size: 13.5px; display:flex; align-items:center; gap:6px;">📥 Incolla JSON &amp; Token da 5e.tools</strong>
+                <button id="btn-close-json-modal" style="background: none; border: none; color: #aaa; font-size: 16px; cursor: pointer;">✕</button>
+            </div>
+            <div style="font-size: 11px; color: #bbb;">
+                Copia il mostro in formato JSON da 5e.tools (<em>"Copy as JSON"</em>) e incollalo qui sotto:
+            </div>
+            <textarea id="json-import-textarea" placeholder='{"name": "Ancient Time Dragon", "ac": 22, "hp": 407, ...}' style="width: 100%; height: 130px; background: #111; color: #fff; border: 1px solid #555; border-radius: 4px; font-family: monospace; font-size: 11px; padding: 8px; box-sizing: border-box; resize: vertical;"></textarea>
+
+            <!-- Box Token Mostro con Incolla / Drag & Drop -->
+            <div id="json-token-dropzone" style="display: flex; gap: 10px; align-items: center; background: #181818; border: 1px dashed #00897b; border-radius: 6px; padding: 8px 10px; cursor: pointer;" title="Trascina un'immagine o premi Ctrl+V per incollare l'immagine del token">
+                <div id="json-token-preview" style="width: 48px; height: 48px; border-radius: 50%; border: 2px solid #00897b; background: #111; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.5);">
+                    <span id="json-token-placeholder-icon" style="font-size: 20px; color: #777;">♟️</span>
+                    <img id="json-token-img" style="display:none; width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <div style="flex: 1; font-size: 11px; color: #bbb;">
+                    <div style="font-weight: bold; color: #80cbc4; margin-bottom: 2px;">🖼️ Token Ufficiale Mostro (Opzionale)</div>
+                    <div id="json-token-status-text" style="font-size: 10.5px; color: #999;">
+                        Click destro sul token in 5e.tools &rarr; <em>"Copia immagine"</em> e premi <strong>Ctrl+V</strong> qui.
+                    </div>
+                </div>
+                <button id="btn-clear-json-token" type="button" style="display: none; background: #333; color: #ef5350; border: 1px solid #555; border-radius: 4px; padding: 3px 6px; font-size: 10px; cursor: pointer;">✕ Rimuovi</button>
+                <input type="file" id="json-token-file-input" accept="image/*" style="display: none;">
+            </div>
+
+            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;">
+                <button id="btn-confirm-json-import" style="background: #00897b; color: white; border: none; padding: 7px 16px; font-size: 12px; font-weight: bold; border-radius: 4px; cursor: pointer;">Importa Mostro</button>
+            </div>
         </div>
     </div>
 
@@ -387,41 +360,449 @@
     </div>
 
     
-    <script src="js/storage.js?v=23"></script>
+    <script src="js/storage.js?v=25"></script>
 
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
     <!-- Dadi e Chat DM -->
     <div id="dm-floating-tools" style="position: absolute; bottom: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 10px;">
+        <button id="btn-toggle-campaign" style="border-radius: 50%; width: 50px; height: 50px; font-size: 24px; background: #222; border: 2px solid #00bcd4; color: white; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);" title="Regia & Campagna (P2P, Salvataggi, Party)">⚙️</button>
+        <button id="btn-toggle-map" style="border-radius: 50%; width: 50px; height: 50px; font-size: 24px; background: #222; border: 2px solid #4caf50; color: white; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);" title="Mappa & Griglia (Caricamento, Griglia, Visuale)">🗺️</button>
+        <button id="btn-toggle-aoe" style="border-radius: 50%; width: 50px; height: 50px; font-size: 24px; background: #222; border: 2px solid #ff5722; color: white; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);" title="Zone d'Effetto (AoE / Magie)">🪄</button>
+        <button id="btn-toggle-audio" style="border-radius: 50%; width: 50px; height: 50px; font-size: 24px; background: #222; border: 2px solid #9c27b0; color: white; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);" title="Audio & Soundboard">🎵</button>
+        <button id="btn-toggle-tokens" style="border-radius: 50%; width: 50px; height: 50px; font-size: 24px; background: #222; border: 2px solid #00897b; color: white; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);" title="Libreria Token (Cartella & In Mappa)">♟️</button>
         <button id="btn-toggle-chat" style="border-radius: 50%; width: 50px; height: 50px; font-size: 24px; background: #222; border: 2px solid #2196f3; color: white; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);" title="Chat Log">💬</button>
         <button id="btn-toggle-dice" style="border-radius: 50%; width: 50px; height: 50px; font-size: 24px; background: #222; border: 2px solid #ffcc00; color: white; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);" title="Dadi">🎲</button>
     </div>
 
-    <div id="dice-panel" style="display:none; position: absolute; bottom: 20px; right: 80px; background: rgba(34, 34, 34, 0.95); border: 2px solid #ffcc00; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 1000;">
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 10px;">
-            <button class="roll-btn" data-dice="4" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d4</button>
-            <button class="roll-btn" data-dice="6" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d6</button>
-            <button class="roll-btn" data-dice="8" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d8</button>
-            <button class="roll-btn" data-dice="10" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d10</button>
-            <button class="roll-btn" data-dice="12" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d12</button>
-            <button class="roll-btn" data-dice="20" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d20</button>
-            <button class="roll-btn" data-dice="100" style="grid-column: span 3; padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d100</button>
+    <div id="dice-panel" style="display:none; flex-direction: column; gap: 8px; position: absolute; bottom: 20px; right: 80px; width: 230px; background: rgba(28, 28, 28, 0.96); border: 2px solid #ffcc00; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 4px 14px rgba(0,0,0,0.6); z-index: 1000; font-family: sans-serif; box-sizing: border-box;">
+        <div id="dice-panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 5px; cursor: move; width: 100%; box-sizing: border-box;">
+            <strong style="color: #ffcc00; font-size: 13px;">🎲 Pannello Dadi</strong>
+            <button id="btn-dice-reset" type="button" style="background: #333; color: #ffcc00; border: 1px solid #ffcc00; border-radius: 3px; font-size: 11px; padding: 2px 8px; cursor: pointer; font-weight: bold; transition: all 0.15s;" title="Azzera tutti i dadi e modificatori">✕ Azzera</button>
         </div>
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-            <span style="font-size: 14px;">Bonus:</span>
-            <input type="number" id="dice-bonus" value="0" style="width: 50px; background: #111; color: white; border: 1px solid #555; text-align: center;">
+
+        <div style="background: #181818; border: 1px solid #3a3a3a; border-radius: 4px; padding: 6px 8px; display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box;">
+            <span style="font-size: 11px; color: #888;">Tiro:</span>
+            <span id="dice-pool-display" style="font-size: 12.5px; font-weight: bold; color: #888; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px;">Nessun dado</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; width: 100%; box-sizing: border-box;">
+            <button class="roll-btn" data-dice="4" type="button" style="padding: 7px 2px; background: #383838; color: white; border: 1px solid #484848; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 3px;">d4 <span class="dice-badge" style="display:none; background:#ffcc00; color:#111; font-size:10px; font-weight:bold; border-radius:8px; padding:0 4px;">0</span></button>
+            <button class="roll-btn" data-dice="6" type="button" style="padding: 7px 2px; background: #383838; color: white; border: 1px solid #484848; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 3px;">d6 <span class="dice-badge" style="display:none; background:#ffcc00; color:#111; font-size:10px; font-weight:bold; border-radius:8px; padding:0 4px;">0</span></button>
+            <button class="roll-btn" data-dice="8" type="button" style="padding: 7px 2px; background: #383838; color: white; border: 1px solid #484848; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 3px;">d8 <span class="dice-badge" style="display:none; background:#ffcc00; color:#111; font-size:10px; font-weight:bold; border-radius:8px; padding:0 4px;">0</span></button>
+            <button class="roll-btn" data-dice="10" type="button" style="padding: 7px 2px; background: #383838; color: white; border: 1px solid #484848; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 3px;">d10 <span class="dice-badge" style="display:none; background:#ffcc00; color:#111; font-size:10px; font-weight:bold; border-radius:8px; padding:0 4px;">0</span></button>
+            <button class="roll-btn" data-dice="12" type="button" style="padding: 7px 2px; background: #383838; color: white; border: 1px solid #484848; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 3px;">d12 <span class="dice-badge" style="display:none; background:#ffcc00; color:#111; font-size:10px; font-weight:bold; border-radius:8px; padding:0 4px;">0</span></button>
+            <button class="roll-btn" data-dice="20" type="button" style="padding: 7px 2px; background: #383838; color: white; border: 1px solid #484848; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 3px;">d20 <span class="dice-badge" style="display:none; background:#ffcc00; color:#111; font-size:10px; font-weight:bold; border-radius:8px; padding:0 4px;">0</span></button>
+            <button class="roll-btn" data-dice="100" type="button" style="grid-column: span 3; padding: 7px 2px; background: #383838; color: white; border: 1px solid #484848; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 3px;">d100 <span class="dice-badge" style="display:none; background:#ffcc00; color:#111; font-size:10px; font-weight:bold; border-radius:8px; padding:0 4px;">0</span></button>
+        </div>
+
+        <div style="background: #222; border-radius: 4px; padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; width: 100%; box-sizing: border-box;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 11.5px; color: #ddd;">Modificatore:</span>
+                <div style="display: flex; align-items: center; gap: 3px;">
+                    <button id="btn-bonus-minus" type="button" style="background:#333; color:white; border:1px solid #555; border-radius:3px; width:22px; height:22px; cursor:pointer; font-weight:bold; font-size:13px; padding:0; display:flex; align-items:center; justify-content:center;">-</button>
+                    <input type="number" id="dice-bonus" value="0" style="width: 44px; height: 22px; background: #111; color: white; border: 1px solid #555; text-align: center; border-radius: 3px; font-size: 12px; font-weight: bold; padding: 0; box-sizing: border-box;">
+                    <button id="btn-bonus-plus" type="button" style="background:#333; color:white; border:1px solid #555; border-radius:3px; width:22px; height:22px; cursor:pointer; font-weight:bold; font-size:13px; padding:0; display:flex; align-items:center; justify-content:center;">+</button>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                <span style="color: #aaa;">Applica a:</span>
+                <select id="dice-mod-mode" style="background: #111; color: white; border: 1px solid #555; border-radius: 3px; padding: 2px 4px; font-size: 11px; cursor: pointer;">
+                    <option value="total">Al Totale (Danno)</option>
+                    <option value="each">A ciascun dado (Vantaggio)</option>
+                </select>
+            </div>
+            <label style="font-size: 11px; display: flex; align-items: center; gap: 4px; color: #aaa; cursor: pointer; margin-top: 2px;">
+                <input type="checkbox" id="dice-dm-public" checked> Mostra ai giocatori
+            </label>
+        </div>
+
+        <button id="btn-roll-dice" type="button" style="width: 100%; background: #ffcc00; color: #111; font-weight: bold; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); transition: all 0.15s; box-sizing: border-box;">🎲 Tira Dadi</button>
+        
+        <div id="dice-reroll-container" style="display: none; text-align: center; width: 100%; box-sizing: border-box;">
+            <button id="btn-dice-reroll" type="button" style="background: none; border: none; color: #00bcd4; font-size: 11px; cursor: pointer; text-decoration: underline; padding: 0;">🔄 Ripeti (<span id="dice-reroll-label"></span>)</button>
         </div>
     </div>
 
-    <div id="chat-panel" style="display:none; position: absolute; bottom: 80px; right: 80px; background: rgba(0, 0, 0, 0.7); border: 1px solid #444; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 1000; width: 300px; height: 250px; flex-direction: column;">
-        <strong style="margin-bottom: 5px; border-bottom: 1px solid #555; padding-bottom: 5px;">Storico Tiri</strong>
-        <ul id="chat-log" style="list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 5px; font-size: 14px;"></ul>
+    <div id="chat-panel" style="display:none; position: absolute; bottom: 80px; right: 80px; background: rgba(20, 20, 20, 0.95); border: 2px solid #2196f3; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.6); z-index: 1000; width: 310px; height: 260px; flex-direction: column; font-family: sans-serif; box-sizing: border-box;">
+        <div id="chat-panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 5px; margin-bottom: 6px; cursor: move;">
+            <strong style="color: #2196f3; font-size: 13px;">💬 Storico Tiri</strong>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label style="font-size: 11px; color: #aaa; display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none;" title="Se attivo, i tiri (anche delle schede mostri) sono inviati ai giocatori. Se disattivato, restano segreti per il DM.">
+                    <input type="checkbox" id="chat-rolls-public" checked style="cursor: pointer; margin: 0;">
+                    <span style="color: #4fc3f7;">Invia a Player</span>
+                </label>
+                <button id="btn-close-chat" type="button" style="background: none; border: none; color: #aaa; cursor: pointer; font-size: 14px; padding: 0 4px;" title="Chiudi Chat">✕</button>
+            </div>
+        </div>
+        <ul id="chat-log" style="list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 13px;"></ul>
     </div>
-    <!-- Fine Dadi -->
-    <script src="js/network.js?v=1"></script>
-    <script src="js/engine.js?v=23"></script>
 
-    <script src="js/dice.js?v=104"></script>
-    <script src="js/dm.js?v=23"></script>
+    <!-- Pannello Regia & Campagna DM (Flottante) -->
+    <div id="campaign-panel" style="display:none; position: absolute; bottom: 80px; right: 80px; background: rgba(30, 30, 30, 0.95); border: 2px solid #00bcd4; border-radius: 8px; padding: 12px; color: white; box-shadow: 0 6px 15px rgba(0,0,0,0.6); z-index: 1000; width: 340px; max-height: 520px; flex-direction: column; gap: 10px; font-family: sans-serif; box-sizing: border-box; overflow-y: auto;">
+        <div id="campaign-panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #555; padding-bottom: 6px; cursor: move;">
+            <strong style="color: #00bcd4; font-size: 15px;">⚙️ Regia & Campagna</strong>
+            <button id="btn-close-campaign-panel" style="background: transparent; color: white; border: none; font-size: 16px; cursor: pointer;">✕</button>
+        </div>
+
+        <button id="btn-open-player" class="primary-btn" style="width: 100%; background: #4caf50; color: white; font-weight: bold; padding: 8px; border-radius: 4px; border: none; cursor: pointer; font-size: 13px;">🖥️ Apri Schermo Giocatori (TV / 2° Monitor)</button>
+
+        <!-- Sezione 1: Multiplayer P2P -->
+        <div style="background: #222; padding: 8px; border-radius: 5px; border-left: 3px solid #ffcc00; font-size: 12px;">
+            <strong style="color: #ffcc00; font-size: 13px;">🌐 Multiplayer Online (P2P)</strong>
+            <div style="display: flex; gap: 6px; margin: 6px 0 6px 0;">
+                <button id="btn-host-online" style="flex: 1; background: #ffcc00; color: black; font-weight: bold; padding: 6px 4px; border: none; border-radius: 4px; cursor: pointer; font-size: 11.5px; transition: 0.2s;">Avvia Stanza</button>
+                <button id="btn-open-player-online" style="flex: 1; background: #0288d1; color: white; font-weight: bold; padding: 6px 4px; border: none; border-radius: 4px; cursor: pointer; font-size: 11.5px; transition: 0.2s;" title="Apri Schermo Giocatore per test o accesso con codice stanza">Apri Schermo Online</button>
+            </div>
+            <div id="online-status" style="font-size: 12px; text-align: center; color: #aaa;">Stato: Offline (Locale)</div>
+            <div id="online-players" style="font-size: 11px; margin-top: 4px; color: #888;">Nessun giocatore connesso.</div>
+        </div>
+
+        <!-- Sezione 2: Campagne & Salvataggi -->
+        <div style="background: #222; padding: 8px; border-radius: 5px; border-left: 3px solid #00bcd4; font-size: 12px;">
+            <strong style="color: #00bcd4; font-size: 13px;">📁 Campagne & Salvataggi</strong>
+            <div id="campaign-manager" style="margin-top: 6px;">
+                <select id="campaign-select" style="width:100%; margin-bottom:5px; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;">
+                    <option value="">-- Seleziona Campagna --</option>
+                </select>
+                <div style="display:flex; gap:5px;">
+                    <button id="btn-new-campaign" style="flex:1; background: #4caf50; color: white; border: none; padding: 5px; border-radius: 3px; cursor: pointer; font-weight: bold;">Nuova</button>
+                    <button id="btn-delete-campaign" style="flex:1; background-color: #d32f2f; color: white; border: none; padding: 5px; border-radius: 3px; cursor: pointer;">Elimina</button>
+                </div>
+                <div style="display:flex; gap:5px; margin-top:5px;">
+                    <button id="btn-export-campaign" style="flex:1; background-color: #f57c00; color: white; border: none; padding: 5px; border-radius: 3px; cursor: pointer;">Esporta (JSON)</button>
+                    <label class="file-label" style="flex:1; margin:0; padding:5px; font-weight:normal; background-color:#555; text-align:center; border-radius: 3px; cursor: pointer;">Importa
+                        <input type="file" id="import-upload" accept=".json" style="display:none;">
+                    </label>
+                </div>
+                
+                <div id="map-manager" style="display:none; margin-top:8px; padding-top:8px; border-top:1px solid #444;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                        <strong style="font-size: 11px; color: #00bcd4;">Cartella:</strong>
+                    </div>
+                    <div style="display: flex; gap: 4px; margin-bottom: 6px;">
+                        <select id="folder-select" style="flex: 1; min-width: 0; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px; font-size: 11.5px;">
+                            <option value="">📂 Tutte le Mappe</option>
+                            <option value="__none__">📄 Senza Cartella (Generale)</option>
+                        </select>
+                        <button id="btn-new-folder" style="background: #00838f; color: white; border: none; padding: 4px 6px; border-radius: 3px; cursor: pointer; font-size: 11px; white-space: nowrap; font-weight: bold;" title="Crea nuova cartella nella campagna">+ Cartella</button>
+                        <button id="btn-delete-folder" style="background: #c62828; color: white; border: none; padding: 4px 6px; border-radius: 3px; cursor: pointer; font-size: 11px;" title="Elimina la cartella selezionata (le mappe verranno spostate in Senza Cartella)">🗑️</button>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">
+                        <strong style="font-size: 11px; color: #aaa;">Mappe della Campagna:</strong>
+                        <span id="current-loaded-map-badge" style="font-size: 10.5px; color: #4caf50; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px;" title="Mappa attualmente in uso"></span>
+                    </div>
+                    <select id="map-select" style="width:100%; margin:4px 0 5px 0; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;">
+                        <option value="">-- Seleziona Mappa --</option>
+                    </select>
+                    <div style="display:flex; gap:5px;">
+                        <button id="btn-load-map" style="flex:1; background-color:#0288d1; color: white; border: none; padding: 4px; border-radius: 3px; cursor: pointer;">Carica</button>
+                        <button id="btn-save-map" style="flex:1; background-color:#388e3c; color: white; border: none; padding: 4px; border-radius: 3px; cursor: pointer;">Salva</button>
+                        <button id="btn-save-new-map" style="flex:1; background-color:#1b5e20; color: white; border: none; padding: 4px; border-radius: 3px; cursor: pointer;">Salva Nuova</button>
+                    </div>
+                    <div style="display:flex; gap:5px; margin-top:5px;">
+                        <button id="btn-move-map" style="flex:1; background-color:#e65100; color: white; border: none; padding: 4px; border-radius: 3px; cursor: pointer; font-size: 11.5px;" title="Sposta la mappa selezionata in un'altra cartella">📁 Sposta in...</button>
+                        <button id="btn-delete-map" style="flex:1; background-color:#d32f2f; color: white; border: none; padding: 4px; border-radius: 3px; cursor: pointer;">Elimina Mappa</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sezione 3: Gestione Party -->
+        <div style="background: #222; padding: 8px; border-radius: 5px; border-left: 3px solid #8bc34a; font-size: 12px;">
+            <strong style="color: #8bc34a; font-size: 13px;">👥 Gestione Party</strong>
+            <div style="display: flex; gap: 5px; margin: 6px 0 5px 0;">
+                <input type="text" id="new-player-name" placeholder="Nome PG" style="flex:2; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;">
+                <button id="btn-add-player" style="flex:1; background: #8bc34a; color: black; border: none; padding: 4px; border-radius: 3px; cursor: pointer; font-weight: bold;">+ Aggiungi</button>
+            </div>
+            <ul id="party-list" style="list-style:none; padding:0; margin:0; max-height: 120px; overflow-y: auto;">
+                <!-- Popolato via JS -->
+            </ul>
+        </div>
+    </div>
+
+    <!-- Pannello Mappa & Griglia DM (Flottante) -->
+    <div id="map-panel" style="display:none; position: absolute; bottom: 80px; right: 80px; background: rgba(30, 30, 30, 0.95); border: 2px solid #4caf50; border-radius: 8px; padding: 12px; color: white; box-shadow: 0 6px 15px rgba(0,0,0,0.6); z-index: 1000; width: 340px; max-height: 520px; flex-direction: column; gap: 10px; font-family: sans-serif; box-sizing: border-box; overflow-y: auto;">
+        <div id="map-panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #555; padding-bottom: 6px; cursor: move;">
+            <strong style="color: #4caf50; font-size: 15px;">🗺️ Mappa & Griglia</strong>
+            <button id="btn-close-map-panel" style="background: transparent; color: white; border: none; font-size: 16px; cursor: pointer;">✕</button>
+        </div>
+
+        <!-- Sezione 1: Sincronizzazione & Permessi -->
+        <div style="background: #222; padding: 8px; border-radius: 5px; border-left: 3px solid #4caf50; font-size: 12px; display:flex; flex-direction:column; gap:5px;">
+            <strong style="color: #4caf50; font-size: 12px;">Visuale & Permessi:</strong>
+            <label style="display:flex; align-items:center; gap:5px; cursor:pointer; color: #4caf50; font-weight: bold;">
+                <input type="checkbox" id="sync-view-toggle"> 
+                <span data-i18n="Sincronizza Vista Giocatori (Pan/Zoom)">Sincronizza Vista Giocatori (Pan/Zoom)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:5px; cursor:pointer; color: #ff9800; font-weight: bold;">
+                <input type="checkbox" id="hide-toolbar-toggle"> 
+                <span data-i18n="Nascondi Barra Giocatori (Modalit&agrave; TV)">Nascondi Barra Giocatori (Modalit&agrave; TV)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:5px; cursor:pointer; color: #4caf50; font-weight: bold;">
+                <input type="checkbox" id="lock-dm-map-toggle"> 
+                <span>Blocca Movimento Mappa Master</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:5px; cursor:pointer; color: #f44336; font-weight: bold;">
+                <input type="checkbox" id="lock-map-toggle"> 
+                <span data-i18n="Blocca Mappa Player">Blocca Mappa Player</span>
+            </label>
+        </div>
+
+        <!-- Sezione 2: Caricamento File Mappa -->
+        <div style="background: #222; padding: 8px; border-radius: 5px; border-left: 3px solid #2196f3; font-size: 12px; display:flex; flex-direction:column; gap:6px;">
+            <strong style="color: #2196f3; font-size: 12px;">Carica Immagini:</strong>
+            <label class="file-label" data-i18n="Carica Mappa" style="margin: 0; background: #388e3c; border-color: #2e7d32; cursor: pointer; text-align: center; padding: 6px; border-radius: 4px;">📁 Carica Mappa dal PC
+                <input type="file" id="map-upload" accept="image/*" style="display:none;">
+            </label>
+            <label class="file-label" style="background: #0288d1; border-color: #0277bd; margin: 0; cursor: pointer; text-align: center; padding: 6px; border-radius: 4px;">🖼️ Condividi Immagine Handout
+                <input type="file" id="share-image-upload" accept="image/*" style="display:none;">
+            </label>
+        </div>
+
+        <!-- Sezione 3: Configurazione Griglia -->
+        <div style="background: #222; padding: 8px; border-radius: 5px; border-left: 3px solid #ffcc00; font-size: 12px; display:flex; flex-direction:column; gap:6px;">
+            <strong style="color: #ffcc00; font-size: 12px;">Regolazione Griglia:</strong>
+            <div>
+                <label>Dimensione Celle (px):</label>
+                <div style="display: flex; gap: 5px; align-items: center; margin-top: 3px;">
+                    <input type="range" id="grid-size-slider" min="20" max="300" value="100" style="flex: 2; cursor: pointer;">
+                    <input type="number" id="grid-size" value="100" style="flex: 1; background: #111; color: white; border: 1px solid #555; padding: 3px; border-radius: 3px; text-align: center;">
+                </div>
+            </div>
+            <div style="display: flex; width: 100%; gap: 6px; align-items: center; margin-top: 4px;">
+                <div style="flex: 1;">
+                    <label>Colore:</label>
+                    <input type="color" id="grid-color" value="#000000" style="width: 100%; height: 28px; cursor: pointer; border: none; background: none; margin-top: 2px;">
+                </div>
+                <div style="flex: 1.5;">
+                    <label>Bagliore Griglia:</label>
+                    <select id="grid-glow" style="width: 100%; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px; margin-top: 2px;">
+                        <option value="none">Nessuno</option>
+                        <option value="white">Bianco</option>
+                        <option value="black">Nero</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pannello Zone d'Effetto (AoE) DM (Flottante) -->
+    <div id="aoe-panel" style="display:none; position: absolute; bottom: 80px; right: 80px; background: rgba(30, 30, 30, 0.95); border: 2px solid #ff5722; border-radius: 8px; padding: 12px; color: white; box-shadow: 0 6px 15px rgba(0,0,0,0.6); z-index: 1000; width: 340px; max-height: 520px; flex-direction: column; gap: 10px; font-family: sans-serif; box-sizing: border-box; overflow-y: auto;">
+        <div id="aoe-panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #555; padding-bottom: 6px; cursor: move;">
+            <strong style="color: #ff5722; font-size: 15px;">🪄 Zone d'Effetto (AoE)</strong>
+            <button id="btn-close-aoe-panel" style="background: transparent; color: white; border: none; font-size: 16px; cursor: pointer;">✕</button>
+        </div>
+
+        <!-- Sezione 1: Crea Nuova AoE -->
+        <div style="background: #222; padding: 8px; border-radius: 5px; border-left: 3px solid #ff5722; font-size: 12px; display:flex; flex-direction:column; gap:6px;">
+            <strong style="color: #ff5722; font-size: 12px;">Crea Nuova Sagoma:</strong>
+            <select id="aoe-type" style="width: 100%; background: #111; color: white; border: 1px solid #555; padding: 5px; border-radius: 3px;">
+                <option value="circle">Cerchio (Sfera/Cilindro)</option>
+                <option value="cone">Cono</option>
+                <option value="line">Linea</option>
+                <option value="square">Quadrato (Cubo)</option>
+            </select>
+            <div style="display: flex; width: 100%; gap: 5px; align-items: center;">
+                <input type="number" id="aoe-size" value="15" step="1.5" min="0" style="flex: 2; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;" title="Dimensione">
+                <input type="number" id="aoe-width" value="5" step="1" min="0" style="flex: 1.2; display: none; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;" title="Spessore (solo Linea)">
+                <select id="aoe-unit" style="flex: 1; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;" title="Unità">
+                    <option value="ft">ft</option>
+                    <option value="m">m</option>
+                </select>
+                <input type="color" id="aoe-color" value="#ff0000" style="flex: 1; height: 28px; cursor: pointer; border: none; background: none;" title="Colore">
+            </div>
+            <button id="btn-add-aoe" style="width: 100%; background: #ff5722; color: white; font-weight: bold; border: none; padding: 6px; border-radius: 4px; cursor: pointer; margin-top: 2px;">+ Crea AoE al Centro Mappa</button>
+        </div>
+
+        <!-- Sezione 2: Modifica AoE Selezionata -->
+        <div id="selected-shape-controls" style="display: none; background: #222; padding: 8px; border-radius: 5px; border-left: 3px solid #00bcd4; font-size: 12px; flex-direction: column; gap: 6px;">
+            <strong style="color: #00bcd4; font-size: 12px;">Modifica AoE Selezionata:</strong>
+            <div style="display: flex; gap: 5px;">
+                <button id="btn-shape-rot-left" style="flex:1; background: #444; color: white; border: none; padding: 5px; border-radius: 3px; cursor: pointer;">↩️ Ruota sx</button>
+                <button id="btn-shape-rot-right" style="flex:1; background: #444; color: white; border: none; padding: 5px; border-radius: 3px; cursor: pointer;">Ruota dx ↪️</button>
+            </div>
+            <div style="display: flex; gap: 5px; align-items: center;">
+                <input type="number" id="shape-edit-size" step="5" min="0" style="flex:2; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;" title="Modifica Dimensione">
+                <input type="number" id="shape-edit-width" step="1" min="0" style="flex:1.2; display:none; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;" title="Spessore (solo Linea)">
+                <select id="shape-edit-unit" style="flex: 1; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;">
+                    <option value="ft">ft</option>
+                    <option value="m">m</option>
+                </select>
+                <button id="btn-delete-shape" style="background-color: #d32f2f; color: white; border: none; padding: 5px 8px; border-radius: 3px; cursor: pointer; font-weight: bold; flex:1.5;">Elimina</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pannello Audio & Soundboard DM -->
+    <div id="audio-panel" style="display:none; position: absolute; bottom: 80px; right: 80px; background: rgba(30, 30, 30, 0.95); border: 2px solid #9c27b0; border-radius: 8px; padding: 12px; color: white; box-shadow: 0 6px 15px rgba(0,0,0,0.6); z-index: 1000; width: 340px; max-height: 520px; flex-direction: column; gap: 10px; font-family: sans-serif; box-sizing: border-box;">
+        <div id="audio-panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #555; padding-bottom: 6px; cursor: move;">
+            <strong style="color: #ba68c8; font-size: 15px;">🎵 Audio & Soundboard</strong>
+            <button id="btn-close-audio-panel" style="background: transparent; color: white; border: none; font-size: 16px; cursor: pointer;">✕</button>
+        </div>
+
+        <!-- Selettore Tab -->
+        <div style="display: flex; gap: 5px;">
+            <button id="tab-btn-audio-music" style="flex: 1; background: #9c27b0; color: white; border: none; padding: 6px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px;">🎶 Ambiente (BGM)</button>
+            <button id="tab-btn-audio-sfx" style="flex: 1; background: #444; color: white; border: none; padding: 6px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px;">🔊 Soundboard (SFX)</button>
+        </div>
+
+        <!-- Sezione 1: Musica & Ambiente -->
+        <div id="audio-section-music" style="display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto;">
+            <div style="background: #222; padding: 8px; border-radius: 5px; font-size: 12px; border-left: 3px solid #ba68c8;">
+                In riproduzione: <br><strong id="audio-bgm-title" style="color: #ffcc00; font-size: 13px;">Nessuna</strong>
+            </div>
+
+            <!-- Controlli Player -->
+            <div style="display: flex; gap: 5px;">
+                <button id="btn-bgm-resume" style="flex: 1; background: #4caf50; color: white; border: none; padding: 6px; border-radius: 4px; cursor: pointer; font-weight: bold;">▶ Riprendi</button>
+                <button id="btn-bgm-pause" style="flex: 1; background: #ff9800; color: white; border: none; padding: 6px; border-radius: 4px; cursor: pointer; font-weight: bold;">⏸ Pausa</button>
+                <button id="btn-bgm-stop" style="flex: 1; background: #f44336; color: white; border: none; padding: 6px; border-radius: 4px; cursor: pointer; font-weight: bold;">⏹ Stop</button>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" id="bgm-loop-check" checked> Loop Continuo
+                </label>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <span>Volume DM:</span>
+                    <input type="range" id="dm-audio-volume" min="0" max="20" value="3" style="width: 60px; cursor: pointer;">
+                    <span id="dm-volume-label" style="font-size:11px; color:#ba68c8; min-width:25px;">3%</span>
+                </div>
+            </div>
+
+            <!-- Carica Traccia / Incolla Link -->
+            <div style="background: #222; padding: 8px; border-radius: 5px; display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+                <strong>Nuova Traccia:</strong>
+                <input type="text" id="bgm-custom-title" placeholder="Nome traccia (es. Taverna)..." style="background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;">
+                <input type="text" id="bgm-custom-url" placeholder="Incolla URL audio (mp3/ogg)..." style="background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <label style="cursor: pointer; background: #333; padding: 3px 6px; border-radius: 3px; font-size: 11px; border: 1px solid #555;">
+                        📁 Scegli File PC
+                        <input type="file" id="bgm-custom-file" accept="audio/*" style="display: none;">
+                    </label>
+                    <div style="display: flex; gap: 4px;">
+                        <button id="btn-bgm-play-custom" style="background: #9c27b0; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-weight: bold;">▶ Suona</button>
+                        <button id="btn-bgm-save-playlist" style="background: #555; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer;">+ Playlist</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Playlist Predefinite & Salvate -->
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <strong style="font-size: 12px; color: #ba68c8;">Playlist Ambientale:</strong>
+                <div id="audio-playlist-list" style="display: flex; flex-direction: column; gap: 4px; max-height: 140px; overflow-y: auto;">
+                    <!-- Popolato da JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Sezione 2: Soundboard (Effetti Rapidi SFX) -->
+        <div id="audio-section-sfx" style="display: none; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto;">
+            <div style="font-size: 12px; color: #aaa;">Clicca un pad per riprodurlo all'istante a tutti i giocatori!</div>
+            <div id="audio-sfx-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
+                <!-- Popolato da JS con i pad sonori -->
+            </div>
+
+            <!-- Aggiungi Pad Custom -->
+            <div style="background: #222; padding: 8px; border-radius: 5px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; margin-top: 5px;">
+                <strong>Aggiungi Effetto Rapido:</strong>
+                <input type="text" id="sfx-custom-title" placeholder="Nome effetto (es. 💣 Trappola)..." style="background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;">
+                <input type="text" id="sfx-custom-url" placeholder="Incolla link audio..." style="background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <label style="cursor: pointer; background: #333; padding: 3px 6px; border-radius: 3px; font-size: 11px; border: 1px solid #555;">
+                        📁 Scegli File PC
+                        <input type="file" id="sfx-custom-file" accept="audio/*" style="display: none;">
+                    </label>
+                    <button id="btn-sfx-add-pad" style="background: #7b1fa2; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-weight: bold;">+ Aggiungi Pad</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Fine Dadi e Audio -->
+
+    <!-- Pannello Libreria Token DM (Flottante) -->
+    <div id="token-panel" style="display:none; position: absolute; bottom: 80px; right: 80px; background: rgba(26, 26, 26, 0.96); border: 2px solid #00897b; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 6px 16px rgba(0,0,0,0.65); z-index: 1000; width: 340px; max-height: 540px; flex-direction: column; gap: 8px; font-family: sans-serif; box-sizing: border-box;">
+        <div id="token-panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 5px; cursor: move; user-select: none;">
+            <strong style="color: #4db6ac; font-size: 14px; display: flex; align-items: center; gap: 5px;">♟️ Libreria Token</strong>
+            <button id="btn-close-token-panel" type="button" style="background: none; border: none; color: #aaa; cursor: pointer; font-size: 16px; padding: 0 4px;" title="Chiudi">✕</button>
+        </div>
+
+        <!-- Barra Caricamento Token -->
+        <div style="display: flex; gap: 5px;">
+            <label style="flex: 1; background: #00897b; color: white; padding: 5px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; text-align: center; cursor: pointer; white-space: nowrap;" title="Seleziona una cartella dal PC (legge tutte le immagini all'interno)">
+                📁 Cartella PC
+                <input type="file" id="token-folder-input" webkitdirectory directory multiple style="display:none;">
+            </label>
+            <label style="flex: 1; background: #333; color: white; border: 1px solid #555; padding: 5px 6px; border-radius: 4px; font-size: 11px; text-align: center; cursor: pointer; white-space: nowrap;" title="Seleziona uno o più file immagine">
+                🖼️ File Singoli
+                <input type="file" id="token-file-input" multiple accept="image/*" style="display:none;">
+            </label>
+            <button id="btn-clear-token-library" type="button" style="background: #333; color: #e57373; border: 1px solid #555; padding: 5px 6px; border-radius: 4px; font-size: 11px; cursor: pointer;" title="Svuota la libreria personale salvata">🗑️</button>
+        </div>
+
+        <!-- Schede (Tab): In Mappa vs Libreria vs Compendio -->
+        <div style="display: flex; gap: 4px; border-bottom: 1px solid #444; padding-bottom: 5px;">
+            <button id="tab-tokens-map" type="button" class="token-tab-btn active" style="flex: 1; padding: 5px 4px; font-size: 11px; font-weight: bold; background: #00897b; color: white; border: none; border-radius: 3px; cursor: pointer;">
+                🗺️ In Mappa <span id="badge-count-map" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 1px 5px; font-size: 10px; margin-left: 2px;">0</span>
+            </button>
+            <button id="tab-tokens-library" type="button" class="token-tab-btn" style="flex: 1; padding: 5px 4px; font-size: 11px; font-weight: normal; background: #222; color: #aaa; border: 1px solid #444; border-radius: 3px; cursor: pointer;">
+                📁 Libreria <span id="badge-count-library" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 1px 5px; font-size: 10px; margin-left: 2px;">0</span>
+            </button>
+            <button id="btn-open-compendium-from-panel" type="button" style="padding: 5px 8px; font-size: 11px; font-weight: bold; background: #b71c1c; color: white; border: none; border-radius: 3px; cursor: pointer;" title="Apri Compendio Mostri & Schede Statistiche">
+                📖 Mostri
+            </button>
+        </div>
+
+        <!-- Barra di Ricerca -->
+        <input type="text" id="token-search" placeholder="🔍 Cerca token per nome..." style="background: #111; color: white; border: 1px solid #555; padding: 5px 8px; border-radius: 4px; font-size: 12px; width: 100%; box-sizing: border-box;">
+
+        <!-- Area Gallerie con Scroll (max-height ~240px) -->
+        <div style="position: relative; flex: 1; min-height: 180px; max-height: 250px; overflow-y: auto; background: #141414; border: 1px solid #333; border-radius: 4px; padding: 6px;">
+            <!-- Galleria 1: In Mappa -->
+            <div id="token-gallery-map" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;"></div>
+            <!-- Galleria 2: Libreria Globale -->
+            <div id="token-gallery-library" style="display: none; grid-template-columns: repeat(4, 1fr); gap: 6px;"></div>
+            <!-- Empty state placeholder -->
+            <div id="token-gallery-empty" style="display: none; text-align: center; color: #777; font-size: 11.5px; padding: 25px 10px;">
+                Nessun token trovato. Carica una cartella o apri una mappa con pedine!
+            </div>
+        </div>
+
+        <!-- Zona Drag & Drop Hint -->
+        <div id="token-drop-zone-hint" style="border: 1px dashed #444; border-radius: 4px; padding: 4px; text-align: center; font-size: 10.5px; color: #888;">
+            💡 Trascina qui file o cartelle dal PC per caricarli subito
+        </div>
+
+        <!-- Impostazioni Rapide Nuovi Token -->
+        <div style="background: #202020; border: 1px solid #383838; border-radius: 4px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="font-size: 11px; color: #4db6ac; font-weight: bold;">Piazzamento nuovi token:</div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+                <select id="token-size-select" style="flex: 1.2; background: #111; color: white; border: 1px solid #555; border-radius: 3px; padding: 3px; font-size: 11px;">
+                    <option value="1">Taglia: Media (1x1)</option>
+                    <option value="2">Taglia: Grande (2x2)</option>
+                    <option value="3">Taglia: Enorme (3x3)</option>
+                    <option value="4">Taglia: Mastod. (4x4)</option>
+                </select>
+                <select id="token-visibility-select" style="flex: 1.1; background: #111; color: white; border: 1px solid #555; border-radius: 3px; padding: 3px; font-size: 11px;">
+                    <option value="visible">👁️ Visibile</option>
+                    <option value="hidden">🙈 Nascosto</option>
+                </select>
+                <div style="display: flex; align-items: center; gap: 3px; flex: 0.9;" title="Punti Ferita predefiniti a piena vita (lascia vuoto per disattivare la barra dei PV)">
+                    <span style="font-size: 11px; color: #ef5350; font-weight: bold;">❤️</span>
+                    <input type="number" id="token-default-hp" placeholder="PV Full" min="0" style="width: 100%; background: #111; color: white; border: 1px solid #555; border-radius: 3px; padding: 3px 4px; font-size: 11px; text-align: center;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/network.js?v=2"></script>
+    <script src="js/engine.js?v=125"></script>
+
+    <script src="js/dice.js?v=123"></script>
+    <script src="js/audio.js?v=116"></script>
+    <script src="js/dm.js?v=128"></script>
+    <script src="js/compendium.js?v=6"></script>
     <script src="js/initiative.js?v=23"></script>
 <script>
     document.querySelectorAll('.section h3').forEach(h3 => {

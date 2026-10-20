@@ -131,7 +131,10 @@ function setupInitiative() {
             isToken: true,
             tokenId: t.id,
             isHidden: !t.visible,
-            init: ''
+            init: '',
+            hpCurrent: t.hpCurrent,
+            hpMax: t.hpMax,
+            ac: t.ac || 0
         });
     });
     
@@ -146,6 +149,7 @@ function renderTrackerList() {
         const isCurrent = engine.initiative.active && engine.initiative.currentTurnIndex === index;
         const bg = isCurrent ? '#2e7d32' : (index % 2 === 0 ? '#333' : '#444');
         const hiddenIcon = p.isHidden ? ' 👁️‍🗨️' : '';
+        const acBadge = (p.ac && p.ac > 0) ? `<span style="font-size:10px; color:#4fc3f7; font-weight:bold; margin-left:3px; white-space:nowrap;" title="Classe Armatura: ${p.ac}">🛡️${p.ac}</span>` : '';
         
         const div = document.createElement('div');
         div.style.display = 'flex';
@@ -156,8 +160,9 @@ function renderTrackerList() {
         div.style.alignItems = 'center';
         
                 div.innerHTML = `
-            <div style="flex: 2; font-size: 13px; font-weight: ${isCurrent ? 'bold' : 'normal'};">
-                <input type="text" value="${p.name}" onchange="updateParticipantName(${index}, this.value)" style="width: 80%; background:transparent; color:white; border:none; border-bottom:1px solid #777;">
+            <div style="flex: 2; font-size: 13px; font-weight: ${isCurrent ? 'bold' : 'normal'}; display:flex; align-items:center;">
+                <input type="text" value="${p.name}" onchange="updateParticipantName(${index}, this.value)" style="width: 70%; background:transparent; color:white; border:none; border-bottom:1px solid #777;">
+                ${acBadge}
                 ${hiddenIcon}
             </div>
             <div style="flex: 1; text-align: center;">

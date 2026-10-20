@@ -102,7 +102,12 @@ class VTTEngine {
         }
         
         this.fitToScreen();
-        this.resetFog();
+        if (this.pendingFogImage) {
+            this.applyFogImage(this.pendingFogImage);
+            this.pendingFogImage = null;
+        } else {
+            this.resetFog();
+        }
         this.renderAll();
     }
 
@@ -236,6 +241,37 @@ class VTTEngine {
         });
     }
 
+    getConditionIcon(text) {
+        if (!text) return '⭐';
+        const str = text.toLowerCase();
+        if (str.includes('accec') || str.includes('blind')) return '🙈';
+        if (str.includes('affasc') || str.includes('charm')) return '💖';
+        if (str.includes('afferr') || str.includes('grapp')) return '✊';
+        if (str.includes('assord') || str.includes('deaf')) return '🔇';
+        if (str.includes('avvel') || str.includes('poison')) return '🤢';
+        if (str.includes('inab') || str.includes('incapac')) return '💫';
+        if (str.includes('invis')) return '👻';
+        if (str.includes('paral')) return '⚡';
+        if (str.includes('pietr') || str.includes('petrif')) return '🗿';
+        if (str.includes('privo') || str.includes('sensi') || str.includes('unconsc') || str.includes('sonno') || str.includes('sleep')) return '💤';
+        if (str.includes('pron') || str.includes('terra') || str.includes('prone')) return '🧎';
+        if (str.includes('spav') || str.includes('fright') || str.includes('fear')) return '😱';
+        if (str.includes('stord') || str.includes('stun')) return '😵';
+        if (str.includes('tratt') || str.includes('restrain') || str.includes('intra')) return '🕸️';
+        if (str.includes('sfin') || str.includes('exhaust')) return '📉';
+        if (str.includes('fuoc') || str.includes('fire') || str.includes('burn')) return '🔥';
+        if (str.includes('ghiac') || str.includes('cold') || str.includes('ice') || str.includes('gelo')) return '❄️';
+        if (str.includes('acido') || str.includes('acid')) return '🧪';
+        if (str.includes('sangu') || str.includes('bleed')) return '🩸';
+        if (str.includes('scudo') || str.includes('shield')) return '🛡️';
+        if (str.includes('rigener') || str.includes('heal') || str.includes('cura')) return '💚';
+        if (str.includes('concentr')) return '🧘';
+        if (str.includes('ispir')) return '🎲';
+        if (str.includes('benediz') || str.includes('bless')) return '✨';
+        if (str.includes('malediz') || str.includes('curse')) return '💀';
+        return '⭐';
+    }
+
     renderTokens() {
         const ctx = this.ctx.tokens;
         
@@ -319,7 +355,7 @@ class VTTEngine {
                 }
         });
 
-        // Draw Conditions on top
+        // Draw Overlays: Nome, Barra PV, e Condizioni in PRIMO PIANO
         this.tokens.forEach(token => {
             if (!this.isDM && !token.visible) return;
             
@@ -327,7 +363,157 @@ class VTTEngine {
             const py = token.y;
             const sizePx = token.width;
             
-                        let activeConditions = [];
+            // 1. Targhetta con Nome (ALL'INTERNO del token, ZONA ALTA)
+            const displayName = token.name || (token.originalName ? token.originalName.replace(/\.[^/.]+$/, "") : '');
+            const nameVis = token.nameVisibility || 'all'; // 'all', 'dm', 'hidden'
+            const canShowName = this.isDM ? (nameVis !== 'hidden') : (nameVis === 'all');
+
+            if (canShowName && displayName) {
+                ctx.save();
+                
+                const badgeH = 18;
+                const badgeW = token.width - 4;
+                const badgeX = token.x + 2;
+                const badgeY = token.y + 2; // In cima, dentro al riquadro
+
+                // Sfondo barra superiore
+                const isDMOnly = (this.isDM && nameVis === 'dm');
+                ctx.fillStyle = isDMOnly ? 'rgba(45, 15, 60, 0.88)' : 'rgba(0, 0, 0, 0.75)';
+
+                ctx.beginPath();
+                if (ctx.roundRect) {
+                    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 3);
+                } else {
+                    ctx.rect(badgeX, badgeY, badgeW, badgeH);
+                }
+                ctx.fill();
+
+                ctx.strokeStyle = isDMOnly ? '#ba68c8' : 'rgba(255, 255, 255, 0.25)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // Calcolo dinamico dimensione testo per massima leggibilità
+                let fontSize = 14;
+                ctx.font = `bold ${fontSize}px Arial`;
+                const maxTextW = badgeW - 6;
+                while (ctx.measureText(displayName).width > maxTextW && fontSize > 9) {
+                    fontSize--;
+                    ctx.font = `bold ${fontSize}px Arial`;
+                }
+
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                // Contorno nero marcato per renderlo chiarissimo
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 3.5;
+                ctx.strokeText(displayName, token.x + token.width / 2, badgeY + badgeH / 2 + 1);
+
+                ctx.fillStyle = isDMOnly ? '#f3e5f5' : '#ffffff';
+                ctx.fillText(displayName, token.x + token.width / 2, badgeY + badgeH / 2 + 1);
+                ctx.restore();
+            }
+
+            // 2. Health Bar (ZONA BASSA)
+            const hpStyle = this.hpDisplayStyle || 'bar';
+            const showBar = this.isDM || hpStyle === 'bar' || hpStyle === 'both';
+            
+            if (showBar && token.hpMax && token.hpMax > 0) {
+                if (this.isDM || token.hpVisibleToPlayers !== false) {
+                    const hpMax = token.hpMax;
+                    const hpCurr = token.hpCurrent || 0;
+                    const percent = Math.max(0, Math.min(1, hpCurr / hpMax));
+                    
+                    let barColor = '#9e9e9e'; // Grigiastra (morto)
+                    if (percent > 0) {
+                        if (percent > 0.66) barColor = '#4caf50'; // Verde
+                        else if (percent > 0.33) barColor = '#ffeb3b'; // Gialla
+                        else barColor = '#f44336'; // Rossa
+                    }
+                    if (percent >= 1.0) barColor = '#00bcd4'; // Celeste
+                    
+                    const isDMBar = this.isDM;
+                    const barHeight = isDMBar ? 16 : 10;
+                    const barY = token.y + token.height - barHeight - 3;
+                    
+                    const text = `${hpCurr}/${hpMax}`;
+                    const fontSize = Math.max(10, Math.min(12, Math.round(barHeight * 0.72)));
+                    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+                    const textW = ctx.measureText(text).width;
+                    
+                    // Capsula compatta ed agile: larghezza calibrata per ospitare comodamente gli HP
+                    const desiredW = isDMBar ? Math.round(textW + 24) : Math.round(Math.min(token.width * 0.55, 60));
+                    const maxBarW = Math.max(30, token.width - 8);
+                    const barWidth = Math.min(Math.max(desiredW, isDMBar ? 50 : 36), maxBarW);
+                    const barX = Math.round(token.x + (token.width - barWidth) / 2);
+                    const barRadius = Math.round(barHeight / 2);
+                    
+                    ctx.save();
+                    // 1. Sfondo scuro della capsula con leggera ombra
+                    ctx.save();
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+                    ctx.shadowBlur = 4;
+                    ctx.shadowOffsetY = 1;
+                    ctx.beginPath();
+                    if (ctx.roundRect) {
+                        ctx.roundRect(barX, barY, barWidth, barHeight, barRadius);
+                    } else {
+                        ctx.rect(barX, barY, barWidth, barHeight);
+                    }
+                    ctx.fillStyle = 'rgba(18, 18, 18, 0.88)';
+                    ctx.fill();
+                    ctx.restore();
+                    
+                    // 2. Clip per il riempimento progressivo arrotondato ai bordi
+                    ctx.save();
+                    ctx.beginPath();
+                    if (ctx.roundRect) {
+                        ctx.roundRect(barX, barY, barWidth, barHeight, barRadius);
+                    } else {
+                        ctx.rect(barX, barY, barWidth, barHeight);
+                    }
+                    ctx.clip();
+                    
+                    if (this.isDM) {
+                        const fillWidth = barWidth * percent;
+                        if (fillWidth > 0) {
+                            ctx.fillStyle = barColor;
+                            ctx.fillRect(barX, barY, fillWidth, barHeight);
+                        }
+                    } else {
+                        ctx.fillStyle = barColor;
+                        ctx.fillRect(barX, barY, barWidth, barHeight);
+                    }
+                    ctx.restore();
+                    
+                    // 3. Bordo sottile di rifinitura per la capsula
+                    ctx.beginPath();
+                    if (ctx.roundRect) {
+                        ctx.roundRect(barX, barY, barWidth, barHeight, barRadius);
+                    } else {
+                        ctx.rect(barX, barY, barWidth, barHeight);
+                    }
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                    
+                    // 4. Testo HP centrato (DM View)
+                    if (this.isDM) {
+                        ctx.fillStyle = '#ffffff';
+                        ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.strokeStyle = '#000000';
+                        ctx.lineWidth = 2.5;
+                        ctx.strokeText(text, token.x + token.width / 2, barY + barHeight / 2 + 0.5);
+                        ctx.fillText(text, token.x + token.width / 2, barY + barHeight / 2 + 0.5);
+                    }
+                    ctx.restore();
+                }
+            }
+
+            // 3. Draw Conditions IN PRIMO PIANO (sopra a nome e barra PV!)
+            let activeConditions = [];
             if (token.conditions && token.conditions.length > 0) {
                 activeConditions = token.conditions;
             } else if (token.condition && token.condition.active) {
@@ -339,22 +525,74 @@ class VTTEngine {
                 const cy = py + sizePx/2;
                 const style = this.conditionDisplayStyle || 'concentric';
                 
-                ctx.save();
-                ctx.translate(cx, cy);
-                
-                if (style === 'concentric') {
-                    activeConditions.forEach((cond, index) => {
-                        const condRadius = sizePx/2 + 10 + (index * 20); // Ogni anello è più largo di 20px
+                // A) Anelli Concentrici / Spicchi
+                if (style === 'concentric' || style === 'segmented' || style === 'both') {
+                    ctx.save();
+                    ctx.translate(cx, cy);
+                    
+                    if (style === 'concentric' || style === 'both') {
+                        activeConditions.forEach((cond, index) => {
+                            const condRadius = sizePx/2 + 10 + (index * 20); // Ogni anello è più largo di 20px
+                            
+                            // Anello
+                            ctx.beginPath();
+                            ctx.arc(0, 0, condRadius, 0, Math.PI * 2);
+                            ctx.strokeStyle = cond.color;
+                            ctx.lineWidth = 4;
+                            ctx.stroke();
+                            
+                            // Testo curvo
+                            let text = (cond.text || "CONDIZIONE").toUpperCase() + "  •  ";
+                            ctx.font = `bold 16px Arial`;
+                            ctx.fillStyle = "white";
+                            ctx.strokeStyle = "black";
+                            ctx.lineWidth = 3;
+                            ctx.textBaseline = "middle";
+                            ctx.textAlign = "center";
+                            
+                            const textWidth = ctx.measureText(text).width;
+                            const circumference = 2 * Math.PI * condRadius;
+                            
+                            let repeats = Math.floor(circumference / (textWidth + 15));
+                            if (repeats < 1) repeats = 1;
+                            
+                            const arcPerRepeat = (2 * Math.PI) / repeats;
+                            
+                            for (let r = 0; r < repeats; r++) {
+                                let currentAngle = -Math.PI / 2 + r * arcPerRepeat;
+                                
+                                for (let i = 0; i < text.length; i++) {
+                                    const char = text[i];
+                                    const charWidth = ctx.measureText(char).width;
+                                    const angle = charWidth / condRadius;
+                                    
+                                    ctx.save();
+                                    ctx.rotate(currentAngle + angle/2);
+                                    ctx.translate(0, -condRadius);
+                                    ctx.strokeText(char, 0, 0);
+                                    ctx.fillText(char, 0, 0);
+                                    ctx.restore();
+                                    
+                                    currentAngle += angle;
+                                }
+                            }
+                        });
+                    } else if (style === 'segmented') {
+                        const condRadius = sizePx/2 + 10;
+                        const numConds = activeConditions.length;
+                        const arcLen = (2 * Math.PI) / numConds;
                         
-                        // Anello
-                        ctx.beginPath();
-                        ctx.arc(0, 0, condRadius, 0, Math.PI * 2);
-                        ctx.strokeStyle = cond.color;
-                        ctx.lineWidth = 4;
-                        ctx.stroke();
+                        // Disegna gli spicchi colorati
+                        for (let i = 0; i < numConds; i++) {
+                            ctx.beginPath();
+                            ctx.arc(0, 0, condRadius, i * arcLen, (i + 1) * arcLen);
+                            ctx.strokeStyle = activeConditions[i].color;
+                            ctx.lineWidth = 4;
+                            ctx.stroke();
+                        }
                         
-                        // Testo curvo
-                        let text = (cond.text || "CONDIZIONE").toUpperCase() + "  •  ";
+                        // Testo curvo unito
+                        let text = activeConditions.map(c => (c.text || "").toUpperCase()).join(" • ") + " • ";
                         ctx.font = `bold 16px Arial`;
                         ctx.fillStyle = "white";
                         ctx.strokeStyle = "black";
@@ -377,7 +615,7 @@ class VTTEngine {
                                 const char = text[i];
                                 const charWidth = ctx.measureText(char).width;
                                 const angle = charWidth / condRadius;
-                                
+                                    
                                 ctx.save();
                                 ctx.rotate(currentAngle + angle/2);
                                 ctx.translate(0, -condRadius);
@@ -388,115 +626,190 @@ class VTTEngine {
                                 currentAngle += angle;
                             }
                         }
-                    });
-                } else if (style === 'segmented') {
-                    const condRadius = sizePx/2 + 10;
-                    const numConds = activeConditions.length;
-                    const arcLen = (2 * Math.PI) / numConds;
-                    
-                    // Disegna gli spicchi colorati
-                    for (let i = 0; i < numConds; i++) {
-                        ctx.beginPath();
-                        ctx.arc(0, 0, condRadius, i * arcLen, (i + 1) * arcLen);
-                        ctx.strokeStyle = activeConditions[i].color;
-                        ctx.lineWidth = 4;
-                        ctx.stroke();
                     }
                     
-                    // Testo curvo unito
-                    let text = activeConditions.map(c => (c.text || "").toUpperCase()).join(" • ") + " • ";
-                    ctx.font = `bold 16px Arial`;
-                    ctx.fillStyle = "white";
-                    ctx.strokeStyle = "black";
-                    ctx.lineWidth = 3;
-                    ctx.textBaseline = "middle";
-                    ctx.textAlign = "center";
-                    
-                    const textWidth = ctx.measureText(text).width;
-                    const circumference = 2 * Math.PI * condRadius;
-                    
-                    let repeats = Math.floor(circumference / (textWidth + 15));
-                    if (repeats < 1) repeats = 1;
-                    
-                    const arcPerRepeat = (2 * Math.PI) / repeats;
-                    
-                    for (let r = 0; r < repeats; r++) {
-                        let currentAngle = -Math.PI / 2 + r * arcPerRepeat;
-                        
-                        for (let i = 0; i < text.length; i++) {
-                            const char = text[i];
-                            const charWidth = ctx.measureText(char).width;
-                            const angle = charWidth / condRadius;
-                            
-                            ctx.save();
-                            ctx.rotate(currentAngle + angle/2);
-                            ctx.translate(0, -condRadius);
-                            ctx.strokeText(char, 0, 0);
-                            ctx.fillText(char, 0, 0);
-                            ctx.restore();
-                            
-                            currentAngle += angle;
-                        }
-                    }
+                    ctx.restore();
                 }
-                
-                ctx.restore();
-            }
 
-            
-            // Health Bar
-            const hpStyle = this.hpDisplayStyle || 'bar';
-            const showBar = this.isDM || hpStyle === 'bar' || hpStyle === 'both';
-            
-            if (showBar && token.hpMax && token.hpMax > 0) {
-                if (this.isDM || token.hpVisibleToPlayers !== false) {
-                    const hpMax = token.hpMax;
-                    const hpCurr = token.hpCurrent || 0;
-                    const percent = Math.max(0, Math.min(1, hpCurr / hpMax));
-                    
-                    let barColor = '#9e9e9e'; // Grigiastra (morto)
-                    if (percent > 0) {
-                        if (percent > 0.66) barColor = '#4caf50'; // Verde
-                        else if (percent > 0.33) barColor = '#ffeb3b'; // Gialla
-                        else barColor = '#f44336'; // Rossa
+                // B) Pillole con Nome (es. [ Prono ]) - Ancorate sopra la vita / sotto il nome
+                if (style === 'pills') {
+                    const hasHpBar = (this.isDM || hpStyle === 'bar' || hpStyle === 'both') && 
+                                     token.hpMax && token.hpMax > 0 && 
+                                     (this.isDM || token.hpVisibleToPlayers !== false);
+                    const barHeight = this.isDM ? 16 : 10;
+                    const barTopY = hasHpBar ? (py + sizePx - barHeight - 3) : (py + sizePx - 2);
+
+                    const canShowName = (this.isDM || token.nameVisibleToPlayers !== false) && token.name && token.name.trim() !== '';
+                    const nameBottomY = canShowName ? (py + 21) : (py + 2);
+
+                    const pillH = Math.max(16, Math.min(22, Math.round(sizePx * 0.20)));
+                    const fontSize = Math.max(9, Math.min(12, Math.round(pillH * 0.58)));
+                    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+
+                    const formatTitleCase = (str) => {
+                        if (!str) return 'Condizione';
+                        return str.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+                    };
+
+                    const pillItems = activeConditions.map(cond => {
+                        const labelText = formatTitleCase(cond.text || cond.type);
+                        const textW = ctx.measureText(labelText).width;
+                        const padX = Math.max(6, Math.round(pillH * 0.35));
+                        const w = Math.round(textW + (padX * 2));
+                        return { cond, text: labelText, w };
+                    });
+
+                    // Distribuzione delle righe:
+                    // Riga Bassa (sopra barra PV): condizioni 1 e 2
+                    // Riga Alta (sotto targhetta nome): condizioni 3 e 4
+                    let bottomRow = [];
+                    let topRow = [];
+
+                    if (pillItems.length === 1) {
+                        bottomRow = [pillItems[0]];
+                    } else if (pillItems.length === 2) {
+                        // Se due condizioni lunghe eccedono eccessivamente la larghezza del token, le dividiamo
+                        if ((pillItems[0].w + pillItems[1].w + 4) > (sizePx * 1.35) && sizePx < 90) {
+                            bottomRow = [pillItems[0]];
+                            topRow = [pillItems[1]];
+                        } else {
+                            bottomRow = [pillItems[0], pillItems[1]];
+                        }
+                    } else if (pillItems.length === 3) {
+                        bottomRow = [pillItems[0], pillItems[1]];
+                        topRow = [pillItems[2]];
+                    } else {
+                        // 4 o più
+                        bottomRow = [pillItems[0], pillItems[1]];
+                        topRow = [pillItems[2], pillItems[3]];
                     }
-                    if (percent >= 1.0) barColor = '#00bcd4'; // Celeste
+
+                    const bottomRowY = barTopY - pillH - 1;
+                    const topRowY = nameBottomY + 1;
+
+                    const drawPillRow = (items, rowY) => {
+                        if (!items || items.length === 0) return;
+                        const gap = 3;
+                        const totalW = items.reduce((sum, it) => sum + it.w, 0) + ((items.length - 1) * gap);
+                        let startX = px + (sizePx / 2) - (totalW / 2);
+
+                        ctx.save();
+                        items.forEach(item => {
+                            const pillX = Math.round(startX);
+                            const pillW = item.w;
+                            const pillRadius = Math.round(pillH / 2);
+
+                            // 1. Ombra esterna netta
+                            ctx.save();
+                            ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+                            ctx.shadowBlur = 4;
+                            ctx.shadowOffsetY = 1;
+
+                            // 2. Sfondo scuro compatto
+                            ctx.beginPath();
+                            if (ctx.roundRect) {
+                                ctx.roundRect(pillX, rowY, pillW, pillH, pillRadius);
+                            } else {
+                                ctx.rect(pillX, rowY, pillW, pillH);
+                            }
+                            ctx.fillStyle = '#141414';
+                            ctx.fill();
+                            ctx.restore();
+
+                            // 3. Bordo vivo con colore della condizione
+                            ctx.beginPath();
+                            if (ctx.roundRect) {
+                                ctx.roundRect(pillX, rowY, pillW, pillH, pillRadius);
+                            } else {
+                                ctx.rect(pillX, rowY, pillW, pillH);
+                            }
+                            ctx.strokeStyle = item.cond.color || '#ff9800';
+                            ctx.lineWidth = 2.2;
+                            ctx.stroke();
+
+                            // 4. Testo nitido centrato ad alto contrasto
+                            ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            
+                            ctx.strokeStyle = '#000000';
+                            ctx.lineWidth = 2.5;
+                            ctx.strokeText(item.text, pillX + (pillW / 2), rowY + (pillH / 2) + 0.5);
+
+                            ctx.fillStyle = '#ffffff';
+                            ctx.fillText(item.text, pillX + (pillW / 2), rowY + (pillH / 2) + 0.5);
+
+                            startX += pillW + gap;
+                        });
+                        ctx.restore();
+                    };
+
+                    drawPillRow(bottomRow, bottomRowY);
+                    drawPillRow(topRow, topRowY);
+                }
+
+                // C) Badge Icone Grandi ad Alto Contrasto (Sfondo Bianco Luminoso + Emoji Grande)
+                if (style === 'badges' || style === 'both') {
+                    // Dimensione generosa: raggio min 16px (diametro 32px), fino a 24px (diametro 48px)
+                    const badgeRadius = Math.max(16, Math.min(24, Math.round(sizePx * 0.22)));
+                    const badgeDiameter = badgeRadius * 2;
+                    const gap = 4;
+                    const numBadges = activeConditions.length;
+                    const totalW = (numBadges * badgeDiameter) + ((numBadges - 1) * gap);
                     
-                    const isDMBar = this.isDM;
-                    const barHeight = isDMBar ? 16 : 8;
-                    const barY = token.y + token.height - barHeight - 2;
-                    const barWidth = token.width - 4;
-                    const barX = token.x + 2;
+                    // Posiziona i badge fluttuanti sopra il token
+                    let badgeCenterY = py - badgeRadius - 4;
+                    if (badgeCenterY < badgeRadius + 2) {
+                        badgeCenterY = py + sizePx + badgeRadius + 4;
+                    }
                     
+                    const startX = px + (sizePx / 2) - (totalW / 2) + badgeRadius;
+
                     ctx.save();
-                    // Background
-                    ctx.fillStyle = 'rgba(0,0,0,0.7)';
-                    ctx.fillRect(barX, barY, barWidth, barHeight);
-                    
-                    if (this.isDM) {
-                        // DM View: barra progressiva + testino
-                        const fillWidth = barWidth * percent;
-                        ctx.fillStyle = barColor;
-                        ctx.fillRect(barX, barY, fillWidth, barHeight);
-                        
-                        ctx.fillStyle = 'white';
-                        ctx.font = 'bold 12px Arial';
+                    activeConditions.forEach((cond, i) => {
+                        const bx = startX + i * (badgeDiameter + gap);
+                        const by = badgeCenterY;
+
+                        // Ombra profonda per staccare nettamente da qualsiasi mappa
+                        ctx.save();
+                        ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+                        ctx.shadowBlur = 6;
+                        ctx.shadowOffsetY = 2;
+
+                        // Sfondo BIANCO PURO: garantisce contrasto e visibilità a tutte le emoji
+                        ctx.beginPath();
+                        ctx.arc(bx, by, badgeRadius, 0, Math.PI * 2);
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fill();
+                        ctx.restore();
+
+                        // Bordo spesso colorato della condizione
+                        ctx.beginPath();
+                        ctx.arc(bx, by, badgeRadius, 0, Math.PI * 2);
+                        ctx.strokeStyle = cond.color || '#ff9800';
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
+
+                        // Anellino interno per rifinitura grafica
+                        ctx.beginPath();
+                        ctx.arc(bx, by, badgeRadius - 2, 0, Math.PI * 2);
+                        ctx.strokeStyle = 'rgba(0, 0, 0, 0.12)';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+
+                        // Icona Emoji grande e nitida
+                        const icon = this.getConditionIcon(cond.text || cond.type);
+                        const fontSize = Math.round(badgeDiameter * 0.65);
+                        ctx.font = `${fontSize}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
-                        ctx.strokeStyle = 'black';
-                        ctx.lineWidth = 3;
-                        const text = `${hpCurr}/${hpMax}`;
-                        ctx.strokeText(text, token.x + token.width/2, barY + barHeight/2 + 1);
-                        ctx.fillText(text, token.x + token.width/2, barY + barHeight/2 + 1);
-                    } else {
-                        // Player View: barra sempre piena ma colorata
-                        ctx.fillStyle = barColor;
-                        ctx.fillRect(barX, barY, barWidth, barHeight);
-                    }
+                        ctx.fillText(icon, bx, by + 1);
+                    });
                     ctx.restore();
                 }
             }
 
+            // 4. Bordo Selezione
             if (this.isDM && (this.selectedTokenId === token.id || this.selectedTokens.has(token.id))) {
                 ctx.strokeStyle = this.selectedTokenId === token.id ? '#0288d1' : '#00bcd4';
                 ctx.lineWidth = 4;
@@ -766,11 +1079,14 @@ class VTTEngine {
     }
 
     applyFogImage(base64Image) {
+        if (!base64Image) return;
         const img = new Image();
         img.onload = () => {
-            const ctx = this.ctx.fog;
-            ctx.clearRect(0,0, this.layers.fog.width, this.layers.fog.height);
-            ctx.drawImage(img, 0, 0);
+            if (this.layers.fog.width > 0 && this.layers.fog.height > 0) {
+                const ctx = this.ctx.fog;
+                ctx.clearRect(0, 0, this.layers.fog.width, this.layers.fog.height);
+                ctx.drawImage(img, 0, 0, this.layers.fog.width, this.layers.fog.height);
+            }
         };
         img.src = base64Image;
     }

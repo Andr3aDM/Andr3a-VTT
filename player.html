@@ -10,6 +10,35 @@
         body { margin: 0; overflow: hidden; background-color: #000; }
         #sidebar { display: none; }
         #main-canvas-container { left: 0; cursor: default; }
+
+        #btn-toggle-toolbar {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1005;
+            width: 38px;
+            height: 38px;
+            border-radius: 8px;
+            background: rgba(34, 34, 34, 0.85);
+            border: 2px solid #ffcc00;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+        #btn-toggle-toolbar:hover {
+            background: rgba(50, 50, 50, 0.95);
+            transform: scale(1.05);
+        }
+        #btn-toggle-toolbar.active {
+            border-color: #ff5252;
+            color: #ff5252;
+        }
     </style>
 </head>
 <body>
@@ -95,7 +124,10 @@
         </div>
     </div>
 
-    <div id="player-toolbar" style="position: absolute; bottom: 20px; left: 20px; z-index: 1000; background: rgba(34,34,34,0.9); border: 2px solid #ffcc00; border-radius: 8px; padding: 10px; display: flex; gap: 10px; color: white; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+    <!-- Tasto compatto per mostrare/nascondere la barra strumenti (Default nascosta per TV e Giocatori) -->
+    <button id="btn-toggle-toolbar" title="Mostra Strumenti (Tasto H)">🛠️</button>
+
+    <div id="player-toolbar" style="display: none; position: absolute; bottom: 20px; left: 68px; z-index: 1000; background: rgba(34,34,34,0.9); border: 2px solid #ffcc00; border-radius: 8px; padding: 8px 12px; gap: 10px; color: white; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
         <input type="color" id="player-color" value="#00ffff" title="Il tuo Colore (per Disegni e Ping)" style="cursor:pointer; width:30px; height:30px; padding:0; border:none; background:none;">
                             <button id="pbtn-chat" class="ptool-btn" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Chat Log">💬</button>
           <div style="width: 1px; height: 30px; background: #555; margin: 0 5px;"></div>
@@ -109,36 +141,97 @@
         <button id="pbtn-line" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Crea Linea">➖</button>
         <button id="pbtn-square" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Crea Quadrato">🔲</button>
           <button id="pbtn-dice" class="ptool-btn" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Tira Dadi">🎲</button>
-          </div>
+          <div style="width: 1px; height: 30px; background: #555; margin: 0 5px;"></div>
+          <button id="pbtn-audio" class="ptool-btn" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Audio & Volume">🔊</button>
+          <button id="pbtn-close-toolbar" style="background:none; border:none; color:#aaa; font-size:16px; cursor:pointer; padding: 2px 6px; margin-left: 2px; border-radius: 4px;" title="Chiudi Barra Strumenti (Tasto H)">✕</button>
+    </div>
 
 
     <!-- Dadi e Chat Player -->
-    <div id="dice-panel" style="display:none; position: absolute; bottom: 70px; left: 20px; background: rgba(34, 34, 34, 0.95); border: 2px solid #ffcc00; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 1000;">
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 10px;">
-            <button class="roll-btn" data-dice="4" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d4</button>
-            <button class="roll-btn" data-dice="6" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d6</button>
-            <button class="roll-btn" data-dice="8" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d8</button>
-            <button class="roll-btn" data-dice="10" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d10</button>
-            <button class="roll-btn" data-dice="12" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d12</button>
-            <button class="roll-btn" data-dice="20" style="padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d20</button>
-            <button class="roll-btn" data-dice="100" style="grid-column: span 3; padding:5px; background:#444; color:white; border:none; border-radius:3px; cursor:pointer;">d100</button>
+    <div id="dice-panel" style="display:none; flex-direction: column; gap: 8px; position: absolute; bottom: 70px; left: 20px; width: 230px; background: rgba(28, 28, 28, 0.96); border: 2px solid #ffcc00; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 4px 14px rgba(0,0,0,0.6); z-index: 1000; font-family: sans-serif; box-sizing: border-box;">
+        <div id="dice-panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 5px; cursor: move; width: 100%; box-sizing: border-box;">
+            <strong style="color: #ffcc00; font-size: 13px;">🎲 Pannello Dadi</strong>
+            <button id="btn-dice-reset" type="button" style="background: #333; color: #ffcc00; border: 1px solid #ffcc00; border-radius: 3px; font-size: 11px; padding: 2px 8px; cursor: pointer; font-weight: bold; transition: all 0.15s;" title="Azzera tutti i dadi e modificatori">✕ Azzera</button>
         </div>
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-            <span style="font-size: 14px;">Bonus:</span>
-            <input type="number" id="dice-bonus" value="0" style="width: 50px; background: #111; color: white; border: 1px solid #555; text-align: center;">
+
+        <div style="background: #181818; border: 1px solid #3a3a3a; border-radius: 4px; padding: 6px 8px; display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box;">
+            <span style="font-size: 11px; color: #888;">Tiro:</span>
+            <span id="dice-pool-display" style="font-size: 12.5px; font-weight: bold; color: #888; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px;">Nessun dado</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; width: 100%; box-sizing: border-box;">
+            <button class="roll-btn" data-dice="4" type="button" style="padding: 7px 2px; background: #383838; color: white; border: 1px solid #484848; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 3px;">d4 <span class="dice-badge" style="display:none; background:#ffcc00; color:#111; font-size:10px; font-weight:bold; border-radius:8px; padding:0 4px;">0</span></button>
+            <button class="roll-btn" data-dice="6" type="button" style="padding: 7px 2px; background: #383838; color: white; border: 1px solid #484848; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 3px;">d6 <span class="dice-badge" style="display:none; background:#ffcc00; color:#111; font-size:10px; font-weight:bold; border-radius:8px; padding:0 4px;">0</span></button>
+            <button class="roll-btn" data-dice="8" type="button" style="padding: 7px 2px; background: #383838; color: white; border: 1px solid #484848; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 3px;">d8 <span class="dice-badge" style="display:none; background:#ffcc00; color:#111; font-size:10px; font-weight:bold; border-radius:8px; padding:0 4px;">0</span></button>
+            <button class="roll-btn" data-dice="10" type="button" style="padding: 7px 2px; background: #383838; color: white; border: 1px solid #484848; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 3px;">d10 <span class="dice-badge" style="display:none; background:#ffcc00; color:#111; font-size:10px; font-weight:bold; border-radius:8px; padding:0 4px;">0</span></button>
+            <button class="roll-btn" data-dice="12" type="button" style="padding: 7px 2px; background: #383838; color: white; border: 1px solid #484848; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 3px;">d12 <span class="dice-badge" style="display:none; background:#ffcc00; color:#111; font-size:10px; font-weight:bold; border-radius:8px; padding:0 4px;">0</span></button>
+            <button class="roll-btn" data-dice="20" type="button" style="padding: 7px 2px; background: #383838; color: white; border: 1px solid #484848; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 3px;">d20 <span class="dice-badge" style="display:none; background:#ffcc00; color:#111; font-size:10px; font-weight:bold; border-radius:8px; padding:0 4px;">0</span></button>
+            <button class="roll-btn" data-dice="100" type="button" style="grid-column: span 3; padding: 7px 2px; background: #383838; color: white; border: 1px solid #484848; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 3px;">d100 <span class="dice-badge" style="display:none; background:#ffcc00; color:#111; font-size:10px; font-weight:bold; border-radius:8px; padding:0 4px;">0</span></button>
+        </div>
+
+        <div style="background: #222; border-radius: 4px; padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; width: 100%; box-sizing: border-box;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 11.5px; color: #ddd;">Modificatore:</span>
+                <div style="display: flex; align-items: center; gap: 3px;">
+                    <button id="btn-bonus-minus" type="button" style="background:#333; color:white; border:1px solid #555; border-radius:3px; width:22px; height:22px; cursor:pointer; font-weight:bold; font-size:13px; padding:0; display:flex; align-items:center; justify-content:center;">-</button>
+                    <input type="number" id="dice-bonus" value="0" style="width: 44px; height: 22px; background: #111; color: white; border: 1px solid #555; text-align: center; border-radius: 3px; font-size: 12px; font-weight: bold; padding: 0; box-sizing: border-box;">
+                    <button id="btn-bonus-plus" type="button" style="background:#333; color:white; border:1px solid #555; border-radius:3px; width:22px; height:22px; cursor:pointer; font-weight:bold; font-size:13px; padding:0; display:flex; align-items:center; justify-content:center;">+</button>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                <span style="color: #aaa;">Applica a:</span>
+                <select id="dice-mod-mode" style="background: #111; color: white; border: 1px solid #555; border-radius: 3px; padding: 2px 4px; font-size: 11px; cursor: pointer;">
+                    <option value="total">Al Totale (Danno)</option>
+                    <option value="each">A ciascun dado (Vantaggio)</option>
+                </select>
+            </div>
+        </div>
+
+        <button id="btn-roll-dice" type="button" style="width: 100%; background: #ffcc00; color: #111; font-weight: bold; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); transition: all 0.15s; box-sizing: border-box;">🎲 Tira Dadi</button>
+        
+        <div id="dice-reroll-container" style="display: none; text-align: center; width: 100%; box-sizing: border-box;">
+            <button id="btn-dice-reroll" type="button" style="background: none; border: none; color: #00bcd4; font-size: 11px; cursor: pointer; text-decoration: underline; padding: 0;">🔄 Ripeti (<span id="dice-reroll-label"></span>)</button>
         </div>
     </div>
 
-    <div id="chat-panel" style="display:none; position: absolute; bottom: 70px; left: 180px; background: rgba(0, 0, 0, 0.7); border: 1px solid #444; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 1000; width: 300px; height: 250px; flex-direction: column;">
-        <strong style="margin-bottom: 5px; border-bottom: 1px solid #555; padding-bottom: 5px;">Storico Tiri</strong>
-        <ul id="chat-log" style="list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 5px; font-size: 14px;"></ul>
+    <div id="chat-panel" style="display:none; position: absolute; bottom: 70px; left: 180px; background: rgba(20, 20, 20, 0.95); border: 2px solid #2196f3; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.6); z-index: 1000; width: 310px; height: 260px; flex-direction: column; font-family: sans-serif; box-sizing: border-box;">
+        <div id="chat-panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 5px; margin-bottom: 6px; cursor: move;">
+            <strong style="color: #2196f3; font-size: 13px;">💬 Storico Tiri</strong>
+            <button id="btn-close-chat" type="button" style="background: none; border: none; color: #aaa; cursor: pointer; font-size: 14px; padding: 0 4px;" title="Chiudi Chat">✕</button>
+        </div>
+        <ul id="chat-log" style="list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 13px;"></ul>
     </div>
-    <!-- Fine Dadi -->
+
+    <!-- Pannello Audio Player -->
+    <div id="player-audio-panel" style="display:none; position: absolute; bottom: 70px; left: 180px; background: rgba(30, 30, 30, 0.95); border: 2px solid #9c27b0; border-radius: 8px; padding: 12px; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.6); z-index: 1000; width: 260px; flex-direction: column; gap: 8px; font-family: sans-serif; box-sizing: border-box;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid #555; padding-bottom: 5px; cursor: move;">
+            <strong style="color: #ba68c8; font-size: 14px;">🎵 Audio Partita</strong>
+            <button id="pbtn-audio-close" style="background:none; border:none; color:white; cursor:pointer; font-size: 14px;">✕</button>
+        </div>
+        <div style="font-size: 12px; background: #222; padding: 6px; border-radius: 4px; border-left: 3px solid #ba68c8;">
+            In riproduzione: <br><strong id="p-audio-current" style="color: #ffcc00; font-size: 13px;">Nessuna traccia</strong>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+            <button id="pbtn-audio-mute" style="background:#444; color:white; border:none; border-radius:4px; padding:5px 10px; cursor:pointer; font-size: 12px; font-weight: bold;">🔇 Muta Audio</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px;">
+            <div style="display:flex; justify-content:space-between; font-size:12px;">
+                <span>Volume Personale (max 20%):</span>
+                <span id="p-volume-label" style="font-weight: bold; color: #ba68c8;">3%</span>
+            </div>
+            <input type="range" id="p-volume-slider" min="0" max="20" value="3" style="width:100%; cursor:pointer;">
+        </div>
+        <div id="p-audio-unblock-hint" style="display:none; background:#ff9800; color:black; font-size:11px; padding:6px; border-radius:4px; font-weight:bold; cursor:pointer; text-align:center;">
+            ⚠️ Clicca qui per abilitare l'audio nel browser!
+        </div>
+    </div>
+    <!-- Fine Dadi e Audio -->
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
-    <script src="js/engine.js?v=104"></script>
-    <script src="js/network.js?v=1"></script>
-    <script src="js/dice.js?v=104"></script>
-    <script src="js/player.js?v=104"></script>
+    <script src="js/engine.js?v=125"></script>
+    <script src="js/network.js?v=2"></script>
+    <script src="js/dice.js?v=123"></script>
+    <script src="js/audio.js?v=116"></script>
+    <script src="js/player.js?v=122"></script>
 <script src="js/lang.js?v=1"></script>
 
     

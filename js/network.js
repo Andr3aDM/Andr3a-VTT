@@ -12,18 +12,28 @@ class NetworkManager {
         this.onMessageCallback = null;
         this.onConnectCallback = null;
         
+        this.listeners = [];
         // Setup offline channel di base
         this.bc = new BroadcastChannel('vtt_channel');
         this.bc.onmessage = (e) => {
-            if (this.onMessageCallback) {
-                // Accetta sempre messaggi locali (per debug/multi-tab ibrido)
-                this.onMessageCallback(e.data, 'local');
-            }
+            this._dispatch(e.data, 'local');
         };
     }
 
     onMessage(cb) { this.onMessageCallback = cb; }
     onConnect(cb) { this.onConnectCallback = cb; }
+    addListener(cb) {
+        if (!this.listeners) this.listeners = [];
+        this.listeners.push(cb);
+    }
+    _dispatch(data, peerId) {
+        if (this.onMessageCallback) this.onMessageCallback(data, peerId);
+        if (this.listeners) {
+            for (let i = 0; i < this.listeners.length; i++) {
+                try { this.listeners[i](data, peerId); } catch(e) { console.error(e); }
+            }
+        }
+    }
 
     // -- INIT OFFLINE --
     startOffline() {
@@ -71,7 +81,7 @@ class NetworkManager {
                         conn.send({ type: 'JOIN_ACCEPTED', payload: { } });
                         if (this.onConnectCallback) this.onConnectCallback(data.payload.name);
                     }
-                    if (this.onMessageCallback) this.onMessageCallback(data, conn.peer);
+                    this._dispatch(data, conn.peer);
                 });
                 conn.on('close', () => {
                     // Cerca di rimuoverlo se si disconnette
@@ -113,7 +123,7 @@ class NetworkManager {
                         resolve();
                         if(this.onConnectCallback) this.onConnectCallback();
                     }
-                    if (this.onMessageCallback) this.onMessageCallback(data, 'dm');
+                    this._dispatch(data, 'dm');
                 });
                 
                 this.hostConn.on('error', (err) => reject(err));
@@ -145,3 +155,4 @@ class NetworkManager {
     }
 }
 const network = new NetworkManager();
+window.network = network;
