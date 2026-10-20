@@ -16,7 +16,7 @@
   - [8. Basic & Tactical DM Tools](#8-basic--tactical-dm-tools)
   - [9. Area of Effect (AoE / Spell Shapes)](#9-area-of-effect-aoe--spell-shapes)
   - [10. Initiative Tracker](#10-initiative-tracker)
-  - [11. Monster Compendium & 5e.tools Integration](#11-monster-compendium--5etools-integration)
+  - [11. Monster Compendium & JSON Import](#11-monster-compendium--json-import)
   - [12. Virtual Dice Roller & Chat Log](#12-virtual-dice-roller--chat-log)
   - [13. Visual Handout Image Sharing](#13-visual-handout-image-sharing)
   - [14. Audio, Ambient Music & Procedural Soundboard](#14-audio-ambient-music--procedural-soundboard)
@@ -33,7 +33,7 @@
   - [8. Strumenti Base e Tattici del Master](#8-strumenti-base-e-tattici-del-master)
   - [9. Zone d'Effetto (AoE / Sagome Incantesimi)](#9-zone-deffetto-aoe--sagome-incantesimi)
   - [10. Tracker dell'Iniziativa](#10-tracker-delliniziativa)
-  - [11. Compendio Mostri e Integrazione 5e.tools](#11-compendio-mostri-e-integrazione-5etools)
+  - [11. Compendio Mostri e Importazione JSON](#11-compendio-mostri-e-importazione-json)
   - [12. Lanciatore di Dadi e Registro Chat](#12-lanciatore-di-dadi-e-registro-chat)
   - [13. Condivisione Immagini Handout](#13-condivisione-immagini-handout)
   - [14. Audio, Musica d'Ambiente e Soundboard Procedurale](#14-audio-musica-dambiente-e-soundboard-procedurale)
@@ -231,25 +231,25 @@ Click the golden **⚔️ Initiative Tracker** button to open the floating manag
 
 ---
 
-## 11. Monster Compendium & 5e.tools Integration
+## 11. Monster Compendium & JSON Import
 
 The compendium window (**📜 Compendio & Scheda Mostro**) offers monster statblocks and one-click dice rolling.
 
-### 11.1 Online Search & Link Parsing
+### 11.1 Online Search & Smart Bestiary Search
 - Type English creature names (e.g. *Goblin, Adult Red Dragon*) to query the online Open5e SRD database.
-- Paste a 5e.tools URL directly into the search bar (e.g. `https://5e.tools/bestiary.html#aarakocra%20skirmisher_xmm`); the app extracts the clean creature name and runs the search automatically.
+- If you paste an online bestiary URL or web anchor into the search bar, the app automatically extracts the clean creature name and runs the search instantly.
 
-### 11.2 5e.tools JSON & Token Art Import
+### 11.2 JSON Creature & Token Art Import
 Click **📥 Paste JSON** (`Incolla JSON`):
-1. Copy creature data from 5e.tools using *"Copy as JSON"*.
+1. Copy creature data in standard JSON format (from compatible digital tools, exports, or homebrew generators).
 2. Paste into the text area.
-3. **Tag Cleaning Engine (`clean5eToolsText`):** Automatically cleans proprietary markup tags:
+3. **Automatic Tag Cleaning Engine:** Automatically cleans and converts internal markup tags into clear, readable text:
    - `{@atk mw}` $\rightarrow$ *Melee Weapon Attack:*
    - `{@h}` $\rightarrow$ *Hit:*
    - `{@hit 5}` $\rightarrow$ *+5 to hit*
    - `{@damage 2d6+3}` $\rightarrow$ *2d6+3*
    - `{@dc 14}` $\rightarrow$ *DC 14*
-4. **Token Art Drag & Drop or Clipboard Paste:** Right-click the token image in 5e.tools, choose *"Copy Image"*, and press **`Ctrl+V`** inside the import modal. You can also drag-and-drop or select a file from disk.
+4. **Token Art Drag & Drop or Clipboard Paste:** Right-click any token or portrait image from your browser or favorite character builder, choose *"Copy Image"*, and press **`Ctrl+V`** inside the import modal. You can also drag-and-drop an image file directly or select it from your disk.
 
 ### 11.3 Interactive 1-Click Rolls
 All statblock values are interactive buttons:
@@ -551,25 +551,25 @@ Clicca sul pulsante giallo **⚔️ Tracker Iniziativa** in cima alla barra late
 
 ---
 
-## 11. Compendio Mostri e Integrazione 5e.tools
+## 11. Compendio Mostri e Importazione JSON
 
 La finestra compendio (**📜 Compendio & Scheda Mostro**) permette di consultare schede complete ed effettuare tiri di dado con un solo clic.
 
-### 11.1 Ricerca Online e Riconoscimento Link
+### 11.1 Ricerca Online e Riconoscimento Link Bestiario
 - Cerca qualsiasi mostro SRD in lingua inglese (es. *Goblin, Adult Red Dragon*).
-- Se incolli nella barra un link diretto da 5e.tools (es. `https://5e.tools/bestiary.html#aarakocra%20skirmisher_xmm`), il programma estrae automaticamente il nome della creatura e avvia la ricerca.
+- Se incolli nella barra un link diretto da un bestiario web contenente il riferimento alla creatura, il programma estrae automaticamente il nome pulito del mostro e avvia la ricerca all'istante.
 
-### 11.2 Importazione JSON e Token da 5e.tools
+### 11.2 Importazione JSON e Token Creatura
 Clicca su **📥 Incolla JSON**:
-1. Copia i dati del mostro da 5e.tools tramite la funzione *"Copy as JSON"*.
+1. Copia i dati del mostro in formato standard JSON (esportati da generatori homebrew o database compatibili).
 2. Incolla il testo nell'area dedicata.
-3. **Pulizia Automatica dei Tag (`clean5eToolsText`):** Vengono rimossi tutti i tag proprietari:
+3. **Motore di Pulizia Automatica dei Tag:** Riconosce e converte automaticamente i tag di markup interni per rendere il testo immediatamente leggibile:
    - `{@atk mw}` $\rightarrow$ *Melee Weapon Attack:*
    - `{@h}` $\rightarrow$ *Hit:*
    - `{@hit 5}` $\rightarrow$ *+5 to hit*
    - `{@damage 2d6+3}` $\rightarrow$ *2d6+3*
    - `{@dc 14}` $\rightarrow$ *DC 14*
-4. **Importazione Token via Appunti (`Ctrl+V`) o Drag & Drop:** Fai clic destro sul token in 5e.tools, seleziona *"Copia immagine"*, quindi premi **`Ctrl+V`** all'interno della finestra modale. Puoi anche trascinare un file immagine o caricarlo dal disco.
+4. **Importazione Token via Appunti (`Ctrl+V`) o Drag & Drop:** Fai clic destro sull'immagine o token di un mostro da qualsiasi sito o pagina web, seleziona *"Copia immagine"*, quindi premi semplicemente **`Ctrl+V`** all'interno della finestra modale. Puoi anche trascinare direttamente un file immagine o caricarlo dal disco.
 
 ### 11.3 Tiri Interattivi con 1 Clic
 Tutti i valori della scheda diventano bottoni cliccabili:
