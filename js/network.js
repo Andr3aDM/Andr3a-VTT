@@ -3,7 +3,7 @@ class NetworkManager {
         this.role = role; // 'dm' or 'player'
         this.mode = 'offline'; // 'offline', 'host', 'client'
         this.peer = null;
-        this.connections = {}; // Per il DM: mappa peerId -> connection
+        this.connections = {}; // Per il DM: mappa peerId -> { conn, name, chunkQueue, pumping }
         this.hostConn = null;  // Per il giocatore: connessione verso il DM
         this.roomId = null;
         this.playerName = null;
@@ -11,11 +11,16 @@ class NetworkManager {
         
         this.onMessageCallback = null;
         this.onConnectCallback = null;
-        
         this.listeners = [];
-        // Setup offline channel di base
+        this._incomingChunks = {}; // chunkId -> { total, received, parts }
+        this._chunkSeq = 0;
+
+        // Setup offline channel di base (solo per modalità locale/TV)
         this.bc = new BroadcastChannel('vtt_channel');
         this.bc.onmessage = (e) => {
+            // Se questo tab è connesso come client online PeerJS, ignora sempre il BroadcastChannel locale
+            // per evitare collisioni e "salti indietro nel tempo" quando si testa sullo stesso PC!
+            if (this.mode === 'client') return;
             this._dispatch(e.data, 'local');
         };
     }
@@ -26,6 +31,38 @@ class NetworkManager {
         if (!this.listeners) this.listeners = [];
         this.listeners.push(cb);
     }
+
+    _handleRawData(data, peerId) {
+        if (!data) return;
+        if (data.__chunked) {
+            const cid = data.id;
+            if (!this._incomingChunks[cid]) {
+                this._incomingChunks[cid] = {
+                    total: data.total,
+                    count: 0,
+                    parts: new Array(data.total)
+                };
+            }
+            const entry = this._incomingChunks[cid];
+            if (entry.parts[data.idx] === undefined) {
+                entry.parts[data.idx] = data.chunk;
+                entry.count++;
+            }
+            if (entry.count === entry.total) {
+                const fullJson = entry.parts.join('');
+                delete this._incomingChunks[cid];
+                try {
+                    const parsed = JSON.parse(fullJson);
+                    this._dispatch(parsed, peerId);
+                } catch (err) {
+                    console.error("Errore riassemblaggio pacchetto chunked:", err);
+                }
+            }
+            return;
+        }
+        this._dispatch(data, peerId);
+    }
+
     _dispatch(data, peerId) {
         if (this.onMessageCallback) this.onMessageCallback(data, peerId);
         if (this.listeners) {
@@ -45,7 +82,6 @@ class NetworkManager {
     // -- DM HOST --
     async hostRoom() {
         return new Promise((resolve, reject) => {
-            // Generiamo un ID random leggibile (es: ABCD-123)
             const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
             const numbers = "0123456789";
             let id = "";
@@ -66,28 +102,27 @@ class NetworkManager {
             
             this.peer.on('connection', (conn) => {
                 console.log("Nuovo giocatore in connessione...");
-                conn.on('open', () => {
-                    // Aspettiamo che il client mandi il primo messaggio col nome
-                });
+                conn.on('open', () => {});
                 conn.on('data', (data) => {
-                    if (data.type === 'PLAYER_JOIN') {
+                    if (data && data.type === 'PLAYER_JOIN') {
                         const pid = conn.peer;
                         this.connections[pid] = {
                             conn: conn,
-                            name: data.payload.name
+                            name: data.payload.name,
+                            chunkQueue: [],
+                            pumping: false
                         };
                         console.log(`Giocatore ${data.payload.name} unito.`);
-                        // Notifichiamo il client che è stato accettato
-                        conn.send({ type: 'JOIN_ACCEPTED', payload: { } });
-                        if (this.onConnectCallback) this.onConnectCallback(data.payload.name);
+                        conn.send({ type: 'JOIN_ACCEPTED', payload: {} });
+                        if (this.onConnectCallback) this.onConnectCallback(data.payload.name, pid);
                     }
-                    this._dispatch(data, conn.peer);
+                    this._handleRawData(data, conn.peer);
                 });
                 conn.on('close', () => {
-                    // Cerca di rimuoverlo se si disconnette
                     for(let k in this.connections) {
                         if (this.connections[k].conn === conn) {
                             console.log(`Giocatore ${this.connections[k].name} disconnesso.`);
+                            this.connections[k].chunkQueue = [];
                             delete this.connections[k];
                             break;
                         }
@@ -103,6 +138,17 @@ class NetworkManager {
             this.roomId = roomId.toUpperCase();
             this.playerName = playerName;
             this.playerId = 'player_' + Date.now();
+            this.mode = 'client';
+
+            // Chiudi subito il BroadcastChannel locale per evitare doppi messaggi e desincronizzazioni
+            // quando si aprono più tab sullo stesso PC!
+            if (this.bc) {
+                try {
+                    this.bc.onmessage = null;
+                    this.bc.close();
+                } catch (e) {}
+                this.bc = null;
+            }
             
             this.peer = new Peer();
             this.peer.on('open', (id) => {
@@ -110,7 +156,6 @@ class NetworkManager {
                 
                 this.hostConn.on('open', () => {
                     this.mode = 'client';
-                    // Invia i dati del giocatore per presentarsi
                     this.hostConn.send({
                         type: 'PLAYER_JOIN',
                         payload: { name: this.playerName, id: this.playerId }
@@ -118,12 +163,12 @@ class NetworkManager {
                 });
                 
                 this.hostConn.on('data', (data) => {
-                    if (data.type === 'JOIN_ACCEPTED') {
+                    if (data && data.type === 'JOIN_ACCEPTED') {
                         console.log("Connessione accettata dal DM.");
                         resolve();
                         if(this.onConnectCallback) this.onConnectCallback();
                     }
-                    this._dispatch(data, 'dm');
+                    this._handleRawData(data, 'dm');
                 });
                 
                 this.hostConn.on('error', (err) => reject(err));
@@ -132,25 +177,149 @@ class NetworkManager {
         });
     }
 
-    // -- INVIO DATI --
-    send(data, targetPeerId = null) {
-        if (this.mode === 'offline') {
-            this.bc.postMessage(data);
-        } else if (this.mode === 'host') {
-            if (targetPeerId && this.connections[targetPeerId]) {
-                // Invia a uno specifico giocatore
-                this.connections[targetPeerId].conn.send(data);
-            } else {
-                // Broadcast a tutti i giocatori
-                for (let k in this.connections) {
-                    this.connections[k].conn.send(data);
+    _canSendToConn(conn, isEphemeral) {
+        if (!conn || !conn.open) return false;
+        if (isEphemeral && conn.dataChannel && typeof conn.dataChannel.bufferedAmount === 'number') {
+            if (conn.dataChannel.bufferedAmount > 32768) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    _isEphemeralMessage(data) {
+        if (!data || data.final === true) return false;
+        if (data.ephemeral === true) return true;
+        const t = data.type;
+        return (
+            t === 'VIEW_SYNC' ||
+            t === 'LASER_SYNC' ||
+            t === 'GRID_MOVE_LIVE' ||
+            t === 'LIVE_DRAW_POINT' ||
+            t === 'HANDOUT_RECT_LIVE' ||
+            t === 'PLAYER_MOVE_TOKEN' ||
+            t === 'PLAYER_MOVE_SHAPE' ||
+            (t === 'REMOTE_TOKEN_MOVE' && !data.final) ||
+            (t === 'REMOTE_SHAPE_MOVE' && !data.final)
+        );
+    }
+
+    _isLargeMessage(data) {
+        if (!data) return false;
+        const t = data.type;
+        return (
+            t === 'MAP_UPDATE' ||
+            t === 'FOG_SYNC' ||
+            t === 'SHARED_IMAGE_DATA' ||
+            t === 'TOKEN_IMAGE_SYNC'
+        );
+    }
+
+    _enqueueChunkedToPeer(peerEntry, data) {
+        if (!peerEntry || !peerEntry.conn || !peerEntry.conn.open) return;
+        let jsonStr;
+        try {
+            jsonStr = JSON.stringify(data);
+        } catch (e) {
+            return;
+        }
+        // Se il pacchetto è piccolo (< 24 KB), invialo direttamente senza spezzettare
+        const CHUNK_SIZE = 24576;
+        if (jsonStr.length <= CHUNK_SIZE) {
+            peerEntry.conn.send(data);
+            return;
+        }
+
+        // Se arriva una nuova MAP_UPDATE o FOG_SYNC per questo peer, rimuovi eventuali vecchi chunk dello stesso tipo ancora in coda!
+        if (data.type === 'MAP_UPDATE' || data.type === 'FOG_SYNC') {
+            peerEntry.chunkQueue = peerEntry.chunkQueue.filter(item => item.msgType !== data.type);
+        }
+
+        const chunkId = 'chk_' + (++this._chunkSeq) + '_' + Date.now();
+        const total = Math.ceil(jsonStr.length / CHUNK_SIZE);
+        for (let i = 0; i < total; i++) {
+            peerEntry.chunkQueue.push({
+                msgType: data.type,
+                packet: {
+                    __chunked: true,
+                    id: chunkId,
+                    idx: i,
+                    total: total,
+                    chunk: jsonStr.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
+                }
+            });
+        }
+        this._pumpPeerQueue(peerEntry);
+    }
+
+    _pumpPeerQueue(peerEntry) {
+        if (!peerEntry || peerEntry.pumping) return;
+        peerEntry.pumping = true;
+
+        const step = () => {
+            if (!peerEntry.conn || !peerEntry.conn.open || peerEntry.chunkQueue.length === 0) {
+                peerEntry.pumping = false;
+                return;
+            }
+            const dc = peerEntry.conn.dataChannel;
+            // Invia chunk finché il buffer WebRTC è sotto 48 KB, lasciando sempre corsia libera
+            // ai messaggi prioritari in tempo reale (movimento token, aure, dadi, visibilità)!
+            while (peerEntry.chunkQueue.length > 0) {
+                if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 49152) {
+                    break;
+                }
+                const nextItem = peerEntry.chunkQueue.shift();
+                try {
+                    peerEntry.conn.send(nextItem.packet);
+                } catch (e) {
+                    break;
                 }
             }
-            // Mando anche sul broadcast locale nel caso il DM stia usando 
-            // sia il player offline che quelli online (modalità ibrida!)
-            this.bc.postMessage(data); 
+            if (peerEntry.chunkQueue.length > 0) {
+                setTimeout(step, 12);
+            } else {
+                peerEntry.pumping = false;
+            }
+        };
+        step();
+    }
+
+    // -- INVIO DATI --
+    send(data, targetPeerId = null) {
+        const isEphemeral = this._isEphemeralMessage(data);
+        const isLarge = this._isLargeMessage(data);
+
+        if (this.mode === 'offline') {
+            if (this.bc) this.bc.postMessage(data);
+        } else if (this.mode === 'host') {
+            if (targetPeerId === 'local') {
+                if (this.bc) this.bc.postMessage(data);
+                return;
+            }
+            if (targetPeerId && this.connections[targetPeerId]) {
+                const peerEntry = this.connections[targetPeerId];
+                if (isLarge) {
+                    this._enqueueChunkedToPeer(peerEntry, data);
+                } else if (this._canSendToConn(peerEntry.conn, isEphemeral)) {
+                    peerEntry.conn.send(data);
+                }
+                return;
+            }
+            // Broadcast a tutti i giocatori connessi
+            for (let k in this.connections) {
+                const peerEntry = this.connections[k];
+                if (isLarge) {
+                    this._enqueueChunkedToPeer(peerEntry, data);
+                } else if (this._canSendToConn(peerEntry.conn, isEphemeral)) {
+                    peerEntry.conn.send(data);
+                }
+            }
+            // Manda anche sul BroadcastChannel locale per eventuale schermo TV locale
+            if (this.bc) this.bc.postMessage(data);
         } else if (this.mode === 'client') {
-            if (this.hostConn) this.hostConn.send(data);
+            if (this._canSendToConn(this.hostConn, isEphemeral)) {
+                this.hostConn.send(data);
+            }
         }
     }
 }

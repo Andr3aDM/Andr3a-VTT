@@ -135,6 +135,7 @@ Configure token parameters before placement:
 ### 5.3 Selected Token Controls
 Selecting a token displays its property panel:
 - **Name & Visibility:** Edit the creature's title. Choose nameplate display: `All` (visible to everyone), `DM Only` (rendered with a distinct purple border visible only to the Master), or `Hidden`.
+- **Double-Click Statblock Access:** Double-clicking any token on the canvas instantly opens its monster statblock sheet (or opens the compendium window to assign one if unassigned).
 - **Smart Auto-Numbering:** Deploying multiple tokens of the same base type (e.g., Goblin) automatically assigns sequential names: *Goblin 1*, *Goblin 2*, *Goblin 3*.
 - **Ownership Assignment:** Assign a token to a specific connected player. Only that player (and the DM) can move the token.
 - **Duplication (`📋 Duplica` / `Ctrl+D`):** Clones the token at an offset position, preserving artwork, maximum HP, AC, conditions, and attached 5e statblock while auto-incrementing its numbering.
@@ -455,6 +456,7 @@ Imposta i parametri predefiniti prima dello schieramento:
 ### 5.3 Controlli del Token Selezionato
 Selezionando una pedina sulla mappa compaiono i suoi parametri:
 - **Nome e Visibilità Targhetta:** Modifica il nome del token e la visibilità della targhetta: `A tutti`, `Solo DM` (evidenziata con un bordo viola riservato al Master) o `Spento`.
+- **Accesso Rapido con Doppio Clic:** Facendo doppio clic su qualsiasi token direttamente sulla mappa si apre immediatamente la sua scheda statistiche (o la finestra del compendio pronta per assegnarne una se non ancora presente).
 - **Numerazione Intelligente:** Schierando più copie della stessa creatura (es. Goblin), il sistema assegna automaticamente *Goblin 1*, *Goblin 2*, *Goblin 3*.
 - **Assegnazione Giocatore:** Assegna il token a un giocatore connesso. Solo quel giocatore e il Master potranno muoverlo.
 - **Duplica Token (`📋 Duplica` / `Ctrl+D`):** Clona istantaneamente il token preservando immagine, dimensioni, PV massimi, CA, condizioni e scheda 5e associata, incrementando la numerazione.

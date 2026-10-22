@@ -944,9 +944,11 @@
     };
 
     window.getAudioState = function() {
+        const rawSrc = AudioState.bgmCurrent.src;
+        const safeSrc = (rawSrc && rawSrc.startsWith('data:')) ? null : rawSrc;
         return {
             bgm: {
-                src: AudioState.bgmCurrent.src,
+                src: safeSrc,
                 title: AudioState.bgmCurrent.title,
                 isPlaying: AudioState.bgmCurrent.isPlaying,
                 loop: AudioState.bgmCurrent.loop,

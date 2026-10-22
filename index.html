@@ -229,7 +229,7 @@
                 <span>📜</span> <span>Compendio & Scheda Mostro</span>
             </strong>
             <div style="display:flex; align-items:center; gap: 6px;">
-                <button id="btn-statblock-json-import" style="background: #333; color: #4db6ac; border: 1px solid #555; padding: 2px 7px; font-size: 11px; border-radius: 3px; cursor: pointer;" title="Incolla JSON da 5e.tools">📥 Incolla JSON</button>
+                <button id="btn-statblock-json-import" style="background: #333; color: #4db6ac; border: 1px solid #555; padding: 2px 7px; font-size: 11px; border-radius: 3px; cursor: pointer;" title="Incolla JSON Creatura">📥 Incolla JSON</button>
                 <button id="btn-close-statblock" style="background: transparent; color: #bbb; border: none; font-size: 16px; cursor: pointer; padding: 0 4px;" title="Chiudi">✕</button>
             </div>
         </div>
@@ -263,26 +263,29 @@
                 </label>
                 <span style="color: #888; font-size: 10px;">Clicca sui dadi 🎲 per tirare</span>
             </div>
-            <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center;">
-                <button id="btn-assign-statblock" style="flex: 1.5; background: #2e7d32; color: white; border: none; padding: 7px 10px; font-size: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;" title="Assegna questa scheda e i relativi PV/CA al token selezionato">
-                    <span>⚡ Assegna al Token Selezionato</span>
+            <div style="display: flex; gap: 6px; justify-content: space-between; align-items: center;">
+                <button id="btn-translate-statblock" style="flex: 1; min-width: 0; background: #6a1b9a; color: white; border: none; padding: 7px 4px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Traduci la scheda con la terminologia ufficiale D&D in Italiano">
+                    <span id="btn-translate-statblock-text">🇮🇹 Traduci IT</span>
                 </button>
-                <button id="btn-spawn-statblock-token" style="flex: 1; background: #0277bd; color: white; border: none; padding: 7px 10px; font-size: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;" title="Crea direttamente un nuovo token sulla mappa">
+                <button id="btn-assign-statblock" style="flex: 1; min-width: 0; background: #2e7d32; color: white; border: none; padding: 7px 4px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Assegna questa scheda e i relativi PV/CA al token selezionato">
+                    <span id="btn-assign-statblock-text">⚡ Assegna Token</span>
+                </button>
+                <button id="btn-spawn-statblock-token" style="flex: 1; min-width: 0; background: #0277bd; color: white; border: none; padding: 7px 4px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Crea direttamente un nuovo token sulla mappa">
                     <span>♟️ Crea Token</span>
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- Modale per incollare JSON da 5e.tools -->
+    <!-- Modale per incollare JSON Creatura -->
     <div id="modal-json-import" style="display:none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.75); z-index: 2000; align-items: center; justify-content: center;">
         <div style="background: #222; border: 2px solid #00897b; border-radius: 8px; width: 460px; padding: 15px; color: white; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.85);">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <strong style="color: #4db6ac; font-size: 13.5px; display:flex; align-items:center; gap:6px;">📥 Incolla JSON &amp; Token da 5e.tools</strong>
+                <strong style="color: #4db6ac; font-size: 13.5px; display:flex; align-items:center; gap:6px;">📥 Incolla JSON &amp; Token Creatura</strong>
                 <button id="btn-close-json-modal" style="background: none; border: none; color: #aaa; font-size: 16px; cursor: pointer;">✕</button>
             </div>
             <div style="font-size: 11px; color: #bbb;">
-                Copia il mostro in formato JSON da 5e.tools (<em>"Copy as JSON"</em>) e incollalo qui sotto:
+                Copia il mostro in formato JSON (<em>"Copy as JSON"</em>) e incollalo qui sotto:
             </div>
             <textarea id="json-import-textarea" placeholder='{"name": "Ancient Time Dragon", "ac": 22, "hp": 407, ...}' style="width: 100%; height: 130px; background: #111; color: #fff; border: 1px solid #555; border-radius: 4px; font-family: monospace; font-size: 11px; padding: 8px; box-sizing: border-box; resize: vertical;"></textarea>
 
@@ -295,7 +298,7 @@
                 <div style="flex: 1; font-size: 11px; color: #bbb;">
                     <div style="font-weight: bold; color: #80cbc4; margin-bottom: 2px;">🖼️ Token Ufficiale Mostro (Opzionale)</div>
                     <div id="json-token-status-text" style="font-size: 10.5px; color: #999;">
-                        Click destro sul token in 5e.tools &rarr; <em>"Copia immagine"</em> e premi <strong>Ctrl+V</strong> qui.
+                        Click destro sull'immagine &rarr; <em>"Copia immagine"</em> e premi <strong>Ctrl+V</strong> qui.
                     </div>
                 </div>
                 <button id="btn-clear-json-token" type="button" style="display: none; background: #333; color: #ef5350; border: 1px solid #555; border-radius: 4px; padding: 3px 6px; font-size: 10px; cursor: pointer;">✕ Rimuovi</button>
@@ -551,11 +554,13 @@
 
         <!-- Sezione 2: Caricamento File Mappa -->
         <div style="background: #222; padding: 8px; border-radius: 5px; border-left: 3px solid #2196f3; font-size: 12px; display:flex; flex-direction:column; gap:6px;">
-            <strong style="color: #2196f3; font-size: 12px;">Carica Immagini:</strong>
-            <label class="file-label" data-i18n="Carica Mappa" style="margin: 0; background: #388e3c; border-color: #2e7d32; cursor: pointer; text-align: center; padding: 6px; border-radius: 4px;">📁 Carica Mappa dal PC
+            <strong style="color: #2196f3; font-size: 12px;" data-i18n="Carica Immagini:">Carica Immagini:</strong>
+            <label for="map-upload" class="file-label" style="margin: 0; background: #388e3c; border-color: #2e7d32; cursor: pointer; text-align: center; padding: 6px; border-radius: 4px; display: block; user-select: none;">
+                <span data-i18n="📁 Carica Mappa dal PC">📁 Carica Mappa dal PC</span>
                 <input type="file" id="map-upload" accept="image/*" style="display:none;">
             </label>
-            <label class="file-label" style="background: #0288d1; border-color: #0277bd; margin: 0; cursor: pointer; text-align: center; padding: 6px; border-radius: 4px;">🖼️ Condividi Immagine Handout
+            <label for="share-image-upload" class="file-label" style="background: #0288d1; border-color: #0277bd; margin: 0; cursor: pointer; text-align: center; padding: 6px; border-radius: 4px; display: block; user-select: none;">
+                <span data-i18n="🖼️ Condividi Immagine Handout">🖼️ Condividi Immagine Handout</span>
                 <input type="file" id="share-image-upload" accept="image/*" style="display:none;">
             </label>
         </div>
@@ -796,13 +801,13 @@
         </div>
     </div>
 
-    <script src="js/network.js?v=2"></script>
-    <script src="js/engine.js?v=125"></script>
+    <script src="js/network.js?v=4"></script>
+    <script src="js/engine.js?v=127"></script>
 
     <script src="js/dice.js?v=123"></script>
-    <script src="js/audio.js?v=116"></script>
-    <script src="js/dm.js?v=128"></script>
-    <script src="js/compendium.js?v=6"></script>
+    <script src="js/audio.js?v=117"></script>
+    <script src="js/dm.js?v=135"></script>
+    <script src="js/compendium.js?v=13"></script>
     <script src="js/initiative.js?v=23"></script>
 <script>
     document.querySelectorAll('.section h3').forEach(h3 => {
@@ -811,7 +816,7 @@
         });
     });
 </script>
-<script src="js/lang.js?v=1"></script>
+<script src="js/lang.js?v=4"></script>
 
     
 

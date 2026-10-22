@@ -1,15 +1,364 @@
 /**
  * compendium.js - Gestione Compendio Mostri Open5e & Statblock DM
- * Permette di cercare mostri in tempo reale via Open5e, importare JSON e Token da 5e.tools,
- * ripulire tutti i tag e formattazioni interne ({h}, {hom}, {atk}, ecc.),
+ * Permette di cercare mostri in tempo reale via Open5e, importare JSON e Token creatura,
+ * ripulire tutti i tag e formattazioni interne ({h}, {hom}, {atk}, {@recharge}, ecc.),
+ * tradurre istantaneamente la scheda in Italiano con la terminologia ufficiale D&D 5e,
  * visualizzare la scheda completa e tirare i dadi con 1 click direttamente in chat!
  */
 
 (function() {
     const searchCache = new Map();
     let currentMonster = null;
+    let rawMonster = null;
+    let isItalianMode = false;
     let debounceTimer = null;
     let pendingImportTokenSrc = null;
+
+    function getEngine() {
+        return (typeof window !== 'undefined' && window.engine) ? window.engine : ((typeof engine !== 'undefined') ? engine : null);
+    }
+
+    // ==========================================
+    // TRADUZIONE GOOGLE BATCH (ALTA QUALITÀ)
+    // ==========================================
+    async function translateGoogle(text) {
+        if (!text || typeof text !== 'string' || !text.trim()) return text;
+        try {
+            const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=it&dt=t&q=' + encodeURIComponent(text);
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            if (Array.isArray(data) && Array.isArray(data[0])) {
+                return data[0].map(x => x[0]).join('');
+            }
+            return text;
+        } catch (e) {
+            return text;
+        }
+    }
+
+    async function translateBatch(texts) {
+        if (!texts || texts.length === 0) return [];
+        const validIndexes = [];
+        const toTranslate = [];
+        texts.forEach((t, i) => {
+            if (t && typeof t === 'string' && t.trim()) {
+                validIndexes.push(i);
+                toTranslate.push(t.trim());
+            }
+        });
+        if (toTranslate.length === 0) return texts;
+
+        const separator = '\n<<<SPLIT>>>\n';
+        const joined = toTranslate.join(separator);
+        const translatedJoined = await translateGoogle(joined);
+        const split = translatedJoined.split(/<<<SPLIT>>>/i).map(s => s.trim());
+
+        const result = [...texts];
+        validIndexes.forEach((origIdx, i) => {
+            if (split[i] !== undefined) result[origIdx] = split[i];
+        });
+        return result;
+    }
+
+    function preProcessEnglish(text) {
+        if (!text || typeof text !== 'string') return text || '';
+        let t = text;
+        t = t.replace(/(\d+)-foot-radius\s+sphere/gi, 'sfera con raggio di [[$1]]');
+        t = t.replace(/(\d+)-foot-radius/gi, 'raggio di [[$1]]');
+        t = t.replace(/(\d+)-foot\s+cone/gi, 'cono di [[$1]]');
+        t = t.replace(/(\d+)-foot\s+line/gi, 'linea di [[$1]]');
+        t = t.replace(/(\d+)-foot\s+cube/gi, 'cubo di [[$1]]');
+        t = t.replace(/within\s+(\d+)\s*(?:feet|ft\.)/gi, 'entro [[$1]]');
+        return t;
+    }
+
+    function postProcessDndItalian(text) {
+        if (!text || typeof text !== 'string') return text || '';
+        let t = text;
+
+        // Ripristina distanze protette
+        t = t.replace(/\[\[\s*(\d+(?:\/\d+)?)\s*(?:ft\.|feet|piedi|m|metri)?\s*\]\]/gi, (m, p1) => p1 + ' ft.');
+
+        // Formule di attacco standard D&D
+        t = t.replace(/Melee or Ranged Weapon Attack:/gi, 'Attacco con Arma da Mischia o a Distanza:');
+        t = t.replace(/Melee Weapon Attack:/gi, 'Attacco con Arma da Mischia:');
+        t = t.replace(/Ranged Weapon Attack:/gi, 'Attacco con Arma a Distanza:');
+        t = t.replace(/Melee or Ranged Attack Roll:/gi, 'Attacco con Arma da Mischia o a Distanza:');
+        t = t.replace(/Melee Attack Roll:/gi, 'Attacco con Arma da Mischia:');
+        t = t.replace(/Ranged Attack Roll:/gi, 'Attacco con Arma a Distanza:');
+        t = t.replace(/Melee Spell Attack:/gi, 'Attacco con Incantesimo da Mischia:');
+        t = t.replace(/Ranged Spell Attack:/gi, 'Attacco con Incantesimo a Distanza:');
+        t = t.replace(/Attacco con arma da mischia o a distanza:/gi, 'Attacco con Arma da Mischia o a Distanza:');
+        t = t.replace(/Attacco con arma da mischia:/gi, 'Attacco con Arma da Mischia:');
+        t = t.replace(/Attacco con arma a distanza:/gi, 'Attacco con Arma a Distanza:');
+
+        // Hit & Miss
+        t = t.replace(/\bHit or Miss:/gi, 'Colpito o Mancato:');
+        t = t.replace(/\bHit:/gi, 'Colpito:');
+        t = t.replace(/\bMiss:/gi, 'Mancato:');
+
+        // Per colpire
+        t = t.replace(/\bto\s+hit\b/gi, 'per colpire');
+        t = t.replace(/\bper colpire,\s*portata/gi, 'per colpire, portata');
+
+        // Portata e Gittata
+        t = t.replace(/reach\s+(\d+(?:\.\d+)?)\s*ft\./gi, 'portata $1 ft.');
+        t = t.replace(/range\s+(\d+(?:\/\d+)?)\s*ft\./gi, 'gittata $1 ft.');
+        t = t.replace(/\bor range\b/gi, 'o gittata');
+        t = t.replace(/\b\s*or\s*(?=gittata)/gi, ' o ');
+        t = t.replace(/portata\s+(\d+(?:[.,]\d+)?)\s*(?:m|metri|piedi|feet)/gi, 'portata 5 ft.');
+        t = t.replace(/\b(?:portata|gittata)\s+(\d+\/\d+)\s*(?:piedi|feet|m|metri|ft\.)*/gi, 'gittata $1 ft.');
+        t = t.replace(/ft\.\s*ft\./gi, 'ft.');
+        t = t.replace(/entro\s+(\d+)\s*(?:piedi|feet|metri)/gi, 'entro $1 ft.');
+        t = t.replace(/raggio di\s+(\d+)\s*(?:piedi|feet|metri)/gi, 'raggio di $1 ft.');
+        t = t.replace(/one target\b/gi, 'un bersaglio');
+        t = t.replace(/one creature\b/gi, 'una creatura');
+
+        // CD & Tiri Salvezza
+        t = t.replace(/\bDC\s+(\d+)\b/gi, 'CD $1');
+        t = t.replace(/Strength saving throw/gi, 'tiro salvezza su Forza');
+        t = t.replace(/Dexterity saving throw/gi, 'tiro salvezza su Destrezza');
+        t = t.replace(/Constitution saving throw/gi, 'tiro salvezza su Costituzione');
+        t = t.replace(/Intelligence saving throw/gi, 'tiro salvezza su Intelligenza');
+        t = t.replace(/Wisdom saving throw/gi, 'tiro salvezza su Saggezza');
+        t = t.replace(/Charisma saving throw/gi, 'tiro salvezza su Carisma');
+        t = t.replace(/saving throw\b/gi, 'tiro salvezza');
+        t = t.replace(/saving throws\b/gi, 'tiri salvezza');
+        t = t.replace(/Tiro Salvezza/gi, 'tiro salvezza');
+        t = t.replace(/deve riuscire un tiro salvezza/gi, 'deve superare un tiro salvezza');
+
+        // Tipi di Danno
+        t = t.replace(/\bpiercing damage\b/gi, 'danni perforanti');
+        t = t.replace(/\bslashing damage\b/gi, 'danni taglienti');
+        t = t.replace(/\bbludgeoning damage\b/gi, 'danni contundenti');
+        t = t.replace(/\bpoison damage\b/gi, 'danni da veleno');
+        t = t.replace(/\bfire damage\b/gi, 'danni da fuoco');
+        t = t.replace(/\bcold damage\b/gi, 'danni da freddo');
+        t = t.replace(/\blightning damage\b/gi, 'danni da fulmine');
+        t = t.replace(/\bradiant damage\b/gi, 'danni radiosi');
+        t = t.replace(/\bnecrotic damage\b/gi, 'danni necrotici');
+        t = t.replace(/\bpsychic damage\b/gi, 'danni psichici');
+        t = t.replace(/\bacid damage\b/gi, 'danni da acido');
+        t = t.replace(/\bthunder damage\b/gi, 'danni da tuono');
+        t = t.replace(/\bforce damage\b/gi, 'danni da forza');
+
+        // Condizioni D&D
+        t = t.replace(/\bthe blinded condition\b/gi, 'la condizione di accecato');
+        t = t.replace(/\bthe charmed condition\b/gi, 'la condizione di affascinato');
+        t = t.replace(/\bthe frightened condition\b/gi, 'la condizione di spaventato');
+        t = t.replace(/\bthe paralyzed condition\b/gi, 'la condizione di paralizzato');
+        t = t.replace(/\bthe poisoned condition\b/gi, 'la condizione di avvelenato');
+        t = t.replace(/\bthe prone condition\b/gi, 'la condizione di prono');
+        t = t.replace(/\bthe restrained condition\b/gi, 'la condizione di trattenuto');
+        t = t.replace(/\bthe stunned condition\b/gi, 'la condizione di stordito');
+        t = t.replace(/\bthe unconscious condition\b/gi, 'la condizione di privo di sensi');
+
+        // Ricariche & Costi Azioni
+        t = t.replace(/\(Recharge\s*(\d+–6|\d+|-6)\)/gi, '(Ricarica $1)');
+        t = t.replace(/\(Recharge 6\)/gi, '(Ricarica 6)');
+        t = t.replace(/\(Costs 2 Actions\)/gi, '(Costa 2 Azioni)');
+        t = t.replace(/\(Costs 3 Actions\)/gi, '(Costa 3 Azioni)');
+        t = t.replace(/Half damage only\./gi, 'Solo la metà dei danni in caso di successo.');
+        t = t.replace(/Half danni only\./gi, 'Solo la metà dei danni in caso di successo.');
+
+        return t;
+    }
+
+    function translateAlignment(align) {
+        if (!align) return 'senza allineamento';
+        let val = Array.isArray(align) ? align.join(' ') : String(align);
+        val = val.trim();
+
+        const codeMap = {
+            'n': 'neutrale', 'u': 'senza allineamento', 'a': 'qualsiasi allineamento',
+            'lg': 'legale buono', 'l g': 'legale buono',
+            'ln': 'legale neutrale', 'l n': 'legale neutrale',
+            'le': 'legale malvagio', 'l e': 'legale malvagio',
+            'ng': 'neutrale buono', 'n g': 'neutrale buono',
+            'ne': 'neutrale malvagio', 'n e': 'neutrale malvagio',
+            'cg': 'caotico buono', 'c g': 'caotico buono',
+            'cn': 'caotico neutrale', 'c n': 'caotico neutrale',
+            'ce': 'caotico malvagio', 'c e': 'caotico malvagio',
+            'l': 'legale', 'c': 'caotico', 'g': 'buono', 'e': 'malvagio'
+        };
+        const lower = val.toLowerCase();
+        if (codeMap[lower]) return codeMap[lower];
+
+        const phraseMap = [
+            [/lawful good/gi, 'legale buono'], [/neutral good/gi, 'neutrale buono'],
+            [/chaotic good/gi, 'caotico buono'], [/lawful neutral/gi, 'legale neutrale'],
+            [/true neutral/gi, 'neutrale puro'], [/chaotic neutral/gi, 'caotico neutrale'],
+            [/lawful evil/gi, 'legale malvagio'], [/neutral evil/gi, 'neutrale malvagio'],
+            [/chaotic evil/gi, 'caotico malvagio'], [/unaligned/gi, 'senza allineamento'],
+            [/neutral/gi, 'neutrale']
+        ];
+        for (const [re, it] of phraseMap) {
+            val = val.replace(re, it);
+        }
+        return val;
+    }
+
+    function translateLanguages(lang) {
+        if (!lang) return '';
+        let l = Array.isArray(lang) ? lang.join(', ') : String(lang);
+        const langMap = [
+            [/thieves'\s*cant\b/gi, 'Gergo Ladresco'],
+            [/thieves\s*cant\b/gi, 'Gergo Ladresco'],
+            [/\bcommon\b/gi, 'Comune'],
+            [/\bdwarvish\b/gi, 'Nanico'],
+            [/\belvish\b/gi, 'Elfico'],
+            [/\bdraconic\b/gi, 'Draconico'],
+            [/\bgiant\b/gi, 'Gigante'],
+            [/\bgnomish\b/gi, 'Gnomesco'],
+            [/\bgoblin\b/gi, 'Goblin'],
+            [/\bhalfling\b/gi, 'Halfling'],
+            [/\borc\b/gi, 'Orchesco'],
+            [/\babyssal\b/gi, 'Abissale'],
+            [/\bcelestial\b/gi, 'Celestiale'],
+            [/\bdeep speech\b/gi, 'Parlata Profonda'],
+            [/\binfernal\b/gi, 'Infernale'],
+            [/\bprimordial\b/gi, 'Primordiale'],
+            [/\bsylvan\b/gi, 'Silvano'],
+            [/\bundercommon\b/gi, 'Gergo delle Profondità'],
+            [/\btelepathy\b/gi, 'telepatia'],
+            [/\bunderstands\b/gi, 'comprende'],
+            [/\bbut can't speak\b/gi, 'ma non può parlare'],
+            [/\bbut cannot speak\b/gi, 'ma non può parlare']
+        ];
+        for (const [re, it] of langMap) {
+            l = l.replace(re, it);
+        }
+        l = l.replace(/\b(Comune|Nanico|Elfico|Draconico|Gergo Ladresco)\s+(Gergo Ladresco|Comune|Nanico|Elfico|Draconico)/gi, '$1, $2');
+        return l;
+    }
+
+    // ==========================================
+    // GLOSSARIO FISSO D&D 5e ITALIANO
+    // ==========================================
+    const DND_IT_GLOSSARY = {
+        sizes: {
+            'tiny': 'Minuscola', 't': 'Minuscola',
+            'small': 'Piccola', 's': 'Piccola',
+            'medium': 'Media', 'm': 'Media',
+            'large': 'Grande', 'l': 'Grande',
+            'huge': 'Enorme', 'h': 'Enorme',
+            'gargantuan': 'Mastodontica', 'g': 'Mastodontica'
+        },
+        types: {
+            'aberration': 'aberrazione',
+            'beast': 'bestia',
+            'celestial': 'celestiale',
+            'construct': 'costrutto',
+            'dragon': 'drago',
+            'elemental': 'elementale',
+            'fey': 'folletto',
+            'fiend': 'immondo',
+            'giant': 'gigante',
+            'humanoid': 'umanoide',
+            'monstrosity': 'mostruosità',
+            'ooze': 'melma',
+            'plant': 'vegetale',
+            'undead': 'non morto'
+        },
+        subtypes: {
+            'any race': 'qualsiasi razza',
+            'shapechanger': 'mutaforma',
+            'titan': 'titano',
+            'demon': 'demone',
+            'devil': 'diavolo',
+            'goblinoid': 'goblinoide',
+            'orc': 'orco',
+            'elf': 'elfo',
+            'dwarf': 'nano',
+            'human': 'umano',
+            'kobold': 'coboldo',
+            'lizardfolk': 'lucertoloide',
+            'gnoll': 'gnoll'
+        },
+        skills: {
+            'acrobatics': 'Acrobazia',
+            'animal handling': 'Addestrare Animali',
+            'arcana': 'Arcano',
+            'athletics': 'Atletica',
+            'deception': 'Inganno',
+            'history': 'Storia',
+            'insight': 'Intuizione',
+            'intimidation': 'Intimidire',
+            'investigation': 'Indagare',
+            'medicine': 'Medicina',
+            'nature': 'Natura',
+            'perception': 'Percezione',
+            'performance': 'Intrattenere',
+            'persuasion': 'Persuasione',
+            'religion': 'Religione',
+            'sleight of hand': 'Rapidità di Mano',
+            'stealth': 'Furtività',
+            'survival': 'Sopravvivenza'
+        },
+        saves: {
+            'str': 'For', 'strength': 'For',
+            'dex': 'Des', 'dexterity': 'Des',
+            'con': 'Cos', 'constitution': 'Cos',
+            'int': 'Int', 'intelligence': 'Int',
+            'wis': 'Sag', 'wisdom': 'Sag',
+            'cha': 'Car', 'charisma': 'Car'
+        },
+        damageTypesList: {
+            'bludgeoning': 'contundente',
+            'piercing': 'perforante',
+            'slashing': 'tagliente',
+            'psychic': 'psichico',
+            'radiant': 'radioso',
+            'necrotic': 'necrotico',
+            'fire': 'fuoco',
+            'cold': 'freddo',
+            'lightning': 'fulmine',
+            'thunder': 'tuono',
+            'poison': 'veleno',
+            'acid': 'acido',
+            'force': 'forza'
+        },
+        conditions: {
+            'blinded': 'accecato',
+            'charmed': 'affascinato',
+            'deafened': 'assordato',
+            'exhaustion': 'sfinimento',
+            'frightened': 'spaventato',
+            'grappled': 'afferrato',
+            'incapacitated': 'inabile',
+            'invisible': 'invisibile',
+            'paralyzed': 'paralizzato',
+            'petrified': 'pietrificato',
+            'poisoned': 'avvelenato',
+            'prone': 'prono',
+            'restrained': 'trattenuto',
+            'stunned': 'stordito',
+            'unconscious': 'privo di sensi'
+        },
+        senses: {
+            'darkvision': 'scurovisione',
+            'blindsight': 'vista cieca',
+            'tremorsense': 'percezione tellurica',
+            'truesight': 'vista pura',
+            'passive perception': 'Percezione passiva'
+        },
+        armor: {
+            'natural armor': 'armatura naturale',
+            'leather armor': 'armatura di cuoio',
+            'studded leather': 'cuoio borchiato',
+            'hide armor': 'armatura di pelle',
+            'chain shirt': 'giaco di maglia',
+            'scale mail': 'corazza di scaglie',
+            'breastplate': 'pettorale',
+            'half plate': 'mezza armatura',
+            'ring mail': 'cotta ad anelli',
+            'chain mail': 'cotta di maglia',
+            'splint': 'corazza a strisce',
+            'plate': 'armatura completa',
+            'shield': 'scudo'
+        }
+    };
 
     const compendium = {
         init() {
@@ -23,32 +372,46 @@
 
         clean5eToolsText(val) {
             if (!val) return '';
-            if (Array.isArray(val)) return val.map(v => this.clean5eToolsText(v)).join(' ');
+            if (Array.isArray(val)) return val.map(v => this.clean5eToolsText(v)).filter(Boolean).join(', ');
             if (typeof val === 'object' && val.entries) return this.clean5eToolsText(val.entries);
             if (typeof val !== 'string') return String(val);
 
             let text = val;
 
-            // 1. Tag attacco 5e.tools
-            text = text.replace(/\{@atk\s+mw,rw\}/gi, 'Melee or Ranged Weapon Attack: ');
-            text = text.replace(/\{@atk\s+mw\}/gi, 'Melee Weapon Attack: ');
-            text = text.replace(/\{@atk\s+rw\}/gi, 'Ranged Weapon Attack: ');
-            text = text.replace(/\{@atk\s+ms\}/gi, 'Melee Spell Attack: ');
-            text = text.replace(/\{@atk\s+rs\}/gi, 'Ranged Spell Attack: ');
-            text = text.replace(/\{@atk\s+m,r\}/gi, 'Melee or Ranged Attack Roll: ');
-            text = text.replace(/\{@atk\s+m\}/gi, 'Melee Attack Roll: ');
-            text = text.replace(/\{@atk\s+r\}/gi, 'Ranged Attack Roll: ');
+            // 1. Tag attacco flessibile con o senza spazi
+            text = text.replace(/\{@atk\s+([a-zA-Z,\s]+)\}/gi, (match, types) => {
+                const t = types.toLowerCase().replace(/\s+/g, '');
+                if (t.includes('mw') && t.includes('rw')) return 'Melee or Ranged Weapon Attack: ';
+                if (t.includes('ms') && t.includes('rs')) return 'Melee or Ranged Spell Attack: ';
+                if (t.includes('m') && t.includes('r')) return 'Melee or Ranged Weapon Attack: ';
+                if (t.includes('mw')) return 'Melee Weapon Attack: ';
+                if (t.includes('rw')) return 'Ranged Weapon Attack: ';
+                if (t.includes('ms')) return 'Melee Spell Attack: ';
+                if (t.includes('rs')) return 'Ranged Spell Attack: ';
+                if (t.includes('m')) return 'Melee Attack Roll: ';
+                if (t.includes('r')) return 'Ranged Attack Roll: ';
+                return 'Attack: ';
+            });
 
             // 2. Tag Esito colpo
             text = text.replace(/\{@h\}/gi, 'Hit: ');
             text = text.replace(/\{@hom\}/gi, 'Hit or Miss: ');
             text = text.replace(/\{@m\}/gi, 'Miss: ');
 
-            // 3. Modificatori tiro per colpire e CD
-            text = text.replace(/\{@hit\s+([+-]?\d+)\}/gi, '+$1 to hit');
+            // 3. Modificatori tiro per colpire, CD e Ricarica
+            text = text.replace(/\{@hit\s+([+-]?\d+)\}\s*(?:to\s+hit)?/gi, (m, p1) => {
+                const sign = p1.startsWith('+') || p1.startsWith('-') ? p1 : `+${p1}`;
+                return `${sign} to hit`;
+            });
             text = text.replace(/\{@d20\s+([+-]?\d+)\}/gi, '+$1');
             text = text.replace(/\{@dc\s+(\d+)\}/gi, 'DC $1');
-            text = text.replace(/\{@recharge\s*(\d*)\}/gi, (m, p1) => p1 ? `(Recharge ${p1}–6)` : '(Recharge 6)');
+            text = text.replace(/\{@recharge\s*([^}]*)\}/gi, (m, p1) => {
+                const v = (p1 || '').trim();
+                if (!v || v === '6') return '(Recharge 6)';
+                if (/^\d$/.test(v)) return `(Recharge ${v}–6)`;
+                if (/^\d\s*[-–]\s*6$/.test(v)) return `(Recharge ${v.replace(/\s+/g, '')})`;
+                return `(Recharge ${v})`;
+            });
             text = text.replace(/\{@chance\s+(\d+)\}/gi, '$1%');
 
             // 4. Danno e Formule dadi
@@ -75,7 +438,214 @@
             // 7. Qualsiasi tag residuo senza parametri
             text = text.replace(/\{@[a-zA-Z0-9_]+\}/gi, '');
 
+            // 8. Eventuali prefissi orfani come "m, r" o "mw, rw" residui all'inizio dell'azione
+            text = text.replace(/^\s*(?:mw,rw|mw,\s*rw|m,r|m,\s*r)\b\s*/gi, 'Melee or Ranged Weapon Attack: ');
+            text = text.replace(/\b(?:mw,rw|mw,\s*rw|m,r|m,\s*r)\b\s*/gi, 'Melee or Ranged Weapon Attack: ');
+
             return text.trim();
+        },
+
+        async translateMonsterToItalian(m) {
+            if (!m) return null;
+            const it = JSON.parse(JSON.stringify(m));
+
+            it._raw = m._raw ? JSON.parse(JSON.stringify(m._raw)) : JSON.parse(JSON.stringify(m));
+            it._isItalian = true;
+
+            // 1. Taglia
+            const rawSize = (m.size || '').toLowerCase();
+            it.size = DND_IT_GLOSSARY.sizes[rawSize] || m.size || 'Media';
+
+            // 2. Tipo creatura
+            let typeStr = (m.type || '').toLowerCase();
+            for (const [en, itType] of Object.entries(DND_IT_GLOSSARY.types)) {
+                if (typeStr.includes(en)) {
+                    typeStr = typeStr.replace(en, itType);
+                    break;
+                }
+            }
+            it.type = typeStr;
+
+            // 3. Sottotipo
+            if (m.subtype) {
+                let subStr = m.subtype.toLowerCase();
+                for (const [en, itSub] of Object.entries(DND_IT_GLOSSARY.subtypes)) {
+                    subStr = subStr.replace(new RegExp(`\\b${en}\\b`, 'gi'), itSub);
+                }
+                it.subtype = subStr;
+            }
+
+            // 4. Allineamento
+            it.alignment = translateAlignment(m.alignment);
+
+            // 5. Armatura
+            if (m.armor_desc) {
+                let armor = m.armor_desc.toLowerCase();
+                for (const [en, itA] of Object.entries(DND_IT_GLOSSARY.armor)) {
+                    armor = armor.replace(new RegExp(`\\b${en}\\b`, 'gi'), itA);
+                }
+                it.armor_desc = armor;
+            }
+
+            // 6. Velocità
+            if (typeof m.speed === 'string') {
+                let sp = m.speed;
+                sp = sp.replace(/\bwalk\b/gi, 'camminare');
+                sp = sp.replace(/\bburrow\b/gi, 'scavare');
+                sp = sp.replace(/\bclimb\b/gi, 'scalare');
+                sp = sp.replace(/\bfly\b/gi, 'volare');
+                sp = sp.replace(/\bswim\b/gi, 'nuotare');
+                sp = sp.replace(/\bhover\b/gi, 'fluttuare');
+                it.speed = sp;
+            } else if (typeof m.speed === 'object' && m.speed !== null) {
+                const itSpeed = {};
+                const speedMap = { 'walk': 'camminare', 'burrow': 'scavare', 'climb': 'scalare', 'fly': 'volare', 'swim': 'nuotare', 'hover': 'fluttuare' };
+                for (const [k, v] of Object.entries(m.speed)) {
+                    const itK = speedMap[k.toLowerCase()] || k;
+                    itSpeed[itK] = v;
+                }
+                it.speed = itSpeed;
+            }
+
+            // 7. Abilità (Skills)
+            if (typeof m.skills === 'object' && m.skills !== null) {
+                const itSkills = {};
+                for (const [k, v] of Object.entries(m.skills)) {
+                    const itKey = DND_IT_GLOSSARY.skills[k.toLowerCase()] || k;
+                    itSkills[itKey] = v;
+                }
+                it.skills = itSkills;
+            }
+
+            // 8. Resistenze ai danni
+            if (m.damage_resistances) {
+                let res = m.damage_resistances;
+                for (const [en, itDam] of Object.entries(DND_IT_GLOSSARY.damageTypesList)) {
+                    res = res.replace(new RegExp(`\\b${en}\\b`, 'gi'), itDam);
+                }
+                res = res.replace(/from nonmagical attacks/gi, 'da attacchi non magici');
+                res = res.replace(/that aren't silvered/gi, 'non d\'argento');
+                res = res.replace(/that aren't adamantine/gi, 'non di adamillio');
+                it.damage_resistances = res;
+            }
+
+            // 9. Immunità ai danni
+            if (m.damage_immunities) {
+                let imm = m.damage_immunities;
+                for (const [en, itDam] of Object.entries(DND_IT_GLOSSARY.damageTypesList)) {
+                    imm = imm.replace(new RegExp(`\\b${en}\\b`, 'gi'), itDam);
+                }
+                imm = imm.replace(/from nonmagical attacks/gi, 'da attacchi non magici');
+                it.damage_immunities = imm;
+            }
+
+            // 10. Immunità alle condizioni
+            if (m.condition_immunities) {
+                let cimm = m.condition_immunities;
+                for (const [en, itCond] of Object.entries(DND_IT_GLOSSARY.conditions)) {
+                    cimm = cimm.replace(new RegExp(`\\b${en}\\b`, 'gi'), itCond);
+                }
+                it.condition_immunities = cimm;
+            }
+
+            // 11. Sensi
+            if (m.senses) {
+                let senses = m.senses;
+                for (const [en, itSens] of Object.entries(DND_IT_GLOSSARY.senses)) {
+                    senses = senses.replace(new RegExp(`\\b${en}\\b`, 'gi'), itSens);
+                }
+                it.senses = senses;
+            }
+
+            // 12. Linguaggi
+            it.languages = translateLanguages(this.clean5eToolsText(m.languages));
+
+            // ==========================================
+            // PREPARAZIONE BATCH TESTI DA TRADURRE
+            // ==========================================
+            const batchRequests = [];
+            const mapping = [];
+
+            // Nome mostro
+            batchRequests.push(m.name);
+            mapping.push({ type: 'name' });
+
+            // Azioni
+            const actions = m.actions || [];
+            actions.forEach((act, idx) => {
+                batchRequests.push(this.clean5eToolsText(act.name));
+                mapping.push({ type: 'action_name', index: idx });
+                batchRequests.push(preProcessEnglish(this.clean5eToolsText(act.desc)));
+                mapping.push({ type: 'action_desc', index: idx });
+            });
+
+            // Tratti (Special Abilities)
+            const traits = m.special_abilities || [];
+            traits.forEach((tr, idx) => {
+                batchRequests.push(this.clean5eToolsText(tr.name));
+                mapping.push({ type: 'trait_name', index: idx });
+                batchRequests.push(preProcessEnglish(this.clean5eToolsText(tr.desc)));
+                mapping.push({ type: 'trait_desc', index: idx });
+            });
+
+            // Reazioni
+            const reactions = m.reactions || [];
+            reactions.forEach((re, idx) => {
+                batchRequests.push(this.clean5eToolsText(re.name));
+                mapping.push({ type: 'reaction_name', index: idx });
+                batchRequests.push(preProcessEnglish(this.clean5eToolsText(re.desc)));
+                mapping.push({ type: 'reaction_desc', index: idx });
+            });
+
+            // Azioni Leggendarie
+            const legActions = m.legendary_actions || [];
+            legActions.forEach((la, idx) => {
+                batchRequests.push(this.clean5eToolsText(la.name));
+                mapping.push({ type: 'legendary_name', index: idx });
+                batchRequests.push(preProcessEnglish(this.clean5eToolsText(la.desc)));
+                mapping.push({ type: 'legendary_desc_item', index: idx });
+            });
+            if (m.legendary_desc) {
+                batchRequests.push(preProcessEnglish(this.clean5eToolsText(m.legendary_desc)));
+                mapping.push({ type: 'legendary_desc' });
+            }
+
+            // Esecuzione traduzione in blocco
+            const translatedTexts = await translateBatch(batchRequests);
+
+            // Inizializza array clonati
+            it.actions = actions.map(a => ({ name: this.clean5eToolsText(a.name), desc: this.clean5eToolsText(a.desc) }));
+            it.special_abilities = traits.map(t => ({ name: this.clean5eToolsText(t.name), desc: this.clean5eToolsText(t.desc) }));
+            it.reactions = reactions.map(r => ({ name: this.clean5eToolsText(r.name), desc: this.clean5eToolsText(r.desc) }));
+            it.legendary_actions = legActions.map(la => ({ name: this.clean5eToolsText(la.name), desc: this.clean5eToolsText(la.desc) }));
+
+            // Applicazione risultati tradotti e post-processati con la terminologia ufficiale
+            mapping.forEach((mItem, i) => {
+                const res = postProcessDndItalian(translatedTexts[i]);
+                if (mItem.type === 'name') {
+                    it.name = res;
+                } else if (mItem.type === 'action_name') {
+                    it.actions[mItem.index].name = res;
+                } else if (mItem.type === 'action_desc') {
+                    it.actions[mItem.index].desc = res;
+                } else if (mItem.type === 'trait_name') {
+                    it.special_abilities[mItem.index].name = res;
+                } else if (mItem.type === 'trait_desc') {
+                    it.special_abilities[mItem.index].desc = res;
+                } else if (mItem.type === 'reaction_name') {
+                    it.reactions[mItem.index].name = res;
+                } else if (mItem.type === 'reaction_desc') {
+                    it.reactions[mItem.index].desc = res;
+                } else if (mItem.type === 'legendary_name') {
+                    it.legendary_actions[mItem.index].name = res;
+                } else if (mItem.type === 'legendary_desc_item') {
+                    it.legendary_actions[mItem.index].desc = res;
+                } else if (mItem.type === 'legendary_desc') {
+                    it.legendary_desc = res;
+                }
+            });
+
+            return it;
         },
 
         formatActionWithRolls(rawText, actionName) {
@@ -84,10 +654,11 @@
 
             let text = cleaned;
 
-            // 1. Tiri per colpire: es. "+4 to hit" o "-1 to hit"
-            text = text.replace(/([+-]?\d+)\s+to\s+hit/gi, (match, bonus) => {
+            // 1. Tiri per colpire: es. "+4 to hit" o "-1 to hit" o "+4 per colpire"
+            text = text.replace(/([+-]?\d+)\s*(?:to\s+hit|per\s+colpire)/gi, (match, bonus) => {
                 const cleanBonus = bonus.startsWith('+') ? bonus : (bonus.startsWith('-') ? bonus : `+${bonus}`);
-                return `<span class="statblock-roll-btn" data-formula="${cleanBonus}" data-label="${actionName} (Attacco)" style="background: rgba(239, 83, 80, 0.22); color: #ffb74d; border: 1px solid #ef5350; border-radius: 4px; padding: 1px 6px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Clicca per tirare l'attacco (${cleanBonus})">🎲 ${cleanBonus} to hit</span>`;
+                const hitSuffix = isItalianMode ? 'per colpire' : 'to hit';
+                return `<span class="statblock-roll-btn" data-formula="${cleanBonus}" data-label="${actionName} (Attacco)" style="background: rgba(239, 83, 80, 0.22); color: #ffb74d; border: 1px solid #ef5350; border-radius: 4px; padding: 1px 6px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Clicca per tirare l'attacco (${cleanBonus})">🎲 ${cleanBonus} ${hitSuffix}</span>`;
             });
 
             // 2. Formule dadi danno/effetti: es. "1d4", "2d6 + 2", "1d8+3", "3d10 - 1"
@@ -193,12 +764,12 @@
                 this.open();
             });
 
-            // Ricerca con debounce e auto-parsing link 5e.tools
+            // Ricerca con debounce e auto-parsing link web/ancore
             const searchInput = document.getElementById('statblock-search-input');
             if (searchInput) {
                 const handleSearchValue = (val) => {
                     let q = val.trim();
-                    if (q.includes('5e.tools') && q.includes('#')) {
+                    if (q.includes('#')) {
                         const hash = q.split('#')[1];
                         if (hash) {
                             q = decodeURIComponent(hash).split('_')[0].replace(/\+/g, ' ');
@@ -233,7 +804,7 @@
             document.getElementById('btn-statblock-search')?.addEventListener('click', () => {
                 const searchInput = document.getElementById('statblock-search-input');
                 let q = searchInput?.value.trim() || '';
-                if (q.includes('5e.tools') && q.includes('#')) {
+                if (q.includes('#')) {
                     const hash = q.split('#')[1];
                     if (hash) {
                         q = decodeURIComponent(hash).split('_')[0].replace(/\+/g, ' ');
@@ -241,6 +812,11 @@
                     }
                 }
                 if (q && q.length >= 2) this.search(q);
+            });
+
+            // Traduzione italiano / toggle originale inglese
+            document.getElementById('btn-translate-statblock')?.addEventListener('click', () => {
+                this.toggleTranslation();
             });
 
             // Assegnazione a token selezionato
@@ -255,7 +831,7 @@
                 this.spawnAsToken(currentMonster);
             });
 
-            // Modale Import JSON (5e.tools)
+            // Modale Import JSON
             const modal = document.getElementById('modal-json-import');
             document.getElementById('btn-statblock-json-import')?.addEventListener('click', () => {
                 this.setImportTokenPreview(null);
@@ -382,7 +958,43 @@
             });
         },
 
-        setImportTokenPreview(dataUrl) {
+        compressTokenDataUrl(dataUrl, maxDim = 256) {
+            return new Promise((resolve) => {
+                if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) {
+                    return resolve(dataUrl);
+                }
+                const tempImg = new Image();
+                tempImg.onload = () => {
+                    let w = tempImg.width;
+                    let h = tempImg.height;
+                    if (w <= maxDim && h <= maxDim && dataUrl.length < 60000) {
+                        return resolve(dataUrl);
+                    }
+                    if (w > maxDim || h > maxDim) {
+                        if (w > h) {
+                            h = Math.round((h * maxDim) / w);
+                            w = maxDim;
+                        } else {
+                            w = Math.round((w * maxDim) / h);
+                            h = maxDim;
+                        }
+                    }
+                    const c = document.createElement('canvas');
+                    c.width = w;
+                    c.height = h;
+                    const ctx = c.getContext('2d');
+                    ctx.drawImage(tempImg, 0, 0, w, h);
+                    resolve(c.toDataURL('image/png'));
+                };
+                tempImg.onerror = () => resolve(dataUrl);
+                tempImg.src = dataUrl;
+            });
+        },
+
+        async setImportTokenPreview(dataUrl) {
+            if (dataUrl) {
+                dataUrl = await this.compressTokenDataUrl(dataUrl, 256);
+            }
             pendingImportTokenSrc = dataUrl;
             const img = document.getElementById('json-token-img');
             const icon = document.getElementById('json-token-placeholder-icon');
@@ -399,36 +1011,46 @@
                     img.src = '';
                     img.style.display = 'none';
                     icon.style.display = 'inline';
-                    if (status) status.innerHTML = 'Click destro sul token in 5e.tools &rarr; <em>"Copia immagine"</em> e premi <strong>Ctrl+V</strong> qui.';
+                    if (status) status.innerHTML = 'Click destro sull\'immagine &rarr; <em>"Copia immagine"</em> e premi <strong>Ctrl+V</strong> qui.';
                     if (clearBtn) clearBtn.style.display = 'none';
                 }
             }
         },
 
-        setMonsterTokenImage(dataUrl) {
+        async setMonsterTokenImage(dataUrl) {
             if (!currentMonster) return;
+            if (dataUrl) {
+                dataUrl = await this.compressTokenDataUrl(dataUrl, 256);
+            }
             currentMonster.tokenSrc = dataUrl;
+            if (rawMonster) rawMonster.tokenSrc = dataUrl;
+            if (currentMonster._raw) currentMonster._raw.tokenSrc = dataUrl;
+
             const img = document.getElementById('statblock-avatar-img');
             if (img) img.src = dataUrl;
 
             // Se abbiamo token selezionati che usano questa scheda, aggiorniamo la loro immagine live
-            if (engine && engine.tokens) {
-                const targetTokens = (engine.selectedTokens && engine.selectedTokens.size > 0)
-                    ? engine.tokens.filter(t => engine.selectedTokens.has(t.id))
-                    : (engine.selectedTokenId ? [engine.tokens.find(t => t.id === engine.selectedTokenId)].filter(Boolean) : []);
+            const eng = getEngine();
+            if (eng && eng.tokens) {
+                const targetTokens = (eng.selectedTokens && eng.selectedTokens.size > 0)
+                    ? eng.tokens.filter(t => eng.selectedTokens.has(t.id))
+                    : (eng.selectedTokenId ? [eng.tokens.find(t => t.id === eng.selectedTokenId)].filter(Boolean) : []);
 
-                targetTokens.forEach(t => {
-                    if (t.statblock && t.statblock.name === currentMonster.name) {
-                        const newImg = new Image();
-                        newImg.onload = () => {
+                const matching = targetTokens.filter(t => t.statblock && (t.statblock.name === currentMonster.name || (rawMonster && t.statblock.name === rawMonster.name)));
+                if (matching.length > 0) {
+                    const newImg = new Image();
+                    newImg.onload = () => {
+                        matching.forEach(t => {
                             t.imageObj = newImg;
                             t.src = dataUrl;
-                            engine.renderAll();
-                            if (typeof window.syncState === 'function') window.syncState(true, true);
-                        };
-                        newImg.src = dataUrl;
-                    }
-                });
+                            if (t.statblock) t.statblock.tokenSrc = dataUrl;
+                            if (typeof window.markTokenImageDirty === 'function') window.markTokenImageDirty(t.id);
+                        });
+                        eng.renderAll();
+                        if (typeof window.syncState === 'function') window.syncState(true, false);
+                    };
+                    newImg.src = dataUrl;
+                }
             }
 
             if (typeof showToast === 'function') {
@@ -509,22 +1131,92 @@
         },
 
         loadMonster(monster) {
-            currentMonster = monster;
-            this.renderStatblock(monster);
+            if (monster && monster._raw) {
+                rawMonster = JSON.parse(JSON.stringify(monster._raw));
+                isItalianMode = !!monster._isItalian;
+                currentMonster = monster;
+            } else {
+                rawMonster = JSON.parse(JSON.stringify(monster));
+                isItalianMode = false;
+                currentMonster = monster;
+            }
+            this.updateTranslateButtonUI();
+            this.renderStatblock(currentMonster);
             this.updateAssignButtonText();
+        },
+
+        async toggleTranslation() {
+            if (!currentMonster && !rawMonster) return alert("Seleziona o cerca prima un mostro!");
+
+            const btn = document.getElementById('btn-translate-statblock');
+            const textSpan = document.getElementById('btn-translate-statblock-text');
+
+            if (!isItalianMode) {
+                if (btn) {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.7';
+                    if (textSpan) textSpan.textContent = "⏳ Traduzione...";
+                }
+                try {
+                    isItalianMode = true;
+                    currentMonster = await this.translateMonsterToItalian(rawMonster);
+                    if (typeof showToast === 'function') {
+                        showToast(`Scheda tradotta in Italiano (terminologia ufficiale 5e)!`);
+                    }
+                } catch (err) {
+                    console.error("Translation error:", err);
+                    isItalianMode = false;
+                    alert("Errore durante la traduzione: " + err.message);
+                } finally {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.style.opacity = '1';
+                    }
+                }
+            } else {
+                isItalianMode = false;
+                currentMonster = JSON.parse(JSON.stringify(rawMonster));
+                if (typeof showToast === 'function') {
+                    showToast(`Scheda ripristinata in lingua originale (EN).`);
+                }
+            }
+            this.updateTranslateButtonUI();
+            this.renderStatblock(currentMonster);
+            this.updateAssignButtonText();
+        },
+
+        updateTranslateButtonUI() {
+            const btn = document.getElementById('btn-translate-statblock');
+            const textSpan = document.getElementById('btn-translate-statblock-text');
+            if (!btn) return;
+            if (isItalianMode) {
+                btn.style.background = '#1565c0';
+                btn.title = "Ripristina la scheda in lingua originale inglese (EN)";
+                if (textSpan) textSpan.textContent = "🇬🇧 Originale EN";
+                else btn.innerHTML = "<span>🇬🇧 Originale EN</span>";
+            } else {
+                btn.style.background = '#6a1b9a';
+                btn.title = "Traduci la scheda con la terminologia ufficiale D&D in Italiano";
+                if (textSpan) textSpan.textContent = "🇮🇹 Traduci IT";
+                else btn.innerHTML = "<span>🇮🇹 Traduci IT</span>";
+            }
         },
 
         updateAssignButtonText() {
             const btn = document.getElementById('btn-assign-statblock');
+            const textSpan = document.getElementById('btn-assign-statblock-text');
             if (!btn) return;
-            const hasSelected = engine && ((engine.selectedTokens && engine.selectedTokens.size > 0) || engine.selectedTokenId);
+            const eng = getEngine();
+            const hasSelected = eng && ((eng.selectedTokens && eng.selectedTokens.size > 0) || eng.selectedTokenId);
             if (hasSelected && currentMonster) {
-                const count = (engine.selectedTokens && engine.selectedTokens.size > 1) ? ` (${engine.selectedTokens.size} Token)` : '';
-                btn.innerHTML = `<span>⚡ Assegna "${currentMonster.name}"${count}</span>`;
+                const count = (eng.selectedTokens && eng.selectedTokens.size > 1) ? ` (${eng.selectedTokens.size})` : '';
+                if (textSpan) textSpan.textContent = `⚡ Assegna${count}`;
+                else btn.innerHTML = `<span>⚡ Assegna${count}</span>`;
                 btn.style.background = '#2e7d32';
             } else if (currentMonster) {
-                btn.innerHTML = `<span>⚡ Assegna al Token Selezionato</span>`;
-                btn.style.background = '#388e3c';
+                if (textSpan) textSpan.textContent = `⚡ Assegna Token`;
+                else btn.innerHTML = `<span>⚡ Assegna Token</span>`;
+                btn.style.background = '#2e7d32';
             }
         },
 
@@ -543,13 +1235,13 @@
 
             let color = '#8d6e63';
             const typeLower = (monster.type || '').toLowerCase();
-            if (typeLower.includes('dragon')) color = '#c62828';
-            else if (typeLower.includes('undead')) color = '#455a64';
-            else if (typeLower.includes('fiend')) color = '#ad1457';
-            else if (typeLower.includes('aberration')) color = '#6a1b9a';
-            else if (typeLower.includes('humanoid')) color = '#2e7d32';
-            else if (typeLower.includes('beast')) color = '#e65100';
-            else if (typeLower.includes('elemental')) color = '#00838f';
+            if (typeLower.includes('dragon') || typeLower.includes('drago')) color = '#c62828';
+            else if (typeLower.includes('undead') || typeLower.includes('non morto')) color = '#455a64';
+            else if (typeLower.includes('fiend') || typeLower.includes('immondo')) color = '#ad1457';
+            else if (typeLower.includes('aberration') || typeLower.includes('aberrazione')) color = '#6a1b9a';
+            else if (typeLower.includes('humanoid') || typeLower.includes('umanoide')) color = '#2e7d32';
+            else if (typeLower.includes('beast') || typeLower.includes('bestia')) color = '#e65100';
+            else if (typeLower.includes('elemental') || typeLower.includes('elementale')) color = '#00838f';
 
             ctx.fillStyle = color;
             ctx.beginPath();
@@ -577,7 +1269,11 @@
             if (placeholder) placeholder.style.display = 'none';
             details.style.display = 'block';
 
-            const sizeType = `${m.size || 'Medium'} ${m.type || 'creature'}${m.subtype ? ' (' + m.subtype + ')' : ''}, ${m.alignment || 'unaligned'}`;
+            const defaultSize = isItalianMode ? 'Media' : 'Medium';
+            const defaultType = isItalianMode ? 'creatura' : 'creature';
+            const defaultAlign = isItalianMode ? 'senza allineamento' : 'unaligned';
+
+            const sizeType = `${m.size || defaultSize} ${m.type || defaultType}${m.subtype ? ' (' + m.subtype + ')' : ''}, ${m.alignment || defaultAlign}`;
             const acDesc = m.armor_desc ? ` (${m.armor_desc})` : '';
             const hpDice = m.hit_dice ? ` (${m.hit_dice})` : '';
             
@@ -589,20 +1285,26 @@
             }
 
             // Stats row interattiva per tiri su caratteristiche
-            const stats = [
-                { k: 'STR', val: m.strength || 10 },
-                { k: 'DEX', val: m.dexterity || 10 },
-                { k: 'CON', val: m.constitution || 10 },
-                { k: 'INT', val: m.intelligence || 10 },
-                { k: 'WIS', val: m.wisdom || 10 },
-                { k: 'CHA', val: m.charisma || 10 }
-            ];
+            const statKeys = isItalianMode 
+                ? [ { k: 'FOR', val: m.strength || 10 },
+                    { k: 'DES', val: m.dexterity || 10 },
+                    { k: 'COS', val: m.constitution || 10 },
+                    { k: 'INT', val: m.intelligence || 10 },
+                    { k: 'SAG', val: m.wisdom || 10 },
+                    { k: 'CAR', val: m.charisma || 10 } ]
+                : [ { k: 'STR', val: m.strength || 10 },
+                    { k: 'DEX', val: m.dexterity || 10 },
+                    { k: 'CON', val: m.constitution || 10 },
+                    { k: 'INT', val: m.intelligence || 10 },
+                    { k: 'WIS', val: m.wisdom || 10 },
+                    { k: 'CHA', val: m.charisma || 10 } ];
 
             let statsHtml = '<div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; text-align: center; background: #251818; padding: 6px 2px; border-radius: 4px; border: 1px solid #4a2222; margin: 8px 0;">';
-            stats.forEach(s => {
+            statKeys.forEach(s => {
                 const mod = this.formatMod(s.val);
+                const rollLabel = isItalianMode ? `Prova ${s.k}` : `Check ${s.k}`;
                 statsHtml += `
-                    <div class="statblock-roll-btn" data-formula="${mod}" data-label="Prova ${s.k}" style="cursor: pointer; padding: 4px 1px; border-radius: 4px; background: rgba(0,0,0,0.3); border: 1px solid rgba(239, 83, 80, 0.2); transition: all 0.15s;" title="Clicca per tirare Prova / Tiro Salvezza ${s.k} (${mod})">
+                    <div class="statblock-roll-btn" data-formula="${mod}" data-label="${rollLabel}" style="cursor: pointer; padding: 4px 1px; border-radius: 4px; background: rgba(0,0,0,0.3); border: 1px solid rgba(239, 83, 80, 0.2); transition: all 0.15s;" title="Clicca per tirare ${rollLabel} (${mod})">
                         <div style="font-weight: bold; color: #ef5350; font-size: 11px;">${s.k}</div>
                         <div style="font-size: 12px; color: #fff;">${s.val} <span style="color:#ffb74d; font-weight:bold; font-size:11px;">(${mod})</span></div>
                     </div>
@@ -616,7 +1318,8 @@
                 if (val !== null && val !== undefined) {
                     const num = parseInt(val);
                     const sign = num >= 0 ? '+' : '';
-                    saves.push(`<span class="statblock-roll-btn" data-formula="${sign}${num}" data-label="TS ${name}" style="background: rgba(239, 83, 80, 0.2); color: #ffb74d; border: 1px solid #ef5350; border-radius: 4px; padding: 1px 5px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Clicca per tirare il Tiro Salvezza ${name}">🎲 ${name} ${sign}${num}</span>`);
+                    const dispName = isItalianMode ? (DND_IT_GLOSSARY.saves[name.toLowerCase()] || name) : name;
+                    saves.push(`<span class="statblock-roll-btn" data-formula="${sign}${num}" data-label="TS ${dispName}" style="background: rgba(239, 83, 80, 0.2); color: #ffb74d; border: 1px solid #ef5350; border-radius: 4px; padding: 1px 5px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Clicca per tirare il Tiro Salvezza ${dispName}">🎲 ${dispName} ${sign}${num}</span>`);
                 }
             };
             addSave('Str', m.strength_save);
@@ -636,16 +1339,34 @@
                 }).join(', ');
             }
 
+            // Headers dinamici IT / EN
+            const lblAc = isItalianMode ? 'Classe Armatura' : 'Armor Class';
+            const lblHp = isItalianMode ? 'Punti Ferita' : 'Hit Points';
+            const lblSpeed = isItalianMode ? 'Velocità' : 'Speed';
+            const lblSaves = isItalianMode ? 'Tiri Salvezza' : 'Saving Throws';
+            const lblSkills = isItalianMode ? 'Abilità' : 'Skills';
+            const lblRes = isItalianMode ? 'Resistenze ai Danni' : 'Damage Resistances';
+            const lblImm = isItalianMode ? 'Immunità ai Danni' : 'Damage Immunities';
+            const lblCImm = isItalianMode ? 'Immunità alle Condizioni' : 'Condition Immunities';
+            const lblSenses = isItalianMode ? 'Sensi' : 'Senses';
+            const lblLang = isItalianMode ? 'Linguaggi' : 'Languages';
+            const lblCr = isItalianMode ? 'Grado Sfida' : 'Challenge';
+            const lblActions = isItalianMode ? 'Azioni' : 'Actions';
+            const lblTraits = isItalianMode ? 'Tratti' : 'Traits';
+            const lblReactions = isItalianMode ? 'Reazioni' : 'Reactions';
+            const lblLeg = isItalianMode ? 'Azioni Leggendarie' : 'Legendary Actions';
+
             // Build Actions con tiri dadi clikkabili
             let actionsHtml = '';
             const actions = m.actions || [];
             if (actions.length > 0) {
-                actionsHtml += '<div style="font-size: 13px; font-weight: bold; color: #ef5350; border-bottom: 1px solid #b71c1c; padding-bottom: 2px; margin: 10px 0 6px 0;">Actions</div>';
+                actionsHtml += `<div style="font-size: 13px; font-weight: bold; color: #ef5350; border-bottom: 1px solid #b71c1c; padding-bottom: 2px; margin: 10px 0 6px 0;">${lblActions}</div>`;
                 actions.forEach(a => {
-                    const formattedDesc = this.formatActionWithRolls(a.desc, a.name);
+                    const cleanName = this.clean5eToolsText(a.name);
+                    const formattedDesc = this.formatActionWithRolls(a.desc, cleanName);
                     actionsHtml += `
                         <div style="margin-bottom: 8px; line-height: 1.45;">
-                            <strong style="color: #ffb74d; font-size: 12.5px;">${a.name}.</strong> 
+                            <strong style="color: #ffb74d; font-size: 12.5px;">${cleanName.replace(/\.+$/, '')}.</strong> 
                             <span style="color: #ccc;">${formattedDesc}</span>
                         </div>
                     `;
@@ -656,12 +1377,13 @@
             let traitsHtml = '';
             const traits = m.special_abilities || [];
             if (traits.length > 0) {
-                traitsHtml += '<div style="font-size: 13px; font-weight: bold; color: #ef5350; border-bottom: 1px solid #b71c1c; padding-bottom: 2px; margin: 10px 0 6px 0;">Traits</div>';
+                traitsHtml += `<div style="font-size: 13px; font-weight: bold; color: #ef5350; border-bottom: 1px solid #b71c1c; padding-bottom: 2px; margin: 10px 0 6px 0;">${lblTraits}</div>`;
                 traits.forEach(t => {
-                    const formattedDesc = this.formatActionWithRolls(t.desc, t.name);
+                    const cleanName = this.clean5eToolsText(t.name);
+                    const formattedDesc = this.formatActionWithRolls(t.desc, cleanName);
                     traitsHtml += `
                         <div style="margin-bottom: 8px; line-height: 1.45;">
-                            <strong style="color: #ffb74d; font-size: 12.5px;">${t.name}.</strong> 
+                            <strong style="color: #ffb74d; font-size: 12.5px;">${cleanName.replace(/\.+$/, '')}.</strong> 
                             <span style="color: #ccc;">${formattedDesc}</span>
                         </div>
                     `;
@@ -672,12 +1394,13 @@
             let reactHtml = '';
             const reactions = m.reactions || [];
             if (reactions.length > 0) {
-                reactHtml += '<div style="font-size: 13px; font-weight: bold; color: #ef5350; border-bottom: 1px solid #b71c1c; padding-bottom: 2px; margin: 10px 0 6px 0;">Reactions</div>';
+                reactHtml += `<div style="font-size: 13px; font-weight: bold; color: #ef5350; border-bottom: 1px solid #b71c1c; padding-bottom: 2px; margin: 10px 0 6px 0;">${lblReactions}</div>`;
                 reactions.forEach(r => {
-                    const formattedDesc = this.formatActionWithRolls(r.desc, r.name);
+                    const cleanName = this.clean5eToolsText(r.name);
+                    const formattedDesc = this.formatActionWithRolls(r.desc, cleanName);
                     reactHtml += `
                         <div style="margin-bottom: 8px; line-height: 1.45;">
-                            <strong style="color: #ffb74d; font-size: 12.5px;">${r.name}.</strong> 
+                            <strong style="color: #ffb74d; font-size: 12.5px;">${cleanName.replace(/\.+$/, '')}.</strong> 
                             <span style="color: #ccc;">${formattedDesc}</span>
                         </div>
                     `;
@@ -688,13 +1411,14 @@
             let legHtml = '';
             const leg = m.legendary_actions || [];
             if (leg.length > 0) {
-                legHtml += '<div style="font-size: 13px; font-weight: bold; color: #ef5350; border-bottom: 1px solid #b71c1c; padding-bottom: 2px; margin: 10px 0 6px 0;">Legendary Actions</div>';
+                legHtml += `<div style="font-size: 13px; font-weight: bold; color: #ef5350; border-bottom: 1px solid #b71c1c; padding-bottom: 2px; margin: 10px 0 6px 0;">${lblLeg}</div>`;
                 if (m.legendary_desc) legHtml += `<div style="font-style: italic; color: #aaa; margin-bottom: 6px;">${this.clean5eToolsText(m.legendary_desc)}</div>`;
                 leg.forEach(a => {
-                    const formattedDesc = this.formatActionWithRolls(a.desc, a.name);
+                    const cleanName = this.clean5eToolsText(a.name);
+                    const formattedDesc = this.formatActionWithRolls(a.desc, cleanName);
                     legHtml += `
                         <div style="margin-bottom: 8px; line-height: 1.45;">
-                            <strong style="color: #ffb74d; font-size: 12.5px;">${a.name}.</strong> 
+                            <strong style="color: #ffb74d; font-size: 12.5px;">${cleanName.replace(/\.+$/, '')}.</strong> 
                             <span style="color: #ccc;">${formattedDesc}</span>
                         </div>
                     `;
@@ -717,22 +1441,22 @@
                 </div>
 
                 <div style="color: #ef9a9a; line-height: 1.4; font-size: 11.5px;">
-                    <div><strong style="color: #ef5350;">Armor Class:</strong> <span style="color: #fff; font-weight:bold;">${m.armor_class || 10}</span>${acDesc}</div>
-                    <div><strong style="color: #ef5350;">Hit Points:</strong> <span style="color: #fff; font-weight:bold;">${m.hit_points || 10}</span>${hpDice}</div>
-                    <div><strong style="color: #ef5350;">Speed:</strong> <span style="color: #fff;">${speedStr}</span></div>
+                    <div><strong style="color: #ef5350;">${lblAc}:</strong> <span style="color: #fff; font-weight:bold;">${m.armor_class || 10}</span>${acDesc}</div>
+                    <div><strong style="color: #ef5350;">${lblHp}:</strong> <span style="color: #fff; font-weight:bold;">${m.hit_points || 10}</span>${hpDice}</div>
+                    <div><strong style="color: #ef5350;">${lblSpeed}:</strong> <span style="color: #fff;">${speedStr}</span></div>
                 </div>
 
                 ${statsHtml}
 
                 <div style="color: #ddd; font-size: 11px; line-height: 1.4;">
-                    ${saves.length > 0 ? `<div style="margin-bottom: 3px;"><strong style="color: #ef5350;">Saving Throws:</strong> ${saves.join(' ')}</div>` : ''}
-                    ${skillsStr ? `<div style="margin-bottom: 3px;"><strong style="color: #ef5350;">Skills:</strong> ${skillsStr}</div>` : ''}
-                    ${m.damage_resistances ? `<div><strong style="color: #ef5350;">Damage Resistances:</strong> ${this.clean5eToolsText(m.damage_resistances)}</div>` : ''}
-                    ${m.damage_immunities ? `<div><strong style="color: #ef5350;">Damage Immunities:</strong> ${this.clean5eToolsText(m.damage_immunities)}</div>` : ''}
-                    ${m.condition_immunities ? `<div><strong style="color: #ef5350;">Condition Immunities:</strong> ${this.clean5eToolsText(m.condition_immunities)}</div>` : ''}
-                    ${m.senses ? `<div><strong style="color: #ef5350;">Senses:</strong> ${this.clean5eToolsText(m.senses)}</div>` : ''}
-                    ${m.languages ? `<div><strong style="color: #ef5350;">Languages:</strong> ${this.clean5eToolsText(m.languages)}</div>` : ''}
-                    <div style="margin-top: 3px;"><strong style="color: #ef5350;">Challenge:</strong> <span style="color:#ffb74d; font-weight:bold;">${m.challenge_rating || m.cr || '-'}</span></div>
+                    ${saves.length > 0 ? `<div style="margin-bottom: 3px;"><strong style="color: #ef5350;">${lblSaves}:</strong> ${saves.join(' ')}</div>` : ''}
+                    ${skillsStr ? `<div style="margin-bottom: 3px;"><strong style="color: #ef5350;">${lblSkills}:</strong> ${skillsStr}</div>` : ''}
+                    ${m.damage_resistances ? `<div><strong style="color: #ef5350;">${lblRes}:</strong> ${this.clean5eToolsText(m.damage_resistances)}</div>` : ''}
+                    ${m.damage_immunities ? `<div><strong style="color: #ef5350;">${lblImm}:</strong> ${this.clean5eToolsText(m.damage_immunities)}</div>` : ''}
+                    ${m.condition_immunities ? `<div><strong style="color: #ef5350;">${lblCImm}:</strong> ${this.clean5eToolsText(m.condition_immunities)}</div>` : ''}
+                    ${m.senses ? `<div><strong style="color: #ef5350;">${lblSenses}:</strong> ${this.clean5eToolsText(m.senses)}</div>` : ''}
+                    ${m.languages ? `<div><strong style="color: #ef5350;">${lblLang}:</strong> ${this.clean5eToolsText(m.languages)}</div>` : ''}
+                    <div style="margin-top: 3px;"><strong style="color: #ef5350;">${lblCr}:</strong> <span style="color:#ffb74d; font-weight:bold;">${m.challenge_rating || m.cr || '-'}</span></div>
                 </div>
 
                 ${traitsHtml}
@@ -801,7 +1525,7 @@
             const rawActions = m.action || m.actions || [];
             rawActions.forEach(act => {
                 actions.push({
-                    name: act.name || 'Action',
+                    name: this.clean5eToolsText(act.name) || 'Action',
                     desc: this.clean5eToolsText(act.entries || act.desc)
                 });
             });
@@ -810,7 +1534,7 @@
             const rawTraits = m.trait || m.special_abilities || [];
             rawTraits.forEach(tr => {
                 traits.push({
-                    name: tr.name || 'Trait',
+                    name: this.clean5eToolsText(tr.name) || 'Trait',
                     desc: this.clean5eToolsText(tr.entries || tr.desc)
                 });
             });
@@ -819,7 +1543,7 @@
             const rawReactions = m.reaction || m.reactions || [];
             rawReactions.forEach(re => {
                 reactions.push({
-                    name: re.name || 'Reaction',
+                    name: this.clean5eToolsText(re.name) || 'Reaction',
                     desc: this.clean5eToolsText(re.entries || re.desc)
                 });
             });
@@ -828,13 +1552,13 @@
             const rawLeg = m.legendary || m.legendary_actions || [];
             rawLeg.forEach(leg => {
                 legendary.push({
-                    name: leg.name || 'Legendary Action',
+                    name: this.clean5eToolsText(leg.name) || 'Legendary Action',
                     desc: this.clean5eToolsText(leg.entries || leg.desc)
                 });
             });
 
             return {
-                name: m.name,
+                name: this.clean5eToolsText(m.name),
                 size: Array.isArray(m.size) ? m.size[0] : (m.size || 'Medium'),
                 type: typeof m.type === 'object' ? (m.type.type || 'creature') : (m.type || 'creature'),
                 alignment: Array.isArray(m.alignment) ? m.alignment.join(' ') : (m.alignment || 'unaligned'),
@@ -857,15 +1581,19 @@
                 legendary_desc: m.legendaryHeader ? this.clean5eToolsText(m.legendaryHeader) : '',
                 languages: this.clean5eToolsText(m.languages),
                 senses: this.clean5eToolsText(m.senses),
+                damage_resistances: this.clean5eToolsText(m.resist || m.damage_resistances),
+                damage_immunities: this.clean5eToolsText(m.immune || m.damage_immunities),
+                condition_immunities: this.clean5eToolsText(m.conditionImmune || m.condition_immunities),
                 tokenSrc: m.tokenSrc || null
             };
         },
 
         assignToSelectedToken(monster) {
-            if (!engine || !engine.tokens) return;
-            const targetTokens = (engine.selectedTokens && engine.selectedTokens.size > 0)
-                ? engine.tokens.filter(t => engine.selectedTokens.has(t.id))
-                : (engine.selectedTokenId ? [engine.tokens.find(t => t.id === engine.selectedTokenId)].filter(Boolean) : []);
+            const eng = getEngine();
+            if (!eng || !eng.tokens) return;
+            const targetTokens = (eng.selectedTokens && eng.selectedTokens.size > 0)
+                ? eng.tokens.filter(t => eng.selectedTokens.has(t.id))
+                : (eng.selectedTokenId ? [eng.tokens.find(t => t.id === eng.selectedTokenId)].filter(Boolean) : []);
 
             if (targetTokens.length === 0) {
                 alert("Seleziona prima almeno un token sulla mappa cliccandoci sopra!");
@@ -876,28 +1604,21 @@
             const acVal = parseInt(monster.armor_class) || 10;
 
             targetTokens.forEach(token => {
-                token.statblock = JSON.parse(JSON.stringify(monster));
+                const st = JSON.parse(JSON.stringify(monster));
+                st._raw = rawMonster ? JSON.parse(JSON.stringify(rawMonster)) : JSON.parse(JSON.stringify(monster));
+                if (st._raw && st._raw.tokenSrc) delete st._raw.tokenSrc;
+                st._isItalian = isItalianMode;
+                token.statblock = st;
+
                 token.ac = acVal;
                 // SEMPRE FULL VITA!
                 token.hpMax = hpVal;
                 token.hpCurrent = hpVal;
                 token.hpVisibleToPlayers = true;
 
-                // Se il mostro ha un'immagine di token personalizzata, aggiorniamo la grafica
-                if (monster.tokenSrc) {
-                    const newImg = new Image();
-                    newImg.onload = () => {
-                        token.imageObj = newImg;
-                        token.src = monster.tokenSrc;
-                        engine.renderAll();
-                        if (typeof window.syncState === 'function') window.syncState(true, true);
-                    };
-                    newImg.src = monster.tokenSrc;
-                }
-
                 // Se presente in iniziativa, aggiorna
-                if (engine.initiative && engine.initiative.participants) {
-                    const p = engine.initiative.participants.find(x => x.tokenId === token.id);
+                if (eng.initiative && eng.initiative.participants) {
+                    const p = eng.initiative.participants.find(x => x.tokenId === token.id);
                     if (p) {
                         p.hpCurrent = hpVal;
                         p.hpMax = hpVal;
@@ -906,19 +1627,34 @@
                 }
             });
 
+            // Se il mostro ha un'immagine di token personalizzata, aggiorniamo la grafica una sola volta
+            if (monster.tokenSrc) {
+                const newImg = new Image();
+                newImg.onload = () => {
+                    targetTokens.forEach(token => {
+                        token.imageObj = newImg;
+                        token.src = monster.tokenSrc;
+                        if (typeof window.markTokenImageDirty === 'function') window.markTokenImageDirty(token.id);
+                    });
+                    eng.renderAll();
+                    if (typeof window.syncState === 'function') window.syncState(true, false);
+                };
+                newImg.src = monster.tokenSrc;
+            }
+
             // Aggiorna controlli barra laterale se uno è selezionato
-            const prim = engine.tokens.find(t => t.id === engine.selectedTokenId);
+            const prim = eng.tokens.find(t => t.id === eng.selectedTokenId);
             if (prim && typeof window.updateSelectedTokenControls === 'function') {
                 window.updateSelectedTokenControls(prim);
             }
 
-            if (engine.initiative && typeof renderTrackerList === 'function') {
+            if (eng.initiative && typeof renderTrackerList === 'function') {
                 renderTrackerList();
             }
 
-            engine.renderAll();
-            if (typeof window.syncState === 'function') window.syncState(true, true);
-            else if (typeof syncState === 'function') syncState(true, true);
+            eng.renderAll();
+            if (typeof window.syncState === 'function') window.syncState(true, false);
+            else if (typeof syncState === 'function') syncState(true, false);
 
             if (typeof showToast === 'function') {
                 showToast(`Scheda "${monster.name}" assegnata a ${targetTokens.length} token (Full PV: ${hpVal}, CA: ${acVal})!`);
@@ -926,26 +1662,27 @@
         },
 
         spawnAsToken(monster) {
-            if (!engine) return;
-            const sizeMap = { 'tiny': 1, 'small': 1, 'medium': 1, 'large': 2, 'huge': 3, 'gargantuan': 4, 't': 1, 's': 1, 'm': 1, 'l': 2, 'h': 3, 'g': 4 };
+            const eng = getEngine();
+            if (!eng) return;
+            const sizeMap = { 'tiny': 1, 'small': 1, 'medium': 1, 'large': 2, 'huge': 3, 'gargantuan': 4, 't': 1, 's': 1, 'm': 1, 'l': 2, 'h': 3, 'g': 4, 'minuscola': 1, 'piccola': 1, 'media': 1, 'grande': 2, 'enorme': 3, 'mastodontica': 4 };
             const sizeKey = (monster.size || 'm').toLowerCase();
             const sizeMult = sizeMap[sizeKey] || 1;
-            const pxSize = engine.grid.size * sizeMult;
+            const pxSize = eng.grid.size * sizeMult;
 
             const tokenSrc = monster.tokenSrc || this.generateLetterToken(monster);
 
             // Posiziona al centro della vista
-            const centerWorld = engine.screenToWorld(engine.layers.ui.width/2, engine.layers.ui.height/2);
-            const effOffsetX = (engine.grid.offsetX || 0) % engine.grid.size;
-            const effOffsetY = (engine.grid.offsetY || 0) % engine.grid.size;
-            const snappedX = Math.round((centerWorld.x - effOffsetX) / engine.grid.size) * engine.grid.size + effOffsetX;
-            const snappedY = Math.round((centerWorld.y - effOffsetY) / engine.grid.size) * engine.grid.size + effOffsetY;
+            const centerWorld = eng.screenToWorld(eng.layers.ui.width/2, eng.layers.ui.height/2);
+            const effOffsetX = (eng.grid.offsetX || 0) % eng.grid.size;
+            const effOffsetY = (eng.grid.offsetY || 0) % eng.grid.size;
+            const snappedX = Math.round((centerWorld.x - effOffsetX) / eng.grid.size) * eng.grid.size + effOffsetX;
+            const snappedY = Math.round((centerWorld.y - effOffsetY) / eng.grid.size) * eng.grid.size + effOffsetY;
 
             // Progressione nome
             let baseName = monster.name || 'Monster';
             let maxNum = 0;
             let foundAny = false;
-            engine.tokens.forEach(t => {
+            eng.tokens.forEach(t => {
                 const tName = t.name || '';
                 if (tName === baseName) {
                     foundAny = true;
@@ -962,6 +1699,11 @@
             imgObj.onload = () => {
                 const hpVal = parseInt(monster.hit_points) || 10;
                 const acVal = parseInt(monster.armor_class) || 10;
+
+                const st = JSON.parse(JSON.stringify(monster));
+                st._raw = rawMonster ? JSON.parse(JSON.stringify(rawMonster)) : JSON.parse(JSON.stringify(monster));
+                if (st._raw && st._raw.tokenSrc) delete st._raw.tokenSrc;
+                st._isItalian = isItalianMode;
 
                 const token = {
                     id: 'token_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
@@ -981,21 +1723,21 @@
                     hpMax: hpVal,
                     hpCurrent: hpVal,
                     hpVisibleToPlayers: true,
-                    statblock: JSON.parse(JSON.stringify(monster))
+                    statblock: st
                 };
 
-                engine.tokens.push(token);
-                engine.selectedTokens.clear();
-                engine.selectedTokens.add(token.id);
-                engine.selectedTokenId = token.id;
+                eng.tokens.push(token);
+                eng.selectedTokens.clear();
+                eng.selectedTokens.add(token.id);
+                eng.selectedTokenId = token.id;
 
                 if (typeof window.updateSelectedTokenControls === 'function') {
                     window.updateSelectedTokenControls(token);
                 }
 
-                engine.renderAll();
-                if (typeof window.syncState === 'function') window.syncState(true, true);
-                else if (typeof syncState === 'function') syncState(true, true);
+                eng.renderAll();
+                if (typeof window.syncState === 'function') window.syncState(true, false);
+                else if (typeof syncState === 'function') syncState(true, false);
                 if (typeof updateMapTokensGallery === 'function') updateMapTokensGallery();
                 if (typeof showToast === 'function') showToast(`Creato token "${assignedName}" (Full PV: ${hpVal}, CA: ${acVal})!`);
             };
@@ -1006,16 +1748,37 @@
             const win = document.getElementById('dm-statblock-window');
             if (!win) return;
             win.style.display = 'flex';
+            win.style.zIndex = '1150';
 
-            if (statblockToDisplay) {
-                this.loadMonster(statblockToDisplay);
-            } else if (engine && engine.selectedTokenId) {
-                const t = engine.tokens.find(tok => tok.id === engine.selectedTokenId);
-                if (t && t.statblock) {
-                    this.loadMonster(t.statblock);
-                } else {
-                    this.updateAssignButtonText();
+            const eng = getEngine();
+            const selectedToken = (eng && eng.selectedTokenId)
+                ? eng.tokens.find(tok => tok.id === eng.selectedTokenId)
+                : null;
+            const targetStatblock = statblockToDisplay || (selectedToken ? selectedToken.statblock : null);
+
+            if (targetStatblock) {
+                this.loadMonster(targetStatblock);
+            } else if (selectedToken && !selectedToken.statblock) {
+                const details = document.getElementById('statblock-details');
+                const placeholder = document.getElementById('statblock-placeholder');
+                if (details) details.style.display = 'none';
+                if (placeholder) {
+                    placeholder.style.display = 'block';
+                    const tokenName = selectedToken.name || (selectedToken.originalName ? selectedToken.originalName.replace(/\.[^/.]+$/, "") : 'questo token');
+                    placeholder.innerHTML = `
+                        <div style="text-align: center; color: #aaa; padding: 35px 15px;">
+                            <div style="font-size: 32px; margin-bottom: 10px;">📜</div>
+                            <strong style="color: #ef5350; font-size: 15px;">Nessuna scheda associata</strong>
+                            <p style="font-size: 12px; color: #aaa; margin: 8px 0 15px 0;">Il token <b>"${tokenName}"</b> non ha ancora una scheda mostro assegnata.</p>
+                            <span style="font-size: 11px; color: #888; background: #222; padding: 6px 10px; border-radius: 4px; border: 1px solid #444;">
+                                🔍 Cerca un mostro nella barra in alto oppure usa <b>📥 Incolla JSON</b> per assegnarlo!
+                            </span>
+                        </div>
+                    `;
                 }
+                currentMonster = null;
+                rawMonster = null;
+                this.updateAssignButtonText();
             } else {
                 this.updateAssignButtonText();
             }
@@ -1024,7 +1787,11 @@
         close() {
             const win = document.getElementById('dm-statblock-window');
             if (win) win.style.display = 'none';
-        }
+        },
+
+        get currentMonster() { return currentMonster; },
+        get rawMonster() { return rawMonster; },
+        get isItalianMode() { return isItalianMode; }
     };
 
     window.compendium = compendium;

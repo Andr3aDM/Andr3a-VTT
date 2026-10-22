@@ -126,7 +126,60 @@ network.onMessage((data, peerId) => {
         window.lastReceivedPlayerPingId = pingId;
         engine.pings.push({x: pData.x, y: pData.y, start: Date.now(), color: pData.color || '#ff0000'});
         engine.renderUI();
+    } else if (data.type === 'REMOTE_TOKEN_MOVE') {
+        if (activeToken && activeToken.type === 'token' && activeToken.ref && activeToken.ref.id === data.payload.id) return;
+        const tok = engine.tokens.find(t => t.id === data.payload.id);
+        if (tok) {
+            tok.x = data.payload.x;
+            tok.y = data.payload.y;
+            engine.renderTokensLayer();
+        }
+    } else if (data.type === 'REMOTE_SHAPE_MOVE') {
+        if (activeToken && activeToken.type === 'shape' && activeToken.ref && activeToken.ref.id === data.payload.id) return;
+        const s = engine.shapes.find(x => x.id === data.payload.id);
+        if (s) {
+            s.x = data.payload.x;
+            s.y = data.payload.y;
+            engine.renderTokensLayer();
+        }
+    } else if (data.type === 'VIEW_SYNC') {
+        wasViewSyncActive = true;
+        const p = data.payload;
+        if (p && p.scale > 0 && engine.container) {
+            engine.scale = p.scale;
+            engine.offsetX = engine.container.clientWidth / 2 - p.centerX * engine.scale;
+            engine.offsetY = engine.container.clientHeight / 2 - p.centerY * engine.scale;
+            engine.renderViewport();
+        }
+    } else if (data.type === 'GRID_MOVE_LIVE') {
+        if (!engine.grid) engine.grid = {};
+        engine.grid.offsetX = data.payload.offsetX;
+        engine.grid.offsetY = data.payload.offsetY;
+        engine.renderAll();
+    } else if (data.type === 'LIVE_DRAW_POINT') {
+        const p = data.payload;
+        const ctx = engine.ctx.drawPublic;
+        if (ctx && p && p.point) {
+            ctx.beginPath();
+            ctx.arc(p.point.x, p.point.y, (p.width || 10) / 2, 0, Math.PI * 2);
+            ctx.fillStyle = p.color || '#ff0000';
+            ctx.fill();
+        }
+    } else if (data.type === 'HANDOUT_RECT_LIVE') {
+        const hw = document.getElementById('handout-window');
+        if (hw && data.payload) {
+            if (data.payload.left) hw.style.left = data.payload.left;
+            if (data.payload.top) hw.style.top = data.payload.top;
+            if (data.payload.width) hw.style.width = data.payload.width;
+            if (data.payload.height) hw.style.height = data.payload.height;
+        }
     } else if (data.type === 'MAP_UPDATE') {
+        if (!data.payload) return;
+        const mapSig = data.payload.length + '_' + data.payload.slice(0, 64) + '_' + data.payload.slice(-64);
+        if (window._lastPlayerMapSig === mapSig && engine.mapImage) {
+            return; // Ignora MAP_UPDATE duplicati per evitare ricaricamenti e schermate nere
+        }
+        window._lastPlayerMapSig = mapSig;
         const img = new Image();
         img.onload = () => {
             engine.setMap(img);
@@ -136,6 +189,27 @@ network.onMessage((data, peerId) => {
             }
         };
         img.src = data.payload;
+    } else if (data.type === 'TOKEN_IMAGE_SYNC') {
+        const p = data.payload;
+        if (p && p.imgKey && p.src) {
+            const img = new Image();
+            img.onload = () => {
+                tokenImageCache.set(p.imgKey, img);
+                let updated = false;
+                engine.tokens.forEach(tok => {
+                    if (tok.imgKey === p.imgKey) {
+                        tok.imageObj = img;
+                        tok.src = p.src;
+                        tokenImageCache.set('id_' + tok.id, img);
+                        updated = true;
+                    }
+                });
+                if (updated) {
+                    engine.renderTokensLayer();
+                }
+            };
+            img.src = p.src;
+        }
     } else if (data.type === 'SHARED_IMAGE_DATA') {
         if (data.imageId === currentSharedImageId) {
             document.getElementById('handout-image').src = data.data;
@@ -234,7 +308,11 @@ network.onMessage((data, peerId) => {
         // Annulla il rubber-banding applicando il Timestamp Lock
         state.tokens.forEach(incomingTok => {
             const localTok = engine.tokens.find(t => t.id === incomingTok.id);
-            if (localTok && localTok._lastLocalEdit && Date.now() - localTok._lastLocalEdit < 1000) {
+            if (activeToken && activeToken.type === 'token' && activeToken.ref && activeToken.ref.id === incomingTok.id) {
+                incomingTok.x = activeToken.ref.x;
+                incomingTok.y = activeToken.ref.y;
+                incomingTok._lastLocalEdit = activeToken.ref._lastLocalEdit || Date.now();
+            } else if (localTok && localTok._lastLocalEdit && Date.now() - localTok._lastLocalEdit < 2000) {
                 incomingTok.x = localTok.x;
                 incomingTok.y = localTok.y;
                 incomingTok._lastLocalEdit = localTok._lastLocalEdit;
@@ -244,7 +322,11 @@ network.onMessage((data, peerId) => {
         if (state.shapes) {
             state.shapes.forEach(incomingShape => {
                 const localShape = engine.shapes.find(s => s.id === incomingShape.id);
-                if (localShape && localShape._lastLocalEdit && Date.now() - localShape._lastLocalEdit < 1000) {
+                if (activeToken && activeToken.type === 'shape' && activeToken.ref && activeToken.ref.id === incomingShape.id) {
+                    incomingShape.x = activeToken.ref.x;
+                    incomingShape.y = activeToken.ref.y;
+                    incomingShape._lastLocalEdit = activeToken.ref._lastLocalEdit || Date.now();
+                } else if (localShape && localShape._lastLocalEdit && Date.now() - localShape._lastLocalEdit < 2000) {
                     incomingShape.x = localShape.x;
                     incomingShape.y = localShape.y;
                     incomingShape._lastLocalEdit = localShape._lastLocalEdit;
@@ -283,110 +365,92 @@ network.onMessage((data, peerId) => {
             return;
         }
 
-        const newTokens = new Array(state.tokens.length);
-        let loadedCount = 0;
+        if (!window._requestedImgKeysAt) window._requestedImgKeysAt = new Map();
+        const nowMs = Date.now();
 
-        const finishLoading = () => {
-            const finalTokens = newTokens.filter(Boolean);
-            if (activeToken) {
-                const dragId = activeToken.ref.id;
-                const dragX = activeToken.ref.x;
-                const dragY = activeToken.ref.y;
-                const dragEdit = activeToken.ref._lastLocalEdit;
-                
-                engine.tokens = finalTokens;
-                
-                if (activeToken.type === 'token') {
-                    const found = engine.tokens.find(tok => tok.id === dragId);
-                    if (found) {
-                        found.x = dragX;
-                        found.y = dragY;
-                        found._lastLocalEdit = dragEdit;
-                        activeToken = { type: 'token', ref: found };
-                    } else {
-                        activeToken = null;
-                    }
-                } else if (activeToken.type === 'shape') {
-                    const found = engine.shapes.find(s => s.id === dragId);
-                    if (found) {
-                        found.x = dragX;
-                        found.y = dragY;
-                        found._lastLocalEdit = dragEdit;
-                        activeToken = { type: 'shape', ref: found };
-                    } else {
-                        activeToken = null;
-                    }
-                }
-            } else {
-                engine.tokens = finalTokens;
-            }
-            engine.renderAll();
-        };
-
-        const markTokenReady = (index, tokenObj) => {
-            newTokens[index] = tokenObj;
-            loadedCount++;
-            if (loadedCount === state.tokens.length) {
-                finishLoading();
-            }
-        };
-
-        state.tokens.forEach((t, idx) => {
+        // RENDERING SINCRONO ISTANTANEO (0ms):
+        // Aggiorna posizioni, aure, visibilità e PV immediatamente senza attendere il caricamento asincrono delle immagini!
+        const finalTokens = state.tokens.map(t => {
             const existing = engine.tokens.find(et => et.id === t.id);
 
-            // Caso 1: Stesso ID token già presente in mappa con immagine già pronta
-            if (existing && existing.imageObj && (!t.src || existing.src === t.src || (existing.src && t.src && existing.src.startsWith(t.src)))) {
-                t.src = existing.src;
-                t.imageObj = existing.imageObj;
-                markTokenReady(idx, t);
-                return;
+            if (t.imgKey && tokenImageCache.has(t.imgKey)) {
+                t.imageObj = tokenImageCache.get(t.imgKey);
+                tokenImageCache.set('id_' + t.id, t.imageObj);
+                return t;
             }
-
-            // Caso 2: Immagine già in cache globale del client per lo stesso src
+            if (existing && existing.imageObj && (!t.imgKey || !existing.imgKey || existing.imgKey === t.imgKey)) {
+                t.imageObj = existing.imageObj;
+                if (t.imgKey && !existing.imageObj._isFallbackBadge) tokenImageCache.set(t.imgKey, existing.imageObj);
+                return t;
+            }
             if (t.src && tokenImageCache.has(t.src)) {
                 t.imageObj = tokenImageCache.get(t.src);
-                markTokenReady(idx, t);
-                return;
+                if (t.imgKey) tokenImageCache.set(t.imgKey, t.imageObj);
+                return t;
+            }
+            if (tokenImageCache.has('id_' + t.id)) {
+                t.imageObj = tokenImageCache.get('id_' + t.id);
+                return t;
             }
 
-            // Caso 3: Immagine già caricata da un ALTRO token in mappa (es. TOKEN DUPLICATO con Ctrl+D!)
-            const sameSrcToken = engine.tokens.find(et => et.imageObj && et.src && t.src && et.src === t.src);
-            if (sameSrcToken) {
-                t.imageObj = sameSrcToken.imageObj;
-                tokenImageCache.set(t.src, sameSrcToken.imageObj);
-                markTokenReady(idx, t);
-                return;
-            }
+            // Mostra immediatamente il badge provvisorio così il token e la sua aura sono visibili al millisecondo 0
+            const badge = createFallbackTokenBadge(t.name);
+            badge._isFallbackBadge = true;
+            t.imageObj = badge;
 
-            // Caso 4: Se il pacchetto non include src (es. drag in tempo reale) ma c'è un token esistente
-            if (!t.src && existing && existing.imageObj) {
-                t.src = existing.src;
-                t.imageObj = existing.imageObj;
-                markTokenReady(idx, t);
-                return;
+            if (t.src) {
+                const img = new Image();
+                img.onload = () => {
+                    t.imageObj = img;
+                    if (t.src) tokenImageCache.set(t.src, img);
+                    if (t.imgKey) tokenImageCache.set(t.imgKey, img);
+                    tokenImageCache.set('id_' + t.id, img);
+                    engine.renderTokensLayer();
+                };
+                img.src = t.src;
+            } else if (t.imgKey) {
+                const lastReq = window._requestedImgKeysAt.get(t.imgKey) || 0;
+                if (nowMs - lastReq > 3000) {
+                    window._requestedImgKeysAt.set(t.imgKey, nowMs);
+                    network.send({ type: 'REQUEST_TOKEN_IMAGE', imgKey: t.imgKey });
+                }
             }
-
-            // Caso 5: Nessun src fornito e nessun existing -> fallback badge istantaneo
-            if (!t.src) {
-                t.imageObj = createFallbackTokenBadge(t.name);
-                markTokenReady(idx, t);
-                return;
-            }
-
-            // Caso 6: Nuova immagine da caricare (token da compendio, nuova pedina da libreria, ecc.)
-            const img = new Image();
-            img.onload = () => {
-                t.imageObj = img;
-                tokenImageCache.set(t.src, img);
-                markTokenReady(idx, t);
-            };
-            img.onerror = () => {
-                console.warn("Impossibile caricare immagine per token:", t.name);
-                t.imageObj = createFallbackTokenBadge(t.name);
-                markTokenReady(idx, t);
-            };
-            img.src = t.src;
+            return t;
         });
+
+        if (activeToken) {
+            const dragId = activeToken.ref.id;
+            const dragX = activeToken.ref.x;
+            const dragY = activeToken.ref.y;
+            const dragEdit = activeToken.ref._lastLocalEdit;
+            
+            engine.tokens = finalTokens;
+            
+            if (activeToken.type === 'token') {
+                const found = engine.tokens.find(tok => tok.id === dragId);
+                if (found) {
+                    found.x = dragX;
+                    found.y = dragY;
+                    found._lastLocalEdit = dragEdit;
+                    activeToken = { type: 'token', ref: found };
+                } else {
+                    activeToken = null;
+                }
+            } else if (activeToken.type === 'shape') {
+                const found = engine.shapes.find(s => s.id === dragId);
+                if (found) {
+                    found.x = dragX;
+                    found.y = dragY;
+                    found._lastLocalEdit = dragEdit;
+                    activeToken = { type: 'shape', ref: found };
+                } else {
+                    activeToken = null;
+                }
+            }
+        } else {
+            engine.tokens = finalTokens;
+        }
+        engine.renderAll();
     } else if (data.type === 'FOG_SYNC') {
         engine.pendingFogImage = data.payload;
         if (engine.mapImage) {
@@ -625,7 +689,7 @@ function pHandleMove(e) {
     if (isPanning) {
         engine.offsetX = pos.x - startPanX;
         engine.offsetY = pos.y - startPanY;
-        engine.renderAll();
+        engine.renderViewport();
         return;
     }
     
@@ -636,7 +700,7 @@ function pHandleMove(e) {
             activeToken.ref.x = worldPos.x - activeToken.ref.width / 2;
             activeToken.ref.y = worldPos.y - activeToken.ref.height / 2;
             activeToken.ref._lastLocalEdit = Date.now();
-            engine.renderAll();
+            engine.renderTokensLayer();
             
             if (Date.now() - (window.lastMoveSend || 0) > 40) {
                 network.send({
@@ -649,7 +713,7 @@ function pHandleMove(e) {
             activeToken.ref.x = worldPos.x;
             activeToken.ref.y = worldPos.y;
             activeToken.ref._lastLocalEdit = Date.now();
-            engine.renderAll();
+            engine.renderTokensLayer();
             
             if (Date.now() - (window.lastMoveSend || 0) > 40) {
                 network.send({
@@ -708,13 +772,21 @@ function pHandleEnd(e) {
         const effOffsetY = (engine.grid.offsetY || 0) % engine.grid.size;
         
         if (activeToken.type === 'token') {
-            activeToken.ref.x = Math.round((activeToken.ref.x - effOffsetX) / engine.grid.size) * engine.grid.size + effOffsetX;
-            activeToken.ref.y = Math.round((activeToken.ref.y - effOffsetY) / engine.grid.size) * engine.grid.size + effOffsetY;
+            const targetX = Math.round((activeToken.ref.x - effOffsetX) / engine.grid.size) * engine.grid.size + effOffsetX;
+            const targetY = Math.round((activeToken.ref.y - effOffsetY) / engine.grid.size) * engine.grid.size + effOffsetY;
+            activeToken.ref.x = targetX;
+            activeToken.ref.y = targetY;
             activeToken.ref._lastLocalEdit = Date.now();
+            const localTok = engine.tokens.find(t => t.id === activeToken.ref.id);
+            if (localTok) {
+                localTok.x = targetX;
+                localTok.y = targetY;
+                localTok._lastLocalEdit = Date.now();
+            }
             engine.renderAll();
             network.send({
                 type: 'PLAYER_END_TOKEN',
-                payload: { id: activeToken.ref.id, x: activeToken.ref.x, y: activeToken.ref.y }
+                payload: { id: activeToken.ref.id, x: targetX, y: targetY }
             });
             
             // Controlla se è stato solo un click (senza drag)
@@ -734,8 +806,14 @@ function pHandleEnd(e) {
             activeToken.ref._lastLocalEdit = Date.now();
             engine.renderAll();
             
+            const localShape = engine.shapes.find(s => s.id === activeToken.ref.id);
+            if (localShape) {
+                localShape.x = activeToken.ref.x;
+                localShape.y = activeToken.ref.y;
+                localShape._lastLocalEdit = Date.now();
+            }
             network.send({
-                type: 'PLAYER_MOVE_SHAPE',
+                type: 'PLAYER_END_SHAPE',
                 payload: { id: activeToken.ref.id, x: activeToken.ref.x, y: activeToken.ref.y }
             });
             
@@ -794,7 +872,7 @@ uiLayer.addEventListener('wheel', (e) => {
     
     engine.offsetX = pos.x - worldPosBefore.x * engine.scale;
     engine.offsetY = pos.y - worldPosBefore.y * engine.scale;
-    engine.renderAll();
+    engine.renderViewport();
 });
 
 uiLayer.addEventListener('mousedown', pHandleStart);

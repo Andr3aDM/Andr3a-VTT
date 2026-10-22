@@ -40,32 +40,40 @@ if (btnOpenPlayerOnline) {
     });
 }
 
-network.onConnect((playerName) => {
+network.onConnect((playerName, pid) => {
     if(playerName) {
         const div = document.getElementById('online-players');
         if(div.innerText === "Nessun giocatore connesso.") div.innerText = "";
         div.innerHTML += `<div>🟢 ${escapeHTML(playerName)}</div>`;
-        if (typeof syncedTokenImageIds !== 'undefined') syncedTokenImageIds.clear();
-        syncState(true, true); // Sincronizza il nuovo arrivato con tutte le immagini complete
-        syncFog();
-        if (currentMapBase64) {
-            network.send({ type: 'MAP_UPDATE', payload: currentMapBase64 });
-        }
+        // Nota: l'invio di mappa, stato e nebbia avviene in PLAYER_READY mirato solo al nuovo peerId
     }
 });
 
 network.onMessage((data, peerId) => {
     if (data.type === 'PLAYER_READY') {
-        // Un giocatore ha appena aperto la pagina e ricaricato tutto, o si è appena unito offline
-        const mapPayload = currentMapBase64 || (engine.mapImage ? engine.mapImage.src : null);
+        // Invia STATO immediatamente (<10ms) così token e aure appaiono subito, poi mappa compressa e nebbia
+        syncState(true, true, peerId);
+        const mapPayload = getNetworkMapPayload();
         if (mapPayload) {
-            network.send({ type: 'MAP_UPDATE', payload: mapPayload });
+            network.send({ type: 'MAP_UPDATE', payload: mapPayload }, peerId);
         }
-        // Ritardiamo fog e state per dare tempo al giocatore di caricare l'immagine della mappa
         setTimeout(() => {
-            syncState(true, true);
-            syncFog();
-        }, 200);
+            syncFog(peerId);
+        }, 120);
+    } else if (data.type === 'REQUEST_TOKEN_IMAGE') {
+        const reqKey = data.imgKey;
+        if (reqKey) {
+            const cachedSrc = compressedTokenSrcByKey.get(reqKey);
+            if (cachedSrc) {
+                network.send({ type: 'TOKEN_IMAGE_SYNC', payload: { imgKey: reqKey, src: cachedSrc } }, peerId);
+            } else {
+                const tok = engine.tokens.find(t => getTokenImgKey(t.src) === reqKey);
+                if (tok && tok.src) {
+                    const cSrc = getOrCompressTokenSrc(tok);
+                    network.send({ type: 'TOKEN_IMAGE_SYNC', payload: { imgKey: reqKey, src: cSrc } }, peerId);
+                }
+            }
+        }
     } else if (data.type === 'REQUEST_IMAGE') {
         if (engine.sharedImageId === data.imageId && engine.sharedImageData) {
             network.send({
@@ -74,25 +82,48 @@ network.onMessage((data, peerId) => {
                 data: engine.sharedImageData
             }, peerId);
         }
-    } else if (data.type === 'PLAYER_MOVE_TOKEN' || data.type === 'PLAYER_END_TOKEN') {
+    } else if (data.type === 'PLAYER_MOVE_TOKEN') {
         const payload = data.payload;
         const token = engine.tokens.find(t => t.id === payload.id);
-        
-        // Cerca il nome del giocatore in base al peerId (oppure da locale se 'local')
-        let pName = null;
-        if (peerId === 'local') {
-            // Se sta giocando offline col tab a fianco, non abbiamo un modo sicuro 
-            // per sapere chi è a meno di non passare il nome nel payload, ma fidiamoci.
-            pName = token ? token.owner : null;
-        } else {
-            pName = network.connections[peerId] ? network.connections[peerId].name : null;
-        }
-
+        let pName = (peerId === 'local') ? (token ? token.owner : null) : (network.connections[peerId] ? network.connections[peerId].name : null);
         if (token && token.owner === pName) {
             token.x = payload.x;
             token.y = payload.y;
-            engine.renderAll();
-            syncState(data.type === 'PLAYER_END_TOKEN');
+            engine.renderTokensLayer();
+            // Inoltra movimento in tempo reale SOLO agli altri giocatori, mai al mittente
+            const moveMsg = {
+                type: 'REMOTE_TOKEN_MOVE',
+                ephemeral: true,
+                payload: { id: token.id, x: token.x, y: token.y }
+            };
+            if (network.mode === 'host') {
+                for (let k in network.connections) {
+                    if (k !== peerId) network.send(moveMsg, k);
+                }
+                if (peerId !== 'local') network.send(moveMsg, 'local');
+            }
+        }
+    } else if (data.type === 'PLAYER_END_TOKEN') {
+        const payload = data.payload;
+        const token = engine.tokens.find(t => t.id === payload.id);
+        let pName = (peerId === 'local') ? (token ? token.owner : null) : (network.connections[peerId] ? network.connections[peerId].name : null);
+        if (token && token.owner === pName) {
+            token.x = payload.x;
+            token.y = payload.y;
+            engine.renderTokensLayer();
+            const endMsg = {
+                type: 'REMOTE_TOKEN_MOVE',
+                final: true,
+                payload: { id: token.id, x: token.x, y: token.y }
+            };
+            if (network.mode === 'host') {
+                for (let k in network.connections) {
+                    if (k !== peerId) network.send(endMsg, k);
+                }
+                if (peerId !== 'local') network.send(endMsg, 'local');
+            } else {
+                network.send(endMsg);
+            }
         }
     
     } else if (data.type === 'DICE_ROLL') {
@@ -105,6 +136,23 @@ network.onMessage((data, peerId) => {
         }
         // Rimbalza il tiro del giocatore a tutti gli altri giocatori!
         network.send(data);
+    } else if (data.type === 'LASER_SYNC') {
+        if (!engine.lasers) engine.lasers = [];
+        const existing = engine.lasers.find(l => l.id === data.payload.id);
+        if (existing) {
+            existing.points = data.payload.points;
+            existing.active = data.payload.active;
+        } else {
+            engine.lasers.push(data.payload);
+        }
+        engine.renderUI();
+        if (network.mode === 'host') {
+            for (let k in network.connections) {
+                if (k !== peerId && network.connections[k].conn) {
+                    network.connections[k].conn.send(data);
+                }
+            }
+        }
     } else if (data.type === 'PING') {
         const pingPayload = data.payload || data;
         const pingId = pingPayload.id || (pingPayload.x + '_' + pingPayload.y + '_' + (pingPayload.t || ''));
@@ -135,8 +183,38 @@ network.onMessage((data, peerId) => {
         if (s) {
             s.x = data.payload.x;
             s.y = data.payload.y;
-            engine.renderAll();
-            syncState(false);
+            engine.renderTokensLayer();
+            const moveMsg = {
+                type: 'REMOTE_SHAPE_MOVE',
+                ephemeral: true,
+                payload: { id: s.id, x: s.x, y: s.y }
+            };
+            if (network.mode === 'host') {
+                for (let k in network.connections) {
+                    if (k !== peerId) network.send(moveMsg, k);
+                }
+                if (peerId !== 'local') network.send(moveMsg, 'local');
+            }
+        }
+    } else if (data.type === 'PLAYER_END_SHAPE') {
+        const s = engine.shapes.find(x => x.id === data.payload.id);
+        if (s) {
+            s.x = data.payload.x;
+            s.y = data.payload.y;
+            engine.renderTokensLayer();
+            const endMsg = {
+                type: 'REMOTE_SHAPE_MOVE',
+                final: true,
+                payload: { id: s.id, x: s.x, y: s.y }
+            };
+            if (network.mode === 'host') {
+                for (let k in network.connections) {
+                    if (k !== peerId) network.send(endMsg, k);
+                }
+                if (peerId !== 'local') network.send(endMsg, 'local');
+            } else {
+                network.send(endMsg);
+            }
         }
     } else if (data.type === 'PLAYER_UPDATE_SHAPE') {
         const s = engine.shapes.find(x => x.id === data.payload.id);
@@ -173,6 +251,10 @@ let activeLaser = null;
 let lastLaserSync = 0;
 let tokenImages = {};
 let currentMapBase64 = null;
+let lastClickedTokenId = null;
+let lastClickedTokenTime = 0;
+let lastStatblockOpenTime = 0;
+let clickedTokenForInteraction = null;
 
 
 window.getSmartTokenName = function(t) {
@@ -240,10 +322,32 @@ if (hideToolbarBtn) {
 }
 
 let isViewSyncActive = false;
+let lastViewSyncSend = 0;
+
+function sendViewSync(force = false) {
+    if (!isViewSyncActive || engine.scale <= 0 || !engine.container) return;
+    const now = Date.now();
+    if (!force && now - lastViewSyncSend < 30) return;
+    lastViewSyncSend = now;
+
+    const payload = {
+        centerX: (engine.container.clientWidth / 2 - engine.offsetX) / engine.scale,
+        centerY: (engine.container.clientHeight / 2 - engine.offsetY) / engine.scale,
+        scale: engine.scale
+    };
+    network.send({
+        type: 'VIEW_SYNC',
+        payload: payload
+    });
+}
+
 const syncToggleBtn = document.getElementById('sync-view-toggle');
 if (syncToggleBtn) {
     syncToggleBtn.addEventListener('change', (e) => {
         isViewSyncActive = e.target.checked;
+        if (isViewSyncActive) {
+            sendViewSync(true);
+        }
         syncState(true);
     });
 }
@@ -265,28 +369,121 @@ vttDB.init().then(async () => {
 let lastSyncTime = 0;
 let syncTimeout = null;
 const syncedTokenImageIds = new Set();
+const syncedImageKeys = new Set();
+const compressedTokenSrcByKey = new Map();
+let cachedNetworkMapSource = null;
+let cachedNetworkMapOutput = null;
 
-function syncState(force = false, sendFullImages = false) {
+function getTokenImgKey(src) {
+    if (!src) return null;
+    const len = src.length;
+    if (len <= 120) return src;
+    const mid = Math.floor(len / 2);
+    return 'ik_' + len + '_' + src.slice(22, 46) + '_' + src.slice(mid, mid + 24) + '_' + src.slice(len - 24);
+}
+
+function getOrCompressTokenSrc(token) {
+    if (!token || !token.src) return null;
+    if (!token.src.startsWith('data:image') || token.src.length <= 22000) {
+        const key = getTokenImgKey(token.src);
+        if (key) compressedTokenSrcByKey.set(key, token.src);
+        return token.src;
+    }
+    const origKey = getTokenImgKey(token.src);
+    if (origKey && compressedTokenSrcByKey.has(origKey)) {
+        const cached = compressedTokenSrcByKey.get(origKey);
+        token.src = cached;
+        return cached;
+    }
+    if (token.imageObj && token.imageObj.width > 0 && token.imageObj.height > 0) {
+        try {
+            const maxDim = 160;
+            let w = token.imageObj.width;
+            let h = token.imageObj.height;
+            if (w > maxDim || h > maxDim) {
+                if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+                else { w = Math.round((w * maxDim) / h); h = maxDim; }
+            }
+            const c = document.createElement('canvas');
+            c.width = w;
+            c.height = h;
+            const ctx = c.getContext('2d');
+            ctx.drawImage(token.imageObj, 0, 0, w, h);
+            let small = c.toDataURL('image/webp', 0.82);
+            if (!small || !small.startsWith('data:image/webp')) {
+                small = c.toDataURL('image/png');
+            }
+            if (small && small.length < token.src.length) {
+                token.src = small;
+            }
+        } catch (e) {
+            console.warn("Token compression fallback:", e);
+        }
+    }
+    const newKey = getTokenImgKey(token.src);
+    if (origKey) compressedTokenSrcByKey.set(origKey, token.src);
+    if (newKey) compressedTokenSrcByKey.set(newKey, token.src);
+    return token.src;
+}
+
+function getNetworkMapPayload() {
+    const raw = currentMapBase64 || (engine.mapImage ? engine.mapImage.src : null);
+    if (!raw) return null;
+    if (cachedNetworkMapSource === raw && cachedNetworkMapOutput) {
+        return cachedNetworkMapOutput;
+    }
+    if (!raw.startsWith('data:image') || raw.length <= 280000 || !engine.mapImage || !engine.mapImage.width) {
+        cachedNetworkMapSource = raw;
+        cachedNetworkMapOutput = raw;
+        return raw;
+    }
+    try {
+        // Mantiene esattamente width e height originali per preservare al 100% le coordinate di griglia, nebbia e token!
+        const c = document.createElement('canvas');
+        c.width = engine.mapImage.width;
+        c.height = engine.mapImage.height;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(engine.mapImage, 0, 0);
+        let compressed = c.toDataURL('image/webp', 0.72);
+        if (!compressed || !compressed.startsWith('data:image/webp')) {
+            compressed = c.toDataURL('image/jpeg', 0.75);
+        }
+        cachedNetworkMapSource = raw;
+        cachedNetworkMapOutput = (compressed && compressed.length < raw.length) ? compressed : raw;
+        return cachedNetworkMapOutput;
+    } catch (e) {
+        return raw;
+    }
+}
+
+window.markTokenImageDirty = function(tokenId) {
+    if (tokenId) syncedTokenImageIds.delete(tokenId);
+};
+
+function syncState(force = false, sendFullImages = false, targetPeerId = null) {
     const now = Date.now();
-    // Limita l'invio a massimo 25 frame al secondo (ogni 40ms) per non intasare la rete P2P
-    if (!force && now - lastSyncTime < 40) {
+    // Debounce intelligente: raggruppa aggiornamenti ravvicinati senza intasare WebRTC
+    if (!force && !targetPeerId && now - lastSyncTime < 50) {
         if (!syncTimeout) {
             syncTimeout = setTimeout(() => {
                 syncTimeout = null;
                 syncState(true, false);
-            }, 40);
+            }, 50);
         }
         return;
     }
     
-    if (syncTimeout) {
+    if (!targetPeerId && syncTimeout) {
         clearTimeout(syncTimeout);
         syncTimeout = null;
     }
-    lastSyncTime = now;
+    if (!targetPeerId) {
+        lastSyncTime = now;
+    }
 
-    if (sendFullImages) {
+    if (sendFullImages && !targetPeerId) {
         syncedTokenImageIds.clear();
+        syncedImageKeys.clear();
     }
 
     let viewSyncData = null;
@@ -298,6 +495,56 @@ function syncState(force = false, sendFullImages = false) {
         };
     }
 
+    const imagesToSendAfterState = [];
+    const batchQueuedKeys = new Set();
+
+    // OTTIMIZZAZIONE CRITICA ZERO-LAG:
+    // 1. Filtra i token invisibili (!t.visible): i giocatori non ricevono dati dei mostri nascosti!
+    // 2. STATE_SYNC NON contiene MAI stringhe Base64 lunghe (`src: null`), restando sempre < 2-3 KB!
+    //    Così rivelare 20 token o attivare un'aura arriva a tutti i giocatori in < 10 millisecondi!
+    // 3. Le immagini dei token vengono compresse (~5 KB WebP) e inviate separatamente con TOKEN_IMAGE_SYNC.
+    const visibleTokens = engine.tokens.filter(t => t.visible !== false);
+    const networkTokens = visibleTokens.map(t => {
+        const cleanSrc = getOrCompressTokenSrc(t);
+        const imgKey = getTokenImgKey(cleanSrc);
+        const isShortUrl = cleanSrc && cleanSrc.length <= 200;
+
+        if (cleanSrc && !isShortUrl && imgKey) {
+            const needSend = sendFullImages || !!targetPeerId || !syncedImageKeys.has(imgKey);
+            if (needSend && !batchQueuedKeys.has(imgKey)) {
+                batchQueuedKeys.add(imgKey);
+                imagesToSendAfterState.push({ imgKey: imgKey, src: cleanSrc });
+            }
+            if (!targetPeerId) {
+                syncedTokenImageIds.add(t.id);
+                syncedImageKeys.add(imgKey);
+            }
+        }
+
+        return {
+            id: t.id,
+            name: t.name,
+            nameVisibility: t.nameVisibility,
+            originalName: t.originalName,
+            x: t.x,
+            y: t.y,
+            width: t.width,
+            height: t.height,
+            sizeMultiplier: t.sizeMultiplier,
+            visible: true,
+            hpMax: t.hpMax,
+            hpCurrent: t.hpCurrent,
+            hpVisibleToPlayers: t.hpVisibleToPlayers,
+            ac: t.ac,
+            aura: t.aura,
+            conditions: t.conditions,
+            condition: t.condition,
+            owner: t.owner,
+            imgKey: imgKey,
+            src: isShortUrl ? cleanSrc : null
+        };
+    });
+
     const hpDisplayStyle = document.getElementById('hp-display-style') ? document.getElementById('hp-display-style').value : 'bar';
     const conditionDisplayStyle = document.getElementById('condition-display-style') ? document.getElementById('condition-display-style').value : 'concentric';
     network.send({
@@ -307,18 +554,7 @@ function syncState(force = false, sendFullImages = false) {
             hpDisplayStyle: hpDisplayStyle,
             conditionDisplayStyle: conditionDisplayStyle,
             grid: engine.grid,
-            tokens: engine.tokens.map(t => {
-                const copy = {...t, imageObj: null};
-                const isNewToken = !syncedTokenImageIds.has(t.id);
-                if (sendFullImages || isNewToken) {
-                    syncedTokenImageIds.add(t.id);
-                } else if (copy.src && copy.src.length > 200) {
-                    // Durante il drag live, non inviamo stringhe troncate/corrotte ma null
-                    // così il player riutilizza l'immagine già presente in cache senza ricaricare
-                    copy.src = null;
-                }
-                return copy;
-            }),
+            tokens: networkTokens,
             shapes: engine.shapes,
             initiative: engine.initiative,
             publicStrokes: engine.publicStrokes,
@@ -333,48 +569,62 @@ function syncState(force = false, sendFullImages = false) {
                 height: document.getElementById('dm-handout-window').style.height || '500px'
             }
         }
-    });
+    }, targetPeerId);
+
+    // Invia le immagini nuove/mancanti in pacchetti separati per non bloccare mai STATE_SYNC
+    if (imagesToSendAfterState.length > 0) {
+        imagesToSendAfterState.forEach(item => {
+            network.send({
+                type: 'TOKEN_IMAGE_SYNC',
+                payload: item
+            }, targetPeerId);
+        });
+    }
 }
 window.syncState = syncState;
 
-function syncFog() {
+function syncFog(targetPeerId = null) {
     network.send({
         type: 'FOG_SYNC',
         payload: engine.getFogBase64()
-    });
+    }, targetPeerId);
 }
 
 document.getElementById('btn-open-player').addEventListener('click', () => {
     window.open('player.html?mode=tv', '_blank', 'width=800,height=600');
     setTimeout(() => {
-        const mapPayload = currentMapBase64 || (engine.mapImage ? engine.mapImage.src : null);
+        syncState(true, true);
+        const mapPayload = getNetworkMapPayload();
         if (mapPayload) {
             network.send({ type: 'MAP_UPDATE', payload: mapPayload });
         }
-        syncState(true, true);
         syncFog();
     }, 600);
 });
 
 // Load Map
-document.getElementById('map-upload').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            currentMapBase64 = ev.target.result;
-            const img = new Image();
-            img.onload = () => {
-                engine.setMap(img);
-                network.send({ type: 'MAP_UPDATE', payload: currentMapBase64 });
-                syncState(true, true);
-                syncFog();
+const mapUploadEl = document.getElementById('map-upload');
+if (mapUploadEl) {
+    mapUploadEl.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                currentMapBase64 = ev.target.result;
+                const img = new Image();
+                img.onload = () => {
+                    engine.setMap(img);
+                    network.send({ type: 'MAP_UPDATE', payload: getNetworkMapPayload() });
+                    syncState(true, true);
+                    syncFog();
+                };
+                img.src = currentMapBase64;
             };
-            img.src = currentMapBase64;
-        };
-        reader.readAsDataURL(file);
-    }
-});
+            reader.readAsDataURL(file);
+        }
+        e.target.value = '';
+    });
+}
 
 
 // Inizializza Sistema Dadi
@@ -597,6 +847,8 @@ async function refreshFolders(campaignId) {
     folderSelect.value = currentSelectedFolder || "";
 }
 
+const campaignMapsMeta = new Map();
+
 async function refreshMaps(campaignId, selectedMapId = null) {
     if (!campaignId) return;
     const select = document.getElementById('map-select');
@@ -613,6 +865,7 @@ async function refreshMaps(campaignId, selectedMapId = null) {
 
     const maps = await vttDB.getMapsByCampaign(campaignId);
     select.innerHTML = '<option value="">-- Seleziona Mappa --</option>';
+    campaignMapsMeta.clear();
 
     let filteredMaps = maps;
     if (currentSelectedFolder === '__none__') {
@@ -623,6 +876,7 @@ async function refreshMaps(campaignId, selectedMapId = null) {
 
     let foundTarget = false;
     filteredMaps.forEach(m => {
+        campaignMapsMeta.set(String(m.id), { id: m.id, name: m.name, folder: m.folder || "" });
         const opt = document.createElement('option');
         opt.value = m.id;
         if (!currentSelectedFolder && m.folder) {
@@ -630,9 +884,8 @@ async function refreshMaps(campaignId, selectedMapId = null) {
         } else {
             opt.textContent = m.name;
         }
-        opt.dataset.map = JSON.stringify(m);
         select.appendChild(opt);
-        if (targetToSelect && m.id === targetToSelect) {
+        if (targetToSelect && String(m.id) === String(targetToSelect)) {
             foundTarget = true;
         }
     });
@@ -721,11 +974,10 @@ document.getElementById('btn-save-map').addEventListener('click', async () => {
     
     // Se non c'è ancora una mappa caricata ma l'utente ne ha selezionata una dal menu a tendina
     if (!currentLoadedMapId && select && select.value) {
-        const opt = select.options[select.selectedIndex];
-        if (opt && opt.dataset.map) {
-            const mapData = JSON.parse(opt.dataset.map);
-            currentLoadedMapId = mapData.id;
-            currentLoadedMapName = mapData.name;
+        const meta = campaignMapsMeta.get(String(select.value));
+        if (meta) {
+            currentLoadedMapId = meta.id;
+            currentLoadedMapName = meta.name;
         }
     }
 
@@ -758,12 +1010,12 @@ document.getElementById('btn-save-map').addEventListener('click', async () => {
     const btn = document.getElementById('btn-save-map'); const oldText = btn.innerText; btn.innerText = 'Salvato!'; setTimeout(() => btn.innerText = oldText, 1500);
 });
 
-document.getElementById('btn-load-map').addEventListener('click', () => {
+document.getElementById('btn-load-map').addEventListener('click', async () => {
     const select = document.getElementById('map-select');
     if (!select.value) return alert('Seleziona una mappa da caricare!');
     
-    const opt = select.options[select.selectedIndex];
-    const mapData = JSON.parse(opt.dataset.map);
+    const mapData = await vttDB.getMap(select.value);
+    if (!mapData) return alert('Impossibile leggere la mappa dal database.');
     
     currentLoadedMapId = mapData.id;
     currentLoadedMapName = mapData.name;
@@ -794,16 +1046,33 @@ document.getElementById('btn-load-map').addEventListener('click', () => {
         
         if (state.tokens && state.tokens.length > 0) {
             engine.tokens = []; // svuota i token vecchi
-            state.tokens.forEach(t => {
-                const tImg = new Image();
-                tImg.onload = () => {
-                    t.imageObj = tImg;
-                    engine.tokens.push(t);
+            let loadedTokensCount = 0;
+            const totalToLoad = state.tokens.length;
+            const finalizeLoadedTokens = () => {
+                loadedTokensCount++;
+                if (loadedTokensCount === totalToLoad) {
                     engine.renderAll();
                     syncState(true, true);
                     if (typeof tokenPanel !== 'undefined' && tokenPanel && tokenPanel.style.display !== 'none') {
                         updateMapTokensGallery();
                     }
+                }
+            };
+            state.tokens.forEach(t => {
+                if (t.statblock && t.statblock._raw && t.statblock._raw.tokenSrc) {
+                    delete t.statblock._raw.tokenSrc;
+                }
+                const tImg = new Image();
+                tImg.onload = () => {
+                    t.imageObj = tImg;
+                    // Comprimi automaticamente in RAM eventuali vecchi token pesanti salvati nel DB!
+                    getOrCompressTokenSrc(t);
+                    engine.tokens.push(t);
+                    finalizeLoadedTokens();
+                };
+                tImg.onerror = () => {
+                    engine.tokens.push(t);
+                    finalizeLoadedTokens();
                 };
                 tImg.src = t.src;
             });
@@ -821,7 +1090,7 @@ document.getElementById('btn-load-map').addEventListener('click', () => {
             setTimeout(() => { syncFog(); }, 150);
         }
         
-        network.send({ type: 'MAP_UPDATE', payload: currentMapBase64 });
+        network.send({ type: 'MAP_UPDATE', payload: getNetworkMapPayload() });
     };
     img.src = currentMapBase64;
 });
@@ -996,12 +1265,16 @@ document.getElementById('btn-remove-fog').addEventListener('click', () => {
 document.getElementById('btn-clear-drawings-pub').addEventListener('click', () => {
     engine.publicStrokes = [];
     engine.renderAll();
-    syncState();
+    if (isViewSyncActive) {
+        sendViewSync(true);
+    }
 });
 document.getElementById('btn-clear-drawings-priv').addEventListener('click', () => {
     engine.privateStrokes = [];
-    engine.renderAll();
-    syncState();
+    engine.renderViewport();
+    if (isViewSyncActive) {
+        sendViewSync();
+    }
 });
 
 // -- SISTEMA LIBRERIA TOKEN OTTIMIZZATO --
@@ -1028,7 +1301,9 @@ function resizeTokenImage(fileOrBlob, maxDim = 256) {
             canvas.height = h;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, w, h);
-            resolve(canvas.toDataURL('image/png'));
+            let out = canvas.toDataURL('image/webp', 0.85);
+            if (!out || !out.startsWith('data:image/webp')) out = canvas.toDataURL('image/png');
+            resolve(out);
         };
         img.onerror = () => {
             URL.revokeObjectURL(url);
@@ -1445,7 +1720,7 @@ function duplicateSelectedTokens() {
     }
 
     engine.renderAll();
-    syncState(true, true);
+    syncState(true, false);
     if (typeof tokenPanel !== 'undefined' && tokenPanel && tokenPanel.style.display !== 'none') {
         updateMapTokensGallery();
     }
@@ -1569,7 +1844,7 @@ function addTokenToMap(name, src, explicitHp = null) {
         }
 
         engine.renderAll();
-        syncState(true, true);
+        if (isVisible) syncState(true, false);
         if (typeof tokenPanel !== 'undefined' && tokenPanel && tokenPanel.style.display !== 'none') {
             updateMapTokensGallery();
         }
@@ -2004,6 +2279,41 @@ function getEventPos(e) {
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
 }
 
+function openTokenStatblock(token) {
+    if (!token) return;
+    const now = Date.now();
+    if (now - lastStatblockOpenTime < 350) return;
+    lastStatblockOpenTime = now;
+
+    if (window.compendium) {
+        window.compendium.open(token.statblock || null);
+    }
+}
+
+function handleDoubleClick(e) {
+    if (e.button !== 0) return;
+    if (currentTool.startsWith('draw-') || currentTool.startsWith('fog-') || currentTool === 'laser') return;
+
+    const pos = getEventPos(e);
+    const worldPos = engine.screenToWorld(pos.x, pos.y);
+
+    for (let i = engine.tokens.length - 1; i >= 0; i--) {
+        const t = engine.tokens[i];
+        if (worldPos.x >= t.x && worldPos.x <= t.x + t.width &&
+            worldPos.y >= t.y && worldPos.y <= t.y + t.height) {
+            engine.selectedTokens.clear();
+            engine.selectedTokens.add(t.id);
+            engine.selectedTokenId = t.id;
+            if (window.updateSelectedTokenControls) {
+                window.updateSelectedTokenControls(t);
+            }
+            engine.renderAll();
+            openTokenStatblock(t);
+            break;
+        }
+    }
+}
+
 uiLayer.addEventListener('mousedown', handleStart);
 uiLayer.addEventListener('touchstart', handleStart, {passive: false});
 
@@ -2013,6 +2323,7 @@ uiLayer.addEventListener('touchmove', handleMove, {passive: false});
 uiLayer.addEventListener('mouseup', handleEnd);
 uiLayer.addEventListener('touchend', handleEnd);
 uiLayer.addEventListener('mouseleave', handleEnd);
+uiLayer.addEventListener('dblclick', handleDoubleClick);
 
 uiLayer.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -2094,6 +2405,7 @@ function handleStart(e) {
                 if (worldPos.x >= t.x && worldPos.x <= t.x + t.width &&
                     worldPos.y >= t.y && worldPos.y <= t.y + t.height) {
                     clickedEntity = { type: 'token', ref: t };
+                    clickedTokenForInteraction = t;
                     break;
                 }
             }
@@ -2249,7 +2561,7 @@ function handleMove(e) {
     }
 
     if (!isDragging && !isPanning) {
-        if (currentTool.startsWith('fog-')) engine.renderAll();
+        if (currentTool.startsWith('fog-')) engine.renderUI();
         return;
     }
     e.preventDefault();
@@ -2257,8 +2569,10 @@ function handleMove(e) {
     if (isPanning) {
         engine.offsetX = pos.x - startPanX;
         engine.offsetY = pos.y - startPanY;
-        engine.renderAll();
-        syncState(); 
+        engine.renderViewport();
+        if (isViewSyncActive) {
+            sendViewSync();
+        }
         return;
     }
 
@@ -2266,36 +2580,65 @@ function handleMove(e) {
         if (activeStroke.id && activeStroke.id.startsWith('token_')) {
             activeStroke.x = worldPos.x - activeStroke.width/2;
             activeStroke.y = worldPos.y - activeStroke.height/2;
+            if (activeStroke.visible !== false && Date.now() - (window.lastGmTokenMoveSend || 0) > 35) {
+                window.lastGmTokenMoveSend = Date.now();
+                network.send({
+                    type: 'REMOTE_TOKEN_MOVE',
+                    ephemeral: true,
+                    payload: { id: activeStroke.id, x: activeStroke.x, y: activeStroke.y }
+                });
+            }
+            engine.renderTokensLayer();
         } else if (activeStroke.id && activeStroke.id.startsWith('aoe_')) {
             activeStroke.x = worldPos.x;
             activeStroke.y = worldPos.y;
+            if (Date.now() - (window.lastGmShapeMoveSend || 0) > 35) {
+                window.lastGmShapeMoveSend = Date.now();
+                network.send({
+                    type: 'REMOTE_SHAPE_MOVE',
+                    ephemeral: true,
+                    payload: { id: activeStroke.id, x: activeStroke.x, y: activeStroke.y }
+                });
+            }
+            engine.renderTokensLayer();
         } else {
-            // Nota (non ha id)
             activeStroke.x = worldPos.x;
             activeStroke.y = worldPos.y;
+            engine.renderAll();
         }
-        engine.renderAll();
-        syncState(); // Real-time sync for tokens/shapes/notes
     } else if (currentTool === 'move-grid' && activeStroke) {
         engine.grid.offsetX = activeStroke.startOffsetX + (worldPos.x - activeStroke.startWorldX);
         engine.grid.offsetY = activeStroke.startOffsetY + (worldPos.y - activeStroke.startWorldY);
         engine.renderAll();
-        // Evitiamo sync continui se risulta pesante, ma su griglia leggera va bene.
-        syncState();
+        if (Date.now() - (window.lastGridMoveSend || 0) > 40) {
+            window.lastGridMoveSend = Date.now();
+            network.send({
+                type: 'GRID_MOVE_LIVE',
+                payload: { offsetX: engine.grid.offsetX, offsetY: engine.grid.offsetY }
+            });
+        }
     } else if (currentTool === 'ruler') {
         engine.ruler.endX = worldPos.x;
         engine.ruler.endY = worldPos.y;
         engine.renderAll();
     } else if (currentTool === 'laser' && activeLaser) {
         activeLaser.points.push({x: worldPos.x, y: worldPos.y, t: Date.now()});
-        if (Date.now() - lastLaserSync > 50) {
+        if (Date.now() - lastLaserSync > 40) {
             network.send({ type: 'LASER_SYNC', payload: activeLaser });
             lastLaserSync = Date.now();
         }
     } else if (currentTool.startsWith('draw-')) {
         activeStroke.points.push(worldPos);
         engine.renderAll();
-        if (currentTool === 'draw-public') syncState(); // Real-time drawing sync
+        if (currentTool === 'draw-public') {
+            if (Date.now() - (window.lastDrawLiveSend || 0) > 40) {
+                window.lastDrawLiveSend = Date.now();
+                network.send({
+                    type: 'LIVE_DRAW_POINT',
+                    payload: { color: activeStroke.color, width: activeStroke.width, point: worldPos }
+                });
+            }
+        }
     } else if (currentTool.startsWith('fog-')) {
         const shape = document.getElementById('fog-brush-shape').value;
         const size = parseInt(document.getElementById('fog-brush-size').value) || 150;
@@ -2330,6 +2673,15 @@ function handleEnd(e) {
                 }
             }
             if (clicked) {
+                const now = Date.now();
+                if (lastClickedTokenId === clicked.id && (now - lastClickedTokenTime) < 380) {
+                    openTokenStatblock(clicked);
+                    lastClickedTokenId = null;
+                    lastClickedTokenTime = 0;
+                } else {
+                    lastClickedTokenId = clicked.id;
+                    lastClickedTokenTime = now;
+                }
                 if (e.shiftKey) {
                     if (engine.selectedTokens.has(clicked.id)) {
                         engine.selectedTokens.delete(clicked.id);
@@ -2384,6 +2736,9 @@ function handleEnd(e) {
     
     if (isPanning) {
         isPanning = false;
+        if (isViewSyncActive) {
+            sendViewSync(true);
+        }
         return;
     }
 
@@ -2395,8 +2750,22 @@ function handleEnd(e) {
             
             activeStroke.x = Math.round((activeStroke.x - effOffsetX) / engine.grid.size) * engine.grid.size + effOffsetX;
             activeStroke.y = Math.round((activeStroke.y - effOffsetY) / engine.grid.size) * engine.grid.size + effOffsetY;
+            if (activeStroke.visible !== false) {
+                network.send({
+                    type: 'REMOTE_TOKEN_MOVE',
+                    final: true,
+                    payload: { id: activeStroke.id, x: activeStroke.x, y: activeStroke.y }
+                });
+            }
+        } else if (activeStroke.id && activeStroke.id.startsWith('aoe_')) {
+            network.send({
+                type: 'REMOTE_SHAPE_MOVE',
+                final: true,
+                payload: { id: activeStroke.id, x: activeStroke.x, y: activeStroke.y }
+            });
+        } else {
+            syncState(true);
         }
-        syncState(true);
     } else if (currentTool === 'move-grid') {
         syncState(true);
     } else if (currentTool === 'ruler') {
@@ -2408,7 +2777,7 @@ function handleEnd(e) {
             activeLaser = null;
         }
     } else if (currentTool.startsWith('draw-')) {
-        syncState();
+        syncState(true);
     } else if (currentTool.startsWith('fog-')) {
         syncFog();
     }
@@ -2416,6 +2785,29 @@ function handleEnd(e) {
     isDragging = false;
     activeStroke = null;
     engine.renderAll();
+
+    // Rilevamento rapido doppio click / doppio tap per aprire la scheda
+    if (clickedTokenForInteraction) {
+        const moveDist = Math.hypot(pos.x - startMouseX, pos.y - startMouseY);
+        if (moveDist < 10) {
+            const now = Date.now();
+            if (lastClickedTokenId === clickedTokenForInteraction.id && (now - lastClickedTokenTime) < 380) {
+                openTokenStatblock(clickedTokenForInteraction);
+                lastClickedTokenId = null;
+                lastClickedTokenTime = 0;
+            } else {
+                lastClickedTokenId = clickedTokenForInteraction.id;
+                lastClickedTokenTime = now;
+            }
+        } else {
+            lastClickedTokenId = null;
+            lastClickedTokenTime = 0;
+        }
+        clickedTokenForInteraction = null;
+    } else {
+        lastClickedTokenId = null;
+        lastClickedTokenTime = 0;
+    }
 }
 
 
@@ -2467,6 +2859,7 @@ if(btnAddToInit) {
 
 
 function showToast(msg) {
+    if (typeof window.t === 'function') msg = window.t(msg);
     let t = document.getElementById('toast-msg');
     if(!t) {
         t = document.createElement('div');
@@ -2552,9 +2945,25 @@ document.addEventListener('mousemove', (e) => {
     dmHandoutWindow.style.left = (e.clientX - handoutDMOffsetX) + 'px';
     dmHandoutWindow.style.top = (e.clientY - handoutDMOffsetY) + 'px';
     dmHandoutWindow.style.right = 'auto';
-    syncState(false);
+    if (Date.now() - (window.lastHandoutMoveSend || 0) > 40) {
+        window.lastHandoutMoveSend = Date.now();
+        network.send({
+            type: 'HANDOUT_RECT_LIVE',
+            payload: {
+                left: dmHandoutWindow.style.left,
+                top: dmHandoutWindow.style.top,
+                width: dmHandoutWindow.style.width,
+                height: dmHandoutWindow.style.height
+            }
+        });
+    }
 });
-document.addEventListener('mouseup', () => isDraggingHandoutDM = false);
+document.addEventListener('mouseup', () => {
+    if (isDraggingHandoutDM) {
+        isDraggingHandoutDM = false;
+        syncState(true);
+    }
+});
 
 
 

@@ -95,16 +95,25 @@ class VTTEngine {
         const h = img.height;
         
         for (const key in this.layers) {
-            if (key !== 'ui') {
-                this.layers[key].width = w;
-                this.layers[key].height = h;
+            if (key === 'ui') continue;
+            if (!this.isDM && key === 'drawPrivate') {
+                this.layers[key].width = 1;
+                this.layers[key].height = 1;
+                continue;
             }
+            this.layers[key].width = w;
+            this.layers[key].height = h;
         }
         
+        this._bgDrawn = false;
+        this._lastGridSig = null;
+
         this.fitToScreen();
         if (this.pendingFogImage) {
             this.applyFogImage(this.pendingFogImage);
             this.pendingFogImage = null;
+        } else if (!this.isDM && this._lastAppliedFogBase64) {
+            this.applyFogImage(this._lastAppliedFogBase64);
         } else {
             this.resetFog();
         }
@@ -126,13 +135,50 @@ class VTTEngine {
         this.workspace.style.transform = `translate(${this.offsetX}px, ${this.offsetY}px) scale(${this.scale})`;
     }
 
+    renderViewport() {
+        if (!this.mapImage) return;
+        this.updateWorkspaceTransform();
+        this.renderUI();
+    }
+
+    renderTokensLayer() {
+        if (!this.mapImage) return;
+        const w = this.mapImage.width;
+        const h = this.mapImage.height;
+        if (w > 0 && h > 0) {
+            this.ctx.tokens.clearRect(0, 0, w, h);
+            this.renderShapes();
+            this.renderTokens();
+        }
+        this.renderUI();
+    }
+
     renderAll() {
         if (!this.mapImage) return;
         this.updateWorkspaceTransform();
-        this.clearAll();
-        
-        this.ctx.bg.drawImage(this.mapImage, 0, 0);
-        this.renderGrid();
+        const w = this.mapImage.width;
+        const h = this.mapImage.height;
+        if (w === 0 || h === 0) return;
+
+        // Disegna la mappa statica solo quando cambia
+        if (!this._bgDrawn) {
+            this.ctx.bg.clearRect(0, 0, w, h);
+            this.ctx.bg.drawImage(this.mapImage, 0, 0);
+            this._bgDrawn = true;
+        }
+
+        // Ridisegna la griglia solo se i parametri griglia sono cambiati
+        const gridSig = `${this.grid.size}_${this.grid.color}_${this.grid.glow}_${this.grid.offsetX || 0}_${this.grid.offsetY || 0}_${w}_${h}`;
+        if (this._lastGridSig !== gridSig) {
+            this.ctx.grid.clearRect(0, 0, w, h);
+            this.renderGrid();
+            this._lastGridSig = gridSig;
+        }
+
+        this.ctx.tokens.clearRect(0, 0, w, h);
+        this.ctx.drawPublic.clearRect(0, 0, w, h);
+        this.ctx.drawPrivate.clearRect(0, 0, w, h);
+
         this.renderDrawings();
         this.renderShapes(); // Draw AoE before tokens
         this.renderTokens();
@@ -982,8 +1028,12 @@ class VTTEngine {
         }
         
         if (hasActivePings || hasActiveInitiative || hasActiveLasers) {
-
-            requestAnimationFrame(() => this.renderUI());
+            if (!this._uiAnimFrameId) {
+                this._uiAnimFrameId = requestAnimationFrame(() => {
+                    this._uiAnimFrameId = null;
+                    this.renderUI();
+                });
+            }
         }
 
 
@@ -1080,6 +1130,7 @@ class VTTEngine {
 
     applyFogImage(base64Image) {
         if (!base64Image) return;
+        this._lastAppliedFogBase64 = base64Image;
         const img = new Image();
         img.onload = () => {
             if (this.layers.fog.width > 0 && this.layers.fog.height > 0) {
@@ -1092,7 +1143,25 @@ class VTTEngine {
     }
 
     getFogBase64() {
-        return this.layers.fog.toDataURL('image/png');
+        const fw = this.layers.fog.width;
+        const fh = this.layers.fog.height;
+        if (!fw || !fh) return '';
+        const maxDim = 1024;
+        if (fw <= maxDim && fh <= maxDim) {
+            return this.layers.fog.toDataURL('image/png');
+        }
+        const ratio = Math.min(maxDim / fw, maxDim / fh);
+        const tw = Math.max(1, Math.round(fw * ratio));
+        const th = Math.max(1, Math.round(fh * ratio));
+        if (!this._fogExportCanvas) {
+            this._fogExportCanvas = document.createElement('canvas');
+            this._fogExportCtx = this._fogExportCanvas.getContext('2d');
+        }
+        this._fogExportCanvas.width = tw;
+        this._fogExportCanvas.height = th;
+        this._fogExportCtx.clearRect(0, 0, tw, th);
+        this._fogExportCtx.drawImage(this.layers.fog, 0, 0, tw, th);
+        return this._fogExportCanvas.toDataURL('image/png');
     }
 
     screenToWorld(screenX, screenY) {
