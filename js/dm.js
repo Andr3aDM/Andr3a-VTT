@@ -40,7 +40,7 @@ if (btnOpenPlayerOnline) {
     });
 }
 
-window.VTT_VERSION = 'Beta 1.0';
+window.VTT_VERSION = 'Beta 1.3';
 
 function getTokenOwners(token) {
     if (!token) return [];
@@ -128,7 +128,7 @@ function renderOnlinePlayersList() {
     }
 }
 
-network.onConnect((playerName, pid) => {
+network.onConnect((playerName, pid, isReconnect) => {
     if (playerName) {
         const cleanJoin = playerName.trim();
         const lowJoin = cleanJoin.toLowerCase();
@@ -157,22 +157,35 @@ network.onConnect((playerName, pid) => {
         if (targets.length > 0 && typeof window.updateSelectedTokenControls === 'function') {
             window.updateSelectedTokenControls(targets[targets.length - 1]);
         }
+        if (typeof showToast === 'function') {
+            const pfx = isReconnect
+                ? (typeof window.t === 'function' ? window.t('🔄 Giocatore riconnesso:') : '🔄 Giocatore riconnesso:')
+                : (typeof window.t === 'function' ? window.t('🟢 Giocatore connesso:') : '🟢 Giocatore connesso:');
+            showToast(`${pfx} ${cleanJoin}`);
+        }
         // Nota: l'invio di mappa, stato e nebbia avviene in PLAYER_READY mirato solo al nuovo peerId
     }
 });
 
 if (typeof network.onDisconnect === 'function') {
-    network.onDisconnect(() => {
+    network.onDisconnect((leftName) => {
         renderOnlinePlayersList();
         const targets = getSelectedTargetTokens();
         if (targets.length > 0 && typeof window.updateSelectedTokenControls === 'function') {
             window.updateSelectedTokenControls(targets[targets.length - 1]);
+        }
+        if (leftName && typeof showToast === 'function') {
+            const pfx = typeof window.t === 'function' ? window.t('🔴 Giocatore disconnesso:') : '🔴 Giocatore disconnesso:';
+            showToast(`${pfx} ${leftName}`);
         }
     });
 }
 
 network.onMessage((data, peerId) => {
     if (data.type === 'PLAYER_READY') {
+        if (peerId === 'local' && typeof showToast === 'function') {
+            showToast('🟢 Schermo Giocatore Locale connesso!');
+        }
         // Invia STATO immediatamente (<10ms) così token e aure appaiono subito, poi mappa compressa e nebbia
         syncState(true, true, peerId);
         const mapPayload = getNetworkMapPayload();
@@ -375,6 +388,45 @@ network.onMessage((data, peerId) => {
             engine.renderAll();
             syncState(true);
         }
+    } else if (data.type === 'REQUEST_PC_SHEET') {
+        const token = engine.tokens.find(t => t.id === data.tokenId);
+        if (token && token.pcSheet) {
+            network.send({
+                type: 'PC_SHEET_SYNC',
+                payload: { tokenId: token.id, pcSheet: token.pcSheet }
+            }, peerId);
+        }
+    } else if (data.type === 'PLAYER_UPDATE_PC_SHEET') {
+        const payload = data.payload || {};
+        const token = engine.tokens.find(t => t.id === payload.tokenId);
+        const senderName = (peerId === 'local') ? (payload.player || null) : (network.connections[peerId] ? network.connections[peerId].name : null);
+        if (token && (peerId === 'local' || !senderName || isTokenOwnedBy(token, senderName))) {
+            if (payload.pcSheet) {
+                token.pcSheet = payload.pcSheet;
+                token.pcSheet.updatedAt = Date.now();
+            }
+            if (payload.hpMax !== undefined && payload.hpMax > 0) token.hpMax = payload.hpMax;
+            if (payload.hpCurrent !== undefined) token.hpCurrent = payload.hpCurrent;
+            if (payload.ac !== undefined && payload.ac > 0) token.ac = payload.ac;
+
+            if (engine.initiative && Array.isArray(engine.initiative.participants)) {
+                const p = engine.initiative.participants.find(x => x.tokenId === token.id);
+                if (p) {
+                    p.hpCurrent = token.hpCurrent;
+                    p.hpMax = token.hpMax;
+                    p.ac = token.ac;
+                }
+                if (typeof renderTrackerList === 'function') renderTrackerList();
+            }
+            if (engine.selectedTokenId === token.id && typeof window.updateSelectedTokenControls === 'function') {
+                window.updateSelectedTokenControls(token);
+            }
+            upsertTokenInCampaign(token);
+            if (window.pcSheetManager) window.pcSheetManager.refreshIfOpen(token.id);
+            engine.renderTokensLayer();
+            window.broadcastPcSheetSync(token);
+            syncState(true, false);
+        }
     }
 });
 
@@ -400,6 +452,9 @@ window.getSmartTokenName = function(t) {
     if (t.owner) return t.owner;
     let baseName = t.originalName || 'Mostro';
     baseName = baseName.replace(/\.[^/.]+$/, ""); // Rimuove l'estensione (es. .jpg)
+    if (t.category === 'personaggi' || t.category === 'png') {
+        return baseName.replace(/\s+1$/, '').trim() || baseName;
+    }
     
     let count = 0;
     if (engine.initiative && engine.initiative.participants) {
@@ -492,25 +547,37 @@ if (syncToggleBtn) {
 
 
 let savedTokensLibrary = [];
+let currentCampaignTokens = [];
+let campaignTokensSaveTimer = null;
 let currentTokenTab = 'map';
 
 vttDB.init().then(async () => {
-    refreshCampaigns();
     try {
         savedTokensLibrary = await vttDB.getTokens() || [];
         if (typeof updateLibraryGallery === 'function') updateLibraryGallery();
     } catch (e) {
         console.warn("Libreria token:", e);
     }
+    await refreshCampaigns(true);
 });
 
 let lastSyncTime = 0;
 let syncTimeout = null;
 const syncedTokenImageIds = new Set();
 const syncedImageKeys = new Set();
+const syncedPcSheetVers = new Map();
 const compressedTokenSrcByKey = new Map();
 let cachedNetworkMapSource = null;
 let cachedNetworkMapOutput = null;
+
+window.broadcastPcSheetSync = function(token, targetPeerId = null) {
+    if (!token || !token.pcSheet) return;
+    syncedPcSheetVers.set(token.id, token.pcSheet.updatedAt || 1);
+    network.send({
+        type: 'PC_SHEET_SYNC',
+        payload: { tokenId: token.id, pcSheet: token.pcSheet }
+    }, targetPeerId);
+};
 
 function getTokenImgKey(src) {
     if (!src) return null;
@@ -622,6 +689,7 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
     if (sendFullImages && !targetPeerId) {
         syncedTokenImageIds.clear();
         syncedImageKeys.clear();
+        syncedPcSheetVers.clear();
     }
 
     let viewSyncData = null;
@@ -634,6 +702,7 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
     }
 
     const imagesToSendAfterState = [];
+    const pcSheetsToSendAfterState = [];
     const batchQueuedKeys = new Set();
 
     // OTTIMIZZAZIONE CRITICA ZERO-LAG:
@@ -659,6 +728,15 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
             }
         }
 
+        const sheetVer = t.pcSheet ? (t.pcSheet.updatedAt || 1) : 0;
+        if (t.pcSheet) {
+            const needSheetSend = sendFullImages || !!targetPeerId || syncedPcSheetVers.get(t.id) !== sheetVer;
+            if (needSheetSend) {
+                pcSheetsToSendAfterState.push({ tokenId: t.id, pcSheet: t.pcSheet });
+                if (!targetPeerId) syncedPcSheetVers.set(t.id, sheetVer);
+            }
+        }
+
         return {
             id: t.id,
             name: t.name,
@@ -679,6 +757,8 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
             condition: t.condition,
             owner: t.owner,
             owners: getTokenOwners(t),
+            hasPcSheet: !!t.pcSheet,
+            pcSheetVer: sheetVer,
             imgKey: imgKey,
             src: isShortUrl ? cleanSrc : null
         };
@@ -710,11 +790,19 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
         }
     }, targetPeerId);
 
-    // Invia le immagini nuove/mancanti in pacchetti separati per non bloccare mai STATE_SYNC
+    // Invia le immagini nuove/mancanti e le schede PG in pacchetti separati per non bloccare mai STATE_SYNC
     if (imagesToSendAfterState.length > 0) {
         imagesToSendAfterState.forEach(item => {
             network.send({
                 type: 'TOKEN_IMAGE_SYNC',
+                payload: item
+            }, targetPeerId);
+        });
+    }
+    if (pcSheetsToSendAfterState.length > 0) {
+        pcSheetsToSendAfterState.forEach(item => {
+            network.send({
+                type: 'PC_SHEET_SYNC',
                 payload: item
             }, targetPeerId);
         });
@@ -756,6 +844,11 @@ if (mapUploadEl) {
                     network.send({ type: 'MAP_UPDATE', payload: getNetworkMapPayload() });
                     syncState(true, true);
                     syncFog();
+                    if (typeof showToast === 'function') {
+                        const cleanMapName = file.name.replace(/\.[^/.]+$/, "");
+                        const pfx = typeof window.t === 'function' ? window.t('🗺️ Mappa caricata:') : '🗺️ Mappa caricata:';
+                        showToast(`${pfx} "${cleanMapName}"`);
+                    }
                 };
                 img.src = currentMapBase64;
             };
@@ -882,22 +975,41 @@ if (tokenPanel) {
 
 // -- LOGICA CAMPAGNE E SALVATAGGI --
 
-async function refreshCampaigns() {
+async function refreshCampaigns(autoSelectLast = false) {
     const campaigns = await vttDB.getCampaigns();
     const select = document.getElementById('campaign-select');
+    const prevValue = select.value || (autoSelectLast ? (localStorage.getItem('vtt_last_campaign_id') || '') : '');
     select.innerHTML = '<option value="">-- Seleziona Campagna --</option>';
     campaigns.forEach(c => {
         const opt = document.createElement('option');
         opt.value = c.id; opt.textContent = c.name;
         select.appendChild(opt);
     });
+    if (prevValue && campaigns.some(c => c.id === prevValue)) {
+        select.value = prevValue;
+        document.getElementById('map-manager').style.display = 'block';
+        await refreshFolders(prevValue);
+        await refreshMaps(prevValue, currentLoadedMapId || "");
+        await loadCampaignTokensFor(prevValue);
+    } else if (autoSelectLast && campaigns.length > 0 && !select.value) {
+        const firstId = campaigns[0].id;
+        select.value = firstId;
+        localStorage.setItem('vtt_last_campaign_id', firstId);
+        document.getElementById('map-manager').style.display = 'block';
+        await refreshFolders(firstId);
+        await refreshMaps(firstId, currentLoadedMapId || "");
+        await loadCampaignTokensFor(firstId);
+    } else {
+        await loadCampaignTokensFor(select.value || '');
+    }
 }
 
 document.getElementById('btn-new-campaign').addEventListener('click', async () => {
     const name = prompt('Nome della nuova campagna:');
     if (name) {
-        await vttDB.addCampaign(name);
-        refreshCampaigns();
+        const newCamp = await vttDB.addCampaign(name);
+        localStorage.setItem('vtt_last_campaign_id', newCamp.id);
+        await refreshCampaigns(true);
     }
 });
 
@@ -905,12 +1017,15 @@ document.getElementById('btn-delete-campaign').addEventListener('click', async (
     const id = document.getElementById('campaign-select').value;
     if (id && confirm('Eliminare questa campagna?')) {
         await vttDB.deleteCampaign(id);
+        if (localStorage.getItem('vtt_last_campaign_id') === id) {
+            localStorage.removeItem('vtt_last_campaign_id');
+        }
         currentSelectedFolder = "";
         currentLoadedMapId = null;
         currentLoadedMapName = "";
         updateLoadedMapIndicator();
-        refreshCampaigns();
         document.getElementById('map-manager').style.display = 'none';
+        await refreshCampaigns(true);
     }
 });
 
@@ -947,6 +1062,7 @@ document.getElementById('campaign-select').addEventListener('change', async (e) 
     const id = e.target.value;
     currentSelectedFolder = "";
     if (id) {
+        localStorage.setItem('vtt_last_campaign_id', id);
         if (currentLoadedMapId) {
             const loadedMap = await vttDB.getMap(currentLoadedMapId);
             if (!loadedMap || loadedMap.campaignId !== id) {
@@ -957,11 +1073,13 @@ document.getElementById('campaign-select').addEventListener('change', async (e) 
         document.getElementById('map-manager').style.display = 'block';
         await refreshFolders(id);
         await refreshMaps(id, currentLoadedMapId || "");
+        await loadCampaignTokensFor(id);
         updateLoadedMapIndicator();
     } else {
         document.getElementById('map-manager').style.display = 'none';
         currentLoadedMapId = null;
         currentLoadedMapName = "";
+        await loadCampaignTokensFor('');
         updateLoadedMapIndicator();
     }
 });
@@ -1105,7 +1223,10 @@ document.getElementById('btn-save-new-map').addEventListener('click', async () =
     currentLoadedMapName = savedMap.name;
     await refreshMaps(campaignId, savedMap.id);
     updateLoadedMapIndicator();
-    alert('Nuova mappa salvata con successo!' + (targetFolder ? ` nella cartella "${targetFolder}"` : ''));
+    if (typeof showToast === 'function') {
+        const pfx = typeof window.t === 'function' ? window.t('💾 Nuova mappa salvata:') : '💾 Nuova mappa salvata:';
+        showToast(`${pfx} "${savedMap.name}"` + (targetFolder ? ` (${targetFolder})` : ''));
+    }
 });
 
 document.getElementById('btn-save-map').addEventListener('click', async () => {
@@ -1147,6 +1268,10 @@ document.getElementById('btn-save-map').addEventListener('click', async () => {
     updateLoadedMapIndicator();
     // Cambiamo l'alert in qualcosa di meno invasivo per i salvataggi continui
     const btn = document.getElementById('btn-save-map'); const oldText = btn.innerText; btn.innerText = 'Salvato!'; setTimeout(() => btn.innerText = oldText, 1500);
+    if (typeof showToast === 'function') {
+        const pfx = typeof window.t === 'function' ? window.t('💾 Mappa salvata:') : '💾 Mappa salvata:';
+        showToast(`${pfx} "${currentLoadedMapName}"`);
+    }
 });
 
 document.getElementById('btn-load-map').addEventListener('click', async () => {
@@ -1230,6 +1355,10 @@ document.getElementById('btn-load-map').addEventListener('click', async () => {
         }
         
         network.send({ type: 'MAP_UPDATE', payload: getNetworkMapPayload() });
+        if (typeof showToast === 'function') {
+            const pfx = typeof window.t === 'function' ? window.t('🗺️ Mappa caricata:') : '🗺️ Mappa caricata:';
+            showToast(`${pfx} "${mapData.name}"`);
+        }
     };
     img.src = currentMapBase64;
 });
@@ -1453,30 +1582,228 @@ function resizeTokenImage(fileOrBlob, maxDim = 256) {
     });
 }
 
-function getUniqueMapTokens() {
-    if (!engine || !engine.tokens) return [];
-    const map = new Map();
-    engine.tokens.forEach(t => {
-        if (!t.src) return;
-        const rawName = t.name || (t.originalName ? t.originalName.replace(/\.[^/.]+$/, "") : "Token");
-        const baseName = rawName.replace(/\s+\d+$/, '').trim() || 'Token';
-        const key = t.src;
-        if (map.has(key)) {
-            const item = map.get(key);
-            item.count++;
-            if ((!item.hpMax || item.hpMax <= 0) && t.hpMax && t.hpMax > 0) {
-                item.hpMax = t.hpMax;
-            }
-        } else {
-            map.set(key, {
-                name: baseName,
-                src: t.src,
-                count: 1,
-                hpMax: t.hpMax || 0
-            });
+const TOKEN_CATEGORIES = ['mostri', 'png', 'personaggi', 'vari'];
+let currentTokenCategory = 'all';
+
+function getCategoryMeta(cat) {
+    switch (cat) {
+        case 'png': return { id: 'png', icon: '🧑', label: 'PNG', bg: '#ef6c00' };
+        case 'personaggi': return { id: 'personaggi', icon: '🛡️', label: 'Personaggi', bg: '#1565c0' };
+        case 'vari': return { id: 'vari', icon: '📦', label: 'Vari', bg: '#6a1b9a' };
+        case 'mostri':
+        default:
+            return { id: 'mostri', icon: '👹', label: 'Mostri', bg: '#c62828' };
+    }
+}
+
+function inferTokenCategory(t) {
+    if (!t) return 'mostri';
+    if (t.category && TOKEN_CATEGORIES.includes(t.category)) return t.category;
+    if (getTokenOwners(t).length > 0) return 'personaggi';
+    if (t.statblock) return 'mostri';
+    if (savedTokensLibrary && savedTokensLibrary.length > 0 && t.src) {
+        const libMatch = savedTokensLibrary.find(x => x.src === t.src);
+        if (libMatch && libMatch.category && TOKEN_CATEGORIES.includes(libMatch.category)) {
+            return libMatch.category;
         }
+    }
+    return 'mostri';
+}
+
+function detectCategoryFromFilePath(file) {
+    const pathStr = ((file && (file.webkitRelativePath || file.name)) || '').toLowerCase();
+    if (/(^|[\/\\_\-\s])(pg|personaggi|personaggio|pc|players|eroi|party)([\/\\_\-\s]|$)/.test(pathStr)) return 'personaggi';
+    if (/(^|[\/\\_\-\s])(png|npc|npcs|alleati|cittadini)([\/\\_\-\s]|$)/.test(pathStr)) return 'png';
+    if (/(^|[\/\\_\-\s])(vari|varie|misc|oggetti|props|trappole)([\/\\_\-\s]|$)/.test(pathStr)) return 'vari';
+    if (/(^|[\/\\_\-\s])(mostri|mostro|monsters|monster|nemici|boss)([\/\\_\-\s]|$)/.test(pathStr)) return 'mostri';
+    if (currentTokenCategory && currentTokenCategory !== 'all') return currentTokenCategory;
+    const uploadSel = document.getElementById('token-upload-category');
+    return (uploadSel && TOKEN_CATEGORIES.includes(uploadSel.value)) ? uploadSel.value : 'mostri';
+}
+
+function getCleanTemplateName(rawName, category) {
+    const withoutExt = String(rawName || 'Token').replace(/\.[^/.]+$/, "").trim() || 'Token';
+    if (category === 'personaggi' || category === 'png') {
+        return withoutExt.replace(/\s+1$/, '').trim() || withoutExt;
+    }
+    return withoutExt.replace(/\s+\d+$/, '').trim() || withoutExt;
+}
+
+function scheduleSaveCampaignTokens() {
+    if (campaignTokensSaveTimer) clearTimeout(campaignTokensSaveTimer);
+    campaignTokensSaveTimer = setTimeout(async () => {
+        campaignTokensSaveTimer = null;
+        const campId = document.getElementById('campaign-select')?.value || localStorage.getItem('vtt_last_campaign_id') || '';
+        if (campId) {
+            try {
+                await vttDB.saveCampaignTokens(campId, currentCampaignTokens);
+            } catch (e) {
+                console.warn("Salvataggio token campagna:", e);
+            }
+        }
+        try {
+            localStorage.setItem('vtt_default_campaign_tokens', JSON.stringify(currentCampaignTokens.slice(0, 80)));
+        } catch (e) {}
+    }, 180);
+}
+
+function upsertTokenInCampaign(token, skipGalleryRefresh = false) {
+    if (!token || !token.src) return null;
+    const cat = inferTokenCategory(token);
+    const cleanName = getCleanTemplateName(token.name || token.originalName || 'Token', cat);
+    const cleanSrc = getOrCompressTokenSrc(token) || token.src;
+    const ownersList = getTokenOwners(token);
+
+    let existing = currentCampaignTokens.find(x => x.src === cleanSrc || x.src === token.src);
+    if (!existing && (cat === 'personaggi' || cat === 'png')) {
+        existing = currentCampaignTokens.find(x => (x.category === cat) && x.name && x.name.toLowerCase() === cleanName.toLowerCase());
+    }
+
+    if (existing) {
+        existing.name = cleanName;
+        existing.src = cleanSrc;
+        existing.category = cat;
+        if (token.hpMax !== undefined && token.hpMax > 0) existing.hpMax = token.hpMax;
+        if (token.ac !== undefined && token.ac > 0) existing.ac = token.ac;
+        if (token.sizeMultiplier) existing.sizeMultiplier = token.sizeMultiplier;
+        if (ownersList.length > 0 || token.owners !== undefined) {
+            existing.owners = ownersList;
+            existing.owner = ownersList[0] || '';
+        }
+        if (token.nameVisibility) existing.nameVisibility = token.nameVisibility;
+        if (token.hpVisibleToPlayers !== undefined) existing.hpVisibleToPlayers = token.hpVisibleToPlayers;
+        if (token.statblock) {
+            const stCopy = JSON.parse(JSON.stringify(token.statblock));
+            if (stCopy._raw && stCopy._raw.tokenSrc) delete stCopy._raw.tokenSrc;
+            existing.statblock = stCopy;
+        }
+        if (token.pcSheet) {
+            existing.pcSheet = JSON.parse(JSON.stringify(token.pcSheet));
+        }
+    } else {
+        let stCopy = null;
+        if (token.statblock) {
+            stCopy = JSON.parse(JSON.stringify(token.statblock));
+            if (stCopy._raw && stCopy._raw.tokenSrc) delete stCopy._raw.tokenSrc;
+        }
+        const pcCopy = token.pcSheet ? JSON.parse(JSON.stringify(token.pcSheet)) : null;
+        existing = {
+            id: 'ctok_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+            name: cleanName,
+            src: cleanSrc,
+            category: cat,
+            hpMax: token.hpMax || 0,
+            ac: token.ac || 10,
+            sizeMultiplier: token.sizeMultiplier || 1,
+            owners: ownersList,
+            owner: ownersList[0] || '',
+            nameVisibility: token.nameVisibility || 'all',
+            hpVisibleToPlayers: token.hpVisibleToPlayers !== false,
+            statblock: stCopy,
+            pcSheet: pcCopy
+        };
+        currentCampaignTokens.push(existing);
+    }
+
+    scheduleSaveCampaignTokens();
+    if (!skipGalleryRefresh && typeof tokenPanel !== 'undefined' && tokenPanel && tokenPanel.style.display !== 'none' && currentTokenTab === 'map') {
+        updateMapTokensGallery();
+    }
+    return existing;
+}
+window.upsertTokenInCampaign = upsertTokenInCampaign;
+
+async function loadCampaignTokensFor(campaignId) {
+    let loaded = [];
+    if (campaignId) {
+        try {
+            loaded = await vttDB.getCampaignTokens(campaignId) || [];
+            // Migrazione/recupero automatico dai salvataggi mappa della stessa campagna:
+            // se la campagna aveva già mappe salvate con PG, PNG o mostri, li recupera tutti nella Campagna!
+            const maps = await vttDB.getMapsByCampaign(campaignId) || [];
+            let addedFromMaps = false;
+            maps.forEach(m => {
+                if (m && m.state && Array.isArray(m.state.tokens)) {
+                    m.state.tokens.forEach(t => {
+                        if (!t || !t.src) return;
+                        const cat = inferTokenCategory(t);
+                        const cleanName = getCleanTemplateName(t.name || t.originalName || 'Token', cat);
+                        const found = loaded.find(x => x.src === t.src || ((cat === 'personaggi' || cat === 'png') && x.category === cat && x.name && x.name.toLowerCase() === cleanName.toLowerCase()));
+                        if (!found) {
+                            let stCopy = null;
+                            if (t.statblock) {
+                                stCopy = JSON.parse(JSON.stringify(t.statblock));
+                                if (stCopy._raw && stCopy._raw.tokenSrc) delete stCopy._raw.tokenSrc;
+                            }
+                            const ownersList = getTokenOwners(t);
+                            loaded.push({
+                                id: 'ctok_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                                name: cleanName,
+                                src: t.src,
+                                category: cat,
+                                hpMax: t.hpMax || 0,
+                                ac: t.ac || 10,
+                                sizeMultiplier: t.sizeMultiplier || 1,
+                                owners: ownersList,
+                                owner: ownersList[0] || '',
+                                nameVisibility: t.nameVisibility || 'all',
+                                hpVisibleToPlayers: t.hpVisibleToPlayers !== false,
+                                statblock: stCopy,
+                                pcSheet: t.pcSheet ? JSON.parse(JSON.stringify(t.pcSheet)) : null
+                            });
+                            addedFromMaps = true;
+                        }
+                    });
+                }
+            });
+            if (addedFromMaps) {
+                await vttDB.saveCampaignTokens(campaignId, loaded);
+            }
+        } catch (err) {
+            console.warn("Errore caricamento token campagna:", err);
+        }
+    } else {
+        try {
+            loaded = JSON.parse(localStorage.getItem('vtt_default_campaign_tokens') || '[]');
+        } catch (e) {
+            loaded = [];
+        }
+    }
+    currentCampaignTokens = Array.isArray(loaded) ? loaded : [];
+    // Assicura che anche eventuali token attualmente in mappa siano sincronizzati nella campagna
+    if (engine && Array.isArray(engine.tokens) && engine.tokens.length > 0) {
+        engine.tokens.forEach(t => upsertTokenInCampaign(t, true));
+    }
+    updateMapTokensGallery();
+}
+
+function getUniqueMapTokens() {
+    const mapCounts = new Map();
+    if (engine && Array.isArray(engine.tokens)) {
+        engine.tokens.forEach(t => {
+            if (!t || !t.src) return;
+            mapCounts.set(t.src, (mapCounts.get(t.src) || 0) + 1);
+            // Sincronizza in memoria eventuali token presenti sulla mappa ma non ancora nel roster campagna
+            const existsInCamp = currentCampaignTokens.some(c => c.src === t.src);
+            if (!existsInCamp) {
+                upsertTokenInCampaign(t, true);
+            }
+        });
+    }
+
+    return currentCampaignTokens.map(ct => {
+        const cat = (ct.category && TOKEN_CATEGORIES.includes(ct.category)) ? ct.category : inferTokenCategory(ct);
+        const cleanName = getCleanTemplateName(ct.name || 'Token', cat);
+        return {
+            id: ct.id,
+            name: cleanName,
+            src: ct.src,
+            count: mapCounts.get(ct.src) || 0,
+            hpMax: ct.hpMax || 0,
+            category: cat,
+            template: ct
+        };
     });
-    return Array.from(map.values());
 }
 
 function updateMapTokensGallery() {
@@ -1485,27 +1812,58 @@ function updateMapTokensGallery() {
     const empty = document.getElementById('token-gallery-empty');
     if (!gallery) return;
 
-    const uniqueTokens = getUniqueMapTokens();
-    if (badge) badge.textContent = uniqueTokens.length;
+    const campaignTokens = getUniqueMapTokens();
+    if (badge) badge.textContent = campaignTokens.length;
 
     gallery.innerHTML = '';
     const query = (document.getElementById('token-search')?.value || '').toLowerCase().trim();
 
+    const fragment = document.createDocumentFragment();
     let visibleCount = 0;
-    uniqueTokens.forEach(t => {
-        const matches = !query || t.name.toLowerCase().includes(query);
-        const card = createTokenCard(t.name, t.src, t.count, false, null, t.hpMax);
-        if (!matches) {
-            card.style.display = 'none';
-        } else {
-            visibleCount++;
-        }
-        gallery.appendChild(card);
+    campaignTokens.forEach(t => {
+        const cat = t.category || 'mostri';
+        const matchesCat = (currentTokenCategory === 'all' || cat === currentTokenCategory);
+        const matchesQuery = !query || t.name.toLowerCase().includes(query);
+        if (!matchesCat || !matchesQuery) return;
+        visibleCount++;
+        const card = createTokenCard(t.name, t.src, t.count, true, t.id, t.hpMax, cat, 'campaign', t.template);
+        fragment.appendChild(card);
     });
+    gallery.appendChild(fragment);
 
     if (currentTokenTab === 'map') {
         if (empty) empty.style.display = visibleCount === 0 ? 'block' : 'none';
     }
+}
+
+let filteredLibraryTokensCache = [];
+let renderedLibraryCount = 0;
+const LIBRARY_RENDER_BATCH = 60;
+
+function renderNextLibraryBatch() {
+    const gallery = document.getElementById('token-gallery-library');
+    if (!gallery || renderedLibraryCount >= filteredLibraryTokensCache.length) return;
+    const nextSlice = filteredLibraryTokensCache.slice(renderedLibraryCount, renderedLibraryCount + LIBRARY_RENDER_BATCH);
+    const fragment = document.createDocumentFragment();
+    nextSlice.forEach(t => {
+        const cat = (t.category && TOKEN_CATEGORIES.includes(t.category)) ? t.category : 'mostri';
+        const displayName = getCleanTemplateName(t.name, cat);
+        const card = createTokenCard(displayName, t.src, 1, true, t.id, t.hpMax || null, cat, 'library', t);
+        fragment.appendChild(card);
+    });
+    gallery.appendChild(fragment);
+    renderedLibraryCount += nextSlice.length;
+}
+
+const tokenGalleryScrollEl = document.getElementById('token-gallery-scroll');
+if (tokenGalleryScrollEl) {
+    tokenGalleryScrollEl.addEventListener('scroll', () => {
+        if (currentTokenTab === 'library' && renderedLibraryCount < filteredLibraryTokensCache.length) {
+            if (tokenGalleryScrollEl.scrollTop + tokenGalleryScrollEl.clientHeight >= tokenGalleryScrollEl.scrollHeight - 140) {
+                renderNextLibraryBatch();
+            }
+        }
+    });
 }
 
 function updateLibraryGallery() {
@@ -1518,61 +1876,127 @@ function updateLibraryGallery() {
     gallery.innerHTML = '';
 
     const query = (document.getElementById('token-search')?.value || '').toLowerCase().trim();
-    let visibleCount = 0;
-    savedTokensLibrary.forEach(t => {
-        const matches = !query || t.name.toLowerCase().includes(query);
-        const card = createTokenCard(t.name, t.src, 1, true, t.id);
-        if (!matches) {
-            card.style.display = 'none';
-        } else {
-            visibleCount++;
-        }
-        gallery.appendChild(card);
+    filteredLibraryTokensCache = savedTokensLibrary.filter(t => {
+        const cat = (t.category && TOKEN_CATEGORIES.includes(t.category)) ? t.category : 'mostri';
+        const matchesCat = (currentTokenCategory === 'all' || cat === currentTokenCategory);
+        if (!matchesCat) return false;
+        if (!query) return true;
+        return (t.name || '').toLowerCase().includes(query);
     });
 
+    renderedLibraryCount = 0;
+    if (tokenGalleryScrollEl && currentTokenTab === 'library') {
+        tokenGalleryScrollEl.scrollTop = 0;
+    }
+    renderNextLibraryBatch();
+
     if (currentTokenTab === 'library') {
-        if (empty) empty.style.display = visibleCount === 0 ? 'block' : 'none';
+        if (empty) empty.style.display = filteredLibraryTokensCache.length === 0 ? 'block' : 'none';
     }
 }
 
-function createTokenCard(name, src, count = 1, allowDelete = false, id = null, inheritedHp = null) {
+function createTokenCard(name, src, count = 1, allowDelete = false, id = null, inheritedHp = null, category = 'mostri', sourceType = 'library', templateObj = null) {
     const card = document.createElement('div');
     card.className = 'gallery-token-card';
+    let currentCat = TOKEN_CATEGORIES.includes(category) ? category : 'mostri';
+    const meta = getCategoryMeta(currentCat);
     const hpTitle = (inheritedHp && inheritedHp > 0) ? ` (❤️ Full PV: ${inheritedHp})` : '';
-    card.title = `Clicca per posizionare: ${name}${hpTitle}`;
-    card.style.cssText = 'display: flex; flex-direction: column; align-items: center; cursor: pointer; position: relative; padding: 4px; border-radius: 6px; background: #1c1c1c; border: 1px solid #333; transition: all 0.15s; user-select: none;';
+    const catLabelT = typeof window.t === 'function' ? window.t(meta.label) : meta.label;
+    card.title = `${typeof window.t === 'function' ? window.t('Clicca per posizionare:') : 'Clicca per posizionare:'} ${name} [${catLabelT}]${hpTitle}`;
+    card.style.cssText = 'display: flex; flex-direction: column; align-items: center; cursor: pointer; position: relative; padding: 5px 4px; border-radius: 6px; background: #1c1c1c; border: 1px solid #333; transition: all 0.15s; user-select: none; min-width: 0; max-width: 100%; width: 100%; overflow: hidden; box-sizing: border-box;';
 
     card.onmouseenter = () => { card.style.borderColor = '#4db6ac'; card.style.background = '#252525'; };
     card.onmouseleave = () => { card.style.borderColor = '#333'; card.style.background = '#1c1c1c'; };
 
     const imgWrapper = document.createElement('div');
-    imgWrapper.style.cssText = 'position: relative; width: 52px; height: 52px;';
+    imgWrapper.style.cssText = 'position: relative; width: 52px; height: 52px; flex-shrink: 0;';
 
     const img = document.createElement('img');
+    img.loading = 'lazy';
     img.src = src;
-    img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; border-radius: 50%; border: 1px solid #555; pointer-events: none;';
+    img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; border-radius: 50%; border: 1px solid #555; pointer-events: none; display: block;';
     imgWrapper.appendChild(img);
 
-    if (count > 1) {
+    if (count > 1 || (sourceType === 'campaign' && count === 1)) {
         const countBadge = document.createElement('span');
-        countBadge.textContent = `x${count}`;
+        countBadge.textContent = count > 1 ? `x${count}` : '●';
+        countBadge.title = count > 1 ? `${count} in mappa` : 'Presente in mappa';
         countBadge.style.cssText = 'position: absolute; top: -3px; right: -3px; background: #00897b; color: white; font-size: 9.5px; font-weight: bold; border-radius: 8px; padding: 0 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.6); pointer-events: none;';
         imgWrapper.appendChild(countBadge);
     }
 
+    // Badge Cartella cliccabile per spostare rapidamente il token tra Mostri / PNG / Personaggi / Vari
+    const catBadge = document.createElement('button');
+    catBadge.type = 'button';
+    catBadge.textContent = meta.icon;
+    catBadge.title = `${typeof window.t === 'function' ? window.t('Cartella:') : 'Cartella:'} ${catLabelT} (${typeof window.t === 'function' ? window.t('Clicca per cambiare cartella') : 'Clicca per cambiare cartella'})`;
+    catBadge.style.cssText = `position: absolute; bottom: -2px; right: -3px; background: ${meta.bg}; color: white; border: 1px solid #222; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.7);`;
+    catBadge.onclick = async (e) => {
+        e.stopPropagation();
+        const nextIdx = (TOKEN_CATEGORIES.indexOf(currentCat) + 1) % TOKEN_CATEGORIES.length;
+        const nextCat = TOKEN_CATEGORIES[nextIdx];
+        currentCat = nextCat;
+        const nextMeta = getCategoryMeta(nextCat);
+
+        // Aggiorna in Libreria
+        const libItem = savedTokensLibrary.find(x => (id && x.id === id) || x.src === src);
+        if (libItem) {
+            libItem.category = nextCat;
+            libItem.name = getCleanTemplateName(libItem.name, nextCat);
+            await vttDB.saveToken(libItem);
+        }
+        // Aggiorna nei Token della Campagna
+        const campItem = currentCampaignTokens.find(x => (id && x.id === id) || x.src === src);
+        if (campItem) {
+            campItem.category = nextCat;
+            campItem.name = getCleanTemplateName(campItem.name, nextCat);
+            scheduleSaveCampaignTokens();
+        }
+        // Aggiorna anche eventuali token in mappa con la stessa immagine
+        engine.tokens.forEach(tok => {
+            if (tok.src === src) {
+                tok.category = nextCat;
+                if ((nextCat === 'personaggi' || nextCat === 'png') && tok.name) {
+                    tok.name = tok.name.replace(/\s+1$/, '').trim() || tok.name;
+                }
+            }
+        });
+        engine.renderAll();
+        const targets = getSelectedTargetTokens();
+        if (targets.length > 0 && typeof window.updateSelectedTokenControls === 'function') {
+            window.updateSelectedTokenControls(targets[targets.length - 1]);
+        }
+        if (currentTokenTab === 'map') updateMapTokensGallery();
+        else updateLibraryGallery();
+
+        if (typeof showToast === 'function') {
+            const nextLabelT = typeof window.t === 'function' ? window.t(nextMeta.label) : nextMeta.label;
+            showToast(`${nextMeta.icon} "${name}" → ${nextLabelT}`);
+        }
+    };
+    imgWrapper.appendChild(catBadge);
+
     if (allowDelete && id) {
         const delBtn = document.createElement('button');
         delBtn.innerHTML = '✕';
-        delBtn.title = 'Rimuovi dalla libreria';
+        delBtn.title = sourceType === 'campaign' ? 'Rimuovi dai token della Campagna' : 'Rimuovi dalla libreria';
         delBtn.style.cssText = 'position: absolute; top: -4px; left: -4px; background: rgba(180, 0, 0, 0.85); color: white; border: none; border-radius: 50%; width: 16px; height: 16px; font-size: 9px; cursor: pointer; display: none; align-items: center; justify-content: center; padding: 0;';
         card.addEventListener('mouseenter', () => delBtn.style.display = 'flex');
         card.addEventListener('mouseleave', () => delBtn.style.display = 'none');
         delBtn.onclick = async (e) => {
             e.stopPropagation();
-            if (confirm(`Rimuovere "${name}" dalla libreria salvata?`)) {
-                await vttDB.deleteToken(id);
-                savedTokensLibrary = savedTokensLibrary.filter(x => x.id !== id);
-                updateLibraryGallery();
+            if (sourceType === 'campaign') {
+                if (confirm(`Rimuovere "${name}" dai token salvati nella Campagna?`)) {
+                    currentCampaignTokens = currentCampaignTokens.filter(x => x.id !== id && x.src !== src);
+                    scheduleSaveCampaignTokens();
+                    updateMapTokensGallery();
+                }
+            } else {
+                if (confirm(`Rimuovere "${name}" dalla libreria salvata?`)) {
+                    await vttDB.deleteToken(id);
+                    savedTokensLibrary = savedTokensLibrary.filter(x => x.id !== id);
+                    updateLibraryGallery();
+                }
             }
         };
         imgWrapper.appendChild(delBtn);
@@ -1580,7 +2004,7 @@ function createTokenCard(name, src, count = 1, allowDelete = false, id = null, i
 
     const label = document.createElement('span');
     label.textContent = name;
-    label.style.cssText = 'font-size: 10.5px; color: #ddd; margin-top: 3px; text-align: center; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;';
+    label.style.cssText = 'font-size: 10.5px; color: #ddd; margin-top: 3px; text-align: center; width: 100%; max-width: 100%; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;';
 
     card.appendChild(imgWrapper);
     card.appendChild(label);
@@ -1588,12 +2012,12 @@ function createTokenCard(name, src, count = 1, allowDelete = false, id = null, i
     if (inheritedHp && inheritedHp > 0) {
         const hpTag = document.createElement('span');
         hpTag.textContent = `❤️ ${inheritedHp} PV`;
-        hpTag.style.cssText = 'font-size: 9.5px; color: #ef5350; font-weight: bold; margin-top: 1px; pointer-events: none; line-height: 1;';
+        hpTag.style.cssText = 'font-size: 9.5px; color: #ef5350; font-weight: bold; margin-top: 1px; pointer-events: none; line-height: 1; white-space: nowrap;';
         card.appendChild(hpTag);
     }
 
     card.onclick = () => {
-        addTokenToMap(name, src, inheritedHp);
+        addTokenToMap(name, src, inheritedHp, currentCat, templateObj);
         setTimeout(() => {
             updateMapTokensGallery();
         }, 50);
@@ -1610,10 +2034,12 @@ async function processTokenFiles(fileList) {
         try {
             const optimizedSrc = await resizeTokenImage(file, 256);
             const cleanName = file.name.replace(/\.[^/.]+$/, "");
+            const detectedCat = detectCategoryFromFilePath(file);
             const tokenItem = {
                 id: 'tok_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
                 name: cleanName,
-                src: optimizedSrc
+                src: optimizedSrc,
+                category: detectedCat
             };
             newTokens.push(tokenItem);
             savedTokensLibrary.push(tokenItem);
@@ -1624,8 +2050,40 @@ async function processTokenFiles(fileList) {
     if (newTokens.length > 0) {
         await vttDB.saveTokensBatch(newTokens);
         switchTokenTab('library');
+        if (typeof showToast === 'function') {
+            const meta = getCategoryMeta(newTokens[0].category);
+            const catName = typeof window.t === 'function' ? window.t(meta.label) : meta.label;
+            showToast(`📥 ${newTokens.length} token ${typeof window.t === 'function' ? window.t('salvati in') : 'salvati in'} "${catName}"!`);
+        }
     }
 }
+
+function setTokenCategoryFilter(cat) {
+    currentTokenCategory = cat || 'all';
+    document.querySelectorAll('.token-cat-btn').forEach(btn => {
+        const isAct = btn.dataset.cat === currentTokenCategory;
+        btn.classList.toggle('active', isAct);
+        btn.style.background = isAct ? '#00695c' : '#222';
+        btn.style.color = isAct ? 'white' : '#bbb';
+        btn.style.borderColor = isAct ? '#00897b' : '#444';
+        btn.style.fontWeight = isAct ? 'bold' : 'normal';
+    });
+    if (currentTokenCategory !== 'all') {
+        const uploadSel = document.getElementById('token-upload-category');
+        if (uploadSel) uploadSel.value = currentTokenCategory;
+    }
+    if (currentTokenTab === 'map') {
+        updateMapTokensGallery();
+    } else {
+        updateLibraryGallery();
+    }
+}
+
+document.querySelectorAll('.token-cat-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        setTokenCategoryFilter(btn.dataset.cat);
+    });
+});
 
 function switchTokenTab(tab) {
     currentTokenTab = tab;
@@ -1847,6 +2305,9 @@ window.updateSelectedTokenControls = function(ent) {
     const sizeInput = document.getElementById('token-edit-size');
     if (sizeInput) sizeInput.value = ent.sizeMultiplier || 1;
 
+    const catSelect = document.getElementById('token-edit-category');
+    if (catSelect) catSelect.value = inferTokenCategory(ent);
+
     const hpCurrInput = document.getElementById('token-hp-current');
     if (hpCurrInput) hpCurrInput.value = (ent.hpCurrent !== undefined && ent.hpCurrent !== null) ? ent.hpCurrent : '';
 
@@ -1867,13 +2328,29 @@ window.updateSelectedTokenControls = function(ent) {
     const btnStat = document.getElementById('btn-open-statblock');
     if (btnStat) {
         if (ent.statblock && ent.statblock.name) {
-            btnStat.innerHTML = `<span>📜 Scheda (${ent.statblock.name})</span>`;
+            btnStat.innerHTML = `<span>📜 ${ent.statblock.name}</span>`;
             btnStat.style.background = '#00897b';
-            btnStat.title = `Visualizza Scheda: ${ent.statblock.name}`;
+            btnStat.title = `Visualizza Scheda Mostro: ${ent.statblock.name}`;
         } else {
-            btnStat.innerHTML = `<span>📖 Assegna Scheda</span>`;
+            btnStat.innerHTML = `<span>📜 Mostro</span>`;
             btnStat.style.background = '#0277bd';
-            btnStat.title = 'Cerca e assegna scheda statistiche';
+            btnStat.title = 'Cerca e assegna scheda statistiche mostro';
+        }
+    }
+
+    // Pulsante Scheda Personaggio (PG)
+    const btnPc = document.getElementById('btn-open-pcsheet');
+    if (btnPc) {
+        if (ent.pcSheet && ent.pcSheet.name) {
+            btnPc.innerHTML = `<span>🧙 ${ent.pcSheet.name}</span>`;
+            btnPc.style.background = '#4a148c';
+            btnPc.style.borderColor = '#ffd54f';
+            btnPc.title = `Apri Scheda PG: ${ent.pcSheet.name} (Liv. ${ent.pcSheet.level || 1})`;
+        } else {
+            btnPc.innerHTML = `<span>🧙 Scheda PG</span>`;
+            btnPc.style.background = '#6a1b9a';
+            btnPc.style.borderColor = '#ab47bc';
+            btnPc.title = 'Apri o Importa Scheda Personaggio (PG)';
         }
     }
 
@@ -1965,6 +2442,7 @@ function duplicateSelectedTokens() {
             name: newName,
             nameVisibility: sourceToken.nameVisibility || 'all',
             originalName: sourceToken.originalName || baseName,
+            category: inferTokenCategory(sourceToken),
             x: newX,
             y: newY,
             width: sourceToken.width,
@@ -1980,6 +2458,7 @@ function duplicateSelectedTokens() {
             // CA E SCHEDA STATISTICHE COPIATE!
             ac: sourceToken.ac !== undefined ? sourceToken.ac : 0,
             statblock: sourceToken.statblock ? JSON.parse(JSON.stringify(sourceToken.statblock)) : null,
+            pcSheet: sourceToken.pcSheet ? JSON.parse(JSON.stringify(sourceToken.pcSheet)) : null,
             aura: sourceToken.aura ? JSON.parse(JSON.stringify(sourceToken.aura)) : null,
             conditions: sourceToken.conditions ? JSON.parse(JSON.stringify(sourceToken.conditions)) : [],
             owner: sourceToken.owner || '',
@@ -2021,27 +2500,49 @@ window.addEventListener('keydown', (e) => {
 
 document.getElementById('btn-duplicate-token')?.addEventListener('click', duplicateSelectedTokens);
 
-function addTokenToMap(name, src, explicitHp = null) {
-    const sizeMultiplier = parseInt(document.getElementById('token-size-select')?.value) || 1;
+function addTokenToMap(name, src, explicitHp = null, explicitCategory = null, templateObj = null) {
+    const campMatch = templateObj || currentCampaignTokens.find(x => x.src === src);
+    const libMatch = savedTokensLibrary.find(x => x.src === src);
+    const sizeSelect = document.getElementById('token-size-select');
+    const sizeMultiplier = (templateObj && templateObj.sizeMultiplier)
+        ? parseInt(templateObj.sizeMultiplier) || 1
+        : (parseInt(sizeSelect?.value) || (campMatch && campMatch.sizeMultiplier ? parseInt(campMatch.sizeMultiplier) : 1) || 1);
     const isVisible = (document.getElementById('token-visibility-select')?.value || 'visible') === 'visible';
     const pxSize = engine.grid.size * sizeMultiplier;
+    const categoryToAssign = (explicitCategory && TOKEN_CATEGORIES.includes(explicitCategory))
+        ? explicitCategory
+        : ((templateObj && TOKEN_CATEGORIES.includes(templateObj.category))
+            ? templateObj.category
+            : ((currentTokenCategory && currentTokenCategory !== 'all')
+                ? currentTokenCategory
+                : ((campMatch && TOKEN_CATEGORIES.includes(campMatch.category))
+                    ? campMatch.category
+                    : ((libMatch && TOKEN_CATEGORIES.includes(libMatch.category)) ? libMatch.category : 'mostri'))));
     
-    // Calcolo PV predefiniti:
-    // 1. explicitHp (ereditato da un token del tab "In Mappa")
-    // 2. Valore digitato nel campo "token-default-hp"
-    // 3. Cerca un token in mappa con stesso nome o immagine avente già hpMax > 0
+    // Calcolo PV, CA, proprietari e statblock predefiniti:
+    // 1. templateObj / campMatch (token salvato nella Campagna)
+    // 2. explicitHp (ereditato dalla card)
+    // 3. Valore digitato nel campo "token-default-hp"
+    // 4. Token esistente in mappa o in libreria con stesso nome/src
     let hpToAssign = 0;
-    let acToAssign = 10;
-    let statblockToAssign = null;
+    let acToAssign = (campMatch && campMatch.ac > 0) ? campMatch.ac : 10;
+    let statblockToAssign = (campMatch && campMatch.statblock) ? JSON.parse(JSON.stringify(campMatch.statblock)) : null;
+    let pcSheetToAssign = (campMatch && campMatch.pcSheet) ? JSON.parse(JSON.stringify(campMatch.pcSheet)) : null;
+    let ownersToAssign = (campMatch && Array.isArray(campMatch.owners)) ? [...campMatch.owners] : [];
+    let ownerStrToAssign = (campMatch && campMatch.owner) ? campMatch.owner : (ownersToAssign[0] || '');
+    let nameVisToAssign = (campMatch && campMatch.nameVisibility) ? campMatch.nameVisibility : 'all';
+    let hpVisToAssign = (campMatch && campMatch.hpVisibleToPlayers !== undefined) ? campMatch.hpVisibleToPlayers : true;
 
     const defAcInput = document.getElementById('token-ac');
-    if (defAcInput && defAcInput.value !== '') {
+    if (!campMatch && defAcInput && defAcInput.value !== '') {
         const parsedAc = parseInt(defAcInput.value);
         if (!isNaN(parsedAc) && parsedAc > 0) acToAssign = parsedAc;
     }
 
     if (explicitHp !== null && explicitHp !== undefined && explicitHp > 0) {
         hpToAssign = parseInt(explicitHp) || 0;
+    } else if (campMatch && campMatch.hpMax > 0) {
+        hpToAssign = parseInt(campMatch.hpMax) || 0;
     } else {
         const defHpInput = document.getElementById('token-default-hp');
         const defHpVal = defHpInput ? parseInt(defHpInput.value) : 0;
@@ -2059,6 +2560,9 @@ function addTokenToMap(name, src, explicitHp = null) {
                 hpToAssign = existingWithHp.hpMax;
                 if (existingWithHp.ac) acToAssign = existingWithHp.ac;
                 if (existingWithHp.statblock) statblockToAssign = JSON.parse(JSON.stringify(existingWithHp.statblock));
+                if (existingWithHp.pcSheet) pcSheetToAssign = JSON.parse(JSON.stringify(existingWithHp.pcSheet));
+            } else if (libMatch && libMatch.hpMax > 0) {
+                hpToAssign = libMatch.hpMax;
             }
         }
     }
@@ -2073,30 +2577,38 @@ function addTokenToMap(name, src, explicitHp = null) {
         const snappedX = Math.round((centerWorld.x - effOffsetX) / engine.grid.size) * engine.grid.size + effOffsetX;
         const snappedY = Math.round((centerWorld.y - effOffsetY) / engine.grid.size) * engine.grid.size + effOffsetY;
 
-        let baseName = (name || 'Token').replace(/\.[^/.]+$/, "").replace(/\s+\d+$/, '').trim() || 'Token';
-        let maxNum = 0;
-        let foundAny = false;
-        engine.tokens.forEach(t => {
-            const tName = t.name || (t.originalName ? t.originalName.replace(/\.[^/.]+$/, "") : '');
-            if (tName === baseName) {
-                foundAny = true;
-                if (maxNum < 1) maxNum = 1;
-            } else if (tName.startsWith(baseName + ' ')) {
-                foundAny = true;
-                const numPart = parseInt(tName.substring(baseName.length + 1));
-                if (!isNaN(numPart) && numPart > maxNum) {
-                    maxNum = numPart;
+        // Regola numerazione:
+        // PG ('personaggi') e PNG ('png') sono unici e NON hanno mai il numero progressivo finale (es. "Rendal" resta "Rendal").
+        // Mostri ('mostri') e Vari ('vari') mantengono la numerazione progressiva ("Goblin 1", "Goblin 2", ecc.).
+        let assignedName;
+        if (categoryToAssign === 'personaggi' || categoryToAssign === 'png') {
+            assignedName = (name || 'Token').replace(/\.[^/.]+$/, "").replace(/\s+1$/, '').trim() || 'Token';
+        } else {
+            let baseName = (name || 'Token').replace(/\.[^/.]+$/, "").replace(/\s+\d+$/, '').trim() || 'Token';
+            let maxNum = 0;
+            let foundAny = false;
+            engine.tokens.forEach(t => {
+                const tName = t.name || (t.originalName ? t.originalName.replace(/\.[^/.]+$/, "") : '');
+                if (tName === baseName) {
+                    foundAny = true;
+                    if (maxNum < 1) maxNum = 1;
+                } else if (tName.startsWith(baseName + ' ')) {
+                    foundAny = true;
+                    const numPart = parseInt(tName.substring(baseName.length + 1));
+                    if (!isNaN(numPart) && numPart > maxNum) {
+                        maxNum = numPart;
+                    }
                 }
-            }
-        });
-
-        const assignedName = (foundAny || maxNum > 0) ? `${baseName} ${maxNum + 1}` : `${baseName} 1`;
+            });
+            assignedName = (foundAny || maxNum > 0) ? `${baseName} ${maxNum + 1}` : `${baseName} 1`;
+        }
 
         const token = {
             id: 'token_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
             name: assignedName,
-            nameVisibility: 'all',
+            nameVisibility: nameVisToAssign,
             originalName: name,
+            category: categoryToAssign,
             x: snappedX,
             y: snappedY,
             width: pxSize,
@@ -2108,11 +2620,15 @@ function addTokenToMap(name, src, explicitHp = null) {
             // SEMPRE FULL VITA!
             hpMax: hpToAssign,
             hpCurrent: hpToAssign,
-            hpVisibleToPlayers: true,
+            hpVisibleToPlayers: hpVisToAssign,
             ac: acToAssign,
-            statblock: statblockToAssign
+            statblock: statblockToAssign,
+            pcSheet: pcSheetToAssign,
+            owner: ownerStrToAssign,
+            owners: ownersToAssign
         };
         engine.tokens.push(token);
+        upsertTokenInCampaign(token);
 
         // Seleziona subito il nuovo token e mostra i controlli con i PV
         engine.selectedTokens.clear();
@@ -2126,6 +2642,12 @@ function addTokenToMap(name, src, explicitHp = null) {
         if (isVisible) syncState(true, false);
         if (typeof tokenPanel !== 'undefined' && tokenPanel && tokenPanel.style.display !== 'none') {
             updateMapTokensGallery();
+        }
+        if (typeof showToast === 'function') {
+            const pfx = isVisible
+                ? (typeof window.t === 'function' ? window.t('♟️ Token creato:') : '♟️ Token creato:')
+                : (typeof window.t === 'function' ? window.t('🙈 Token creato (Invisibile):') : '🙈 Token creato (Invisibile):');
+            showToast(`${pfx} "${assignedName}"`);
         }
     };
     imgObj.src = src;
@@ -2172,14 +2694,17 @@ document.getElementById('token-name-edit').addEventListener('input', (e) => {
             const p = engine.initiative.participants.find(x => x.tokenId === targets[0].id);
             if (p) p.name = rawVal || window.getSmartTokenName(targets[0]);
         }
+        upsertTokenInCampaign(targets[0]);
     } else {
         const base = rawVal.replace(/\s+\d+$/, '').trim();
         targets.forEach((t, idx) => {
-            t.name = base ? `${base} ${idx + 1}` : '';
+            const cat = inferTokenCategory(t);
+            t.name = base ? ((cat === 'personaggi' || cat === 'png') ? base : `${base} ${idx + 1}`) : '';
             if (engine.initiative && engine.initiative.participants) {
                 const p = engine.initiative.participants.find(x => x.tokenId === t.id);
                 if (p) p.name = t.name || window.getSmartTokenName(t);
             }
+            upsertTokenInCampaign(t);
         });
     }
     if (engine.initiative && typeof renderTrackerList === 'function') renderTrackerList();
@@ -2192,6 +2717,7 @@ document.getElementById('token-name-visibility').addEventListener('change', (e) 
     if (targets.length === 0) return;
     targets.forEach(t => {
         t.nameVisibility = e.target.value;
+        upsertTokenInCampaign(t);
     });
     engine.renderAll();
     syncState(true);
@@ -2205,9 +2731,91 @@ document.getElementById('token-edit-size').addEventListener('change', (e) => {
         token.sizeMultiplier = mult;
         token.width = engine.grid.size * mult;
         token.height = engine.grid.size * mult;
+        upsertTokenInCampaign(token);
     });
     engine.renderAll();
     syncState(true);
+});
+
+document.getElementById('token-edit-category')?.addEventListener('change', async (e) => {
+    const targets = getSelectedTargetTokens();
+    if (targets.length === 0) return;
+    const newCat = e.target.value;
+    if (!TOKEN_CATEGORIES.includes(newCat)) return;
+    for (const token of targets) {
+        token.category = newCat;
+        if ((newCat === 'personaggi' || newCat === 'png') && token.name) {
+            token.name = token.name.replace(/\s+1$/, '').trim();
+            const nameInput = document.getElementById('token-name-edit');
+            if (nameInput && targets.length === 1) nameInput.value = token.name;
+        }
+        upsertTokenInCampaign(token);
+        const libItem = savedTokensLibrary.find(x => x.src === token.src);
+        if (libItem) {
+            libItem.category = newCat;
+            await vttDB.saveToken(libItem);
+        }
+    }
+    engine.renderAll();
+    syncState(true);
+    if (typeof tokenPanel !== 'undefined' && tokenPanel && tokenPanel.style.display !== 'none') {
+        updateMapTokensGallery();
+        updateLibraryGallery();
+    }
+    if (typeof showToast === 'function') {
+        const meta = getCategoryMeta(newCat);
+        const catName = typeof window.t === 'function' ? window.t(meta.label) : meta.label;
+        showToast(`${meta.icon} ${typeof window.t === 'function' ? window.t('Cartella assegnata:') : 'Cartella assegnata:'} ${catName}`);
+    }
+});
+
+document.getElementById('btn-save-token-to-lib')?.addEventListener('click', async () => {
+    const targets = getSelectedTargetTokens();
+    if (targets.length === 0) return;
+    const catSelect = document.getElementById('token-edit-category');
+    const chosenCat = (catSelect && TOKEN_CATEGORIES.includes(catSelect.value)) ? catSelect.value : 'mostri';
+    let savedCount = 0;
+
+    for (const token of targets) {
+        if (!token.src) continue;
+        token.category = chosenCat;
+        if ((chosenCat === 'personaggi' || chosenCat === 'png') && token.name) {
+            token.name = token.name.replace(/\s+1$/, '').trim();
+        }
+        upsertTokenInCampaign(token);
+        const cleanSrc = getOrCompressTokenSrc(token) || token.src;
+        const baseName = (chosenCat === 'personaggi' || chosenCat === 'png')
+            ? ((token.name || token.originalName || 'Token').replace(/\.[^/.]+$/, "").replace(/\s+1$/, '').trim() || 'Token')
+            : ((token.name || token.originalName || 'Token').replace(/\.[^/.]+$/, "").replace(/\s+\d+$/, '').trim() || 'Token');
+        let existing = savedTokensLibrary.find(x => x.src === cleanSrc || x.src === token.src);
+        if (existing) {
+            existing.category = chosenCat;
+            existing.name = baseName;
+            if (token.hpMax > 0) existing.hpMax = token.hpMax;
+            await vttDB.saveToken(existing);
+        } else {
+            const newItem = {
+                id: 'tok_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                name: baseName,
+                src: cleanSrc,
+                category: chosenCat,
+                hpMax: token.hpMax || 0
+            };
+            savedTokensLibrary.push(newItem);
+            await vttDB.saveToken(newItem);
+        }
+        savedCount++;
+    }
+
+    if (savedCount > 0) {
+        updateLibraryGallery();
+        updateMapTokensGallery();
+        if (typeof showToast === 'function') {
+            const meta = getCategoryMeta(chosenCat);
+            const catName = typeof window.t === 'function' ? window.t(meta.label) : meta.label;
+            showToast(`💾 ${savedCount} token ${typeof window.t === 'function' ? window.t('salvati in Libreria') : 'salvati in Libreria'} (${meta.icon} ${catName})!`);
+        }
+    }
 });
 
 document.getElementById('btn-delete-token').addEventListener('click', () => {
@@ -2238,6 +2846,7 @@ function updateTokenHP(e) {
         const isVisible = e.target.checked;
         targetTokens.forEach(token => {
             token.hpVisibleToPlayers = isVisible;
+            upsertTokenInCampaign(token);
         });
         engine.renderAll();
         syncState(true);
@@ -2267,6 +2876,7 @@ function updateTokenHP(e) {
         token.hpMax = maxVal;
         token.hpCurrent = currVal;
         token.hpVisibleToPlayers = isVisible;
+        upsertTokenInCampaign(token);
         if (engine.initiative && engine.initiative.participants) {
             const pItem = engine.initiative.participants.find(p => p.tokenId === token.id);
             if (pItem) {
@@ -2294,11 +2904,11 @@ document.getElementById('token-owner').addEventListener('change', (e) => {
     }
 
     if (val === '__clear__') {
-        targets.forEach(t => setTokenOwners(t, []));
+        targets.forEach(t => { setTokenOwners(t, []); upsertTokenInCampaign(t); });
         if (typeof showToast === 'function') showToast('Controllo impostato su: Solo DM');
     } else if (val === '__all__') {
         const allPlayers = getAvailablePlayerNames();
-        targets.forEach(t => setTokenOwners(t, allPlayers));
+        targets.forEach(t => { setTokenOwners(t, allPlayers); upsertTokenInCampaign(t); });
         if (typeof showToast === 'function') showToast('Controllo assegnato a tutti i giocatori!');
     } else {
         const cleanVal = val.trim();
@@ -2308,6 +2918,7 @@ document.getElementById('token-owner').addEventListener('change', (e) => {
                 current.push(cleanVal);
             }
             setTokenOwners(t, current);
+            upsertTokenInCampaign(t);
         });
         if (typeof showToast === 'function') {
             showToast(targets.length > 1 ? `Giocatore ${cleanVal} assegnato a ${targets.length} token!` : `Giocatore ${cleanVal} assegnato al token!`);
@@ -2331,6 +2942,7 @@ document.getElementById('token-ac')?.addEventListener('input', (e) => {
     const targetTokens = getSelectedTargetTokens();
     targetTokens.forEach(t => {
         t.ac = val;
+        upsertTokenInCampaign(t);
         if (engine.initiative && engine.initiative.participants) {
             const p = engine.initiative.participants.find(x => x.tokenId === t.id);
             if (p) p.ac = val;
@@ -2346,6 +2958,15 @@ document.getElementById('btn-open-statblock')?.addEventListener('click', () => {
     const token = targets.length > 0 ? targets[targets.length - 1] : null;
     if (window.compendium) {
         window.compendium.open(token ? token.statblock : null);
+    }
+});
+
+// Listener apertura Scheda Personaggio (PG)
+document.getElementById('btn-open-pcsheet')?.addEventListener('click', () => {
+    const targets = getSelectedTargetTokens();
+    const token = targets.length > 0 ? targets[targets.length - 1] : null;
+    if (window.pcSheetManager) {
+        window.pcSheetManager.open(token);
     }
 });
 
@@ -2652,6 +3273,13 @@ function openTokenStatblock(token) {
     const now = Date.now();
     if (now - lastStatblockOpenTime < 350) return;
     lastStatblockOpenTime = now;
+
+    if (token.pcSheet || (inferTokenCategory(token) === 'personaggi' && !token.statblock)) {
+        if (window.pcSheetManager) {
+            window.pcSheetManager.open(token);
+            return;
+        }
+    }
 
     if (window.compendium) {
         window.compendium.open(token.statblock || null);
@@ -3275,6 +3903,7 @@ if(btnAddToInit) {
 }
 
 
+let toastHideTimeout = null;
 function showToast(msg) {
     if (typeof window.t === 'function') msg = window.t(msg);
     let t = document.getElementById('toast-msg');
@@ -3285,19 +3914,26 @@ function showToast(msg) {
         t.style.top = '20px';
         t.style.left = '50%';
         t.style.transform = 'translateX(-50%)';
-        t.style.background = 'rgba(76, 175, 80, 0.9)';
+        t.style.background = 'rgba(46, 125, 50, 0.95)';
+        t.style.border = '1px solid #81c784';
+        t.style.boxShadow = '0 4px 12px rgba(0,0,0,0.6)';
         t.style.color = 'white';
         t.style.padding = '10px 20px';
-        t.style.borderRadius = '5px';
+        t.style.borderRadius = '6px';
         t.style.zIndex = '10000';
         t.style.fontWeight = 'bold';
-        t.style.transition = 'opacity 0.3s';
+        t.style.fontSize = '13px';
+        t.style.transition = 'opacity 0.25s';
         t.style.pointerEvents = 'none';
         document.body.appendChild(t);
     }
     t.innerText = msg;
     t.style.opacity = '1';
-    setTimeout(() => { t.style.opacity = '0'; }, 3000);
+    if (toastHideTimeout) clearTimeout(toastHideTimeout);
+    toastHideTimeout = setTimeout(() => {
+        t.style.opacity = '0';
+        toastHideTimeout = null;
+    }, 3200);
 }
 
 

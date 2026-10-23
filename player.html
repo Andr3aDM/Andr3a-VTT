@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Andr3a VTT - Schermo Giocatori (Beta 1.0)</title>
+    <title>Andr3a VTT - Schermo Giocatori (Beta 1.3)</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
         /* Nasconde la sidebar per i giocatori e massimizza la mappa */
@@ -46,15 +46,15 @@
         <!-- Canvas layers created by JS -->
     </div>
     
-    <div id="player-tracker" style="display:none; position: absolute; z-index: 1000; background: rgba(34, 34, 34, 0.9); border: 2px solid #ffcc00; border-radius: 8px; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); padding: 10px; pointer-events: none;">
-        <strong style="color: #ffcc00; display: block; margin-bottom: 5px; text-align: center;">Ordine di Iniziativa</strong>
-        <div id="player-tracker-list" style="display: flex; gap: 10px; align-items: center; justify-content: center;"></div>
+    <div id="player-tracker" style="display:none; position: absolute; z-index: 1000; background: rgba(34, 34, 34, 0.92); border: 2px solid #ffcc00; border-radius: 8px; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.65); padding: 8px 10px; pointer-events: auto; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); box-sizing: border-box;">
+        <strong style="color: #ffcc00; display: block; margin-bottom: 5px; text-align: center; font-size: 12.5px;">Ordine di Iniziativa</strong>
+        <div id="player-tracker-list" style="display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; overflow: auto; max-width: 100%;"></div>
     </div>
     
     <div id="login-overlay" style="position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center;">
         <div style="background: #222; padding: 20px; border-radius: 8px; border: 2px solid #ffcc00; color: white; width: 300px; text-align: center;">
             <h2 style="color: #ffcc00; margin-top: 0; margin-bottom: 4px;">Unisciti alla Partita</h2>
-            <div style="margin-bottom: 12px;"><span style="font-size: 10.5px; background: #263238; color: #4dd0e1; border: 1px solid #00acc1; padding: 2px 8px; border-radius: 10px; font-weight: bold;">Beta 1.0</span></div>
+            <div style="margin-bottom: 12px;"><span style="font-size: 10.5px; background: #263238; color: #4dd0e1; border: 1px solid #00acc1; padding: 2px 8px; border-radius: 10px; font-weight: bold;">Beta 1.3</span></div>
             <input type="text" id="login-name" placeholder="Il tuo Nome (es: Marco)" style="width: 100%; padding: 8px; margin-bottom: 10px; box-sizing: border-box; background: #333; color: white; border: 1px solid #555;">
             <input type="text" id="login-room" placeholder="Codice Stanza (es: ABCD-1234)" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box; background: #333; color: white; border: 1px solid #555; text-transform: uppercase;">
             <button id="btn-login-online" style="width: 100%; padding: 10px; background: #4caf50; color: white; border: none; font-weight: bold; cursor: pointer; margin-bottom: 10px; border-radius:4px;">Connetti Online</button>
@@ -66,8 +66,10 @@
 
     
     <!-- PLAYER TOKEN PANEL -->
-    <div id="player-token-panel" style="display:none; position: absolute; right: 20px; top: 20px; z-index: 1000; background: rgba(34, 34, 34, 0.9); border: 2px solid #ffcc00; border-radius: 8px; padding: 10px; color: white; width: 200px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
-        <strong style="color: #ffcc00; display:block; margin-bottom:10px;">Opzioni Token</strong>
+    <div id="player-token-panel" style="display:none; position: absolute; right: 20px; top: 20px; z-index: 1000; background: rgba(34, 34, 34, 0.9); border: 2px solid #ffcc00; border-radius: 8px; padding: 10px; color: white; width: 205px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+        <strong style="color: #ffcc00; display:block; margin-bottom:8px;">Opzioni Token</strong>
+        
+        <button id="pbtn-open-pcsheet" type="button" style="width: 100%; padding: 7px 6px; margin-bottom: 10px; background: #6a1b9a; color: #ffd54f; border: 1px solid #ab47bc; border-radius: 5px; font-weight: bold; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;" title="Apri la Scheda del tuo Personaggio">🧙 Apri Scheda PG</button>
         
         <label style="font-size:12px;">Aura Attiva:</label>
         <input type="checkbox" id="ptoken-aura-active"><br><br>
@@ -130,7 +132,8 @@
 
     <div id="player-toolbar" style="display: none; position: absolute; bottom: 20px; left: 68px; z-index: 1000; background: rgba(34,34,34,0.9); border: 2px solid #ffcc00; border-radius: 8px; padding: 8px 12px; gap: 10px; color: white; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
         <input type="color" id="player-color" value="#00ffff" title="Il tuo Colore (per Disegni e Ping)" style="cursor:pointer; width:30px; height:30px; padding:0; border:none; background:none;">
-                            <button id="pbtn-chat" class="ptool-btn" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Chat Log">💬</button>
+        <button id="pbtn-toolbar-pcsheet" type="button" style="background:none; border:none; color:#ffd54f; font-size:20px; cursor:pointer;" title="Apri Scheda Personaggio (PG)">🧙</button>
+        <button id="pbtn-chat" class="ptool-btn" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Chat Log">💬</button>
           <div style="width: 1px; height: 30px; background: #555; margin: 0 5px;"></div>
         <button class="ptool-btn active" data-tool="move" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Muovi Token">🖐️</button>
         <button class="ptool-btn" data-tool="draw" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Disegna (Pubblico)">✏️</button>
@@ -229,12 +232,13 @@
     </div>
     <!-- Fine Dadi e Audio -->
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
-    <script src="js/engine.js?v=127"></script>
-    <script src="js/network.js?v=5"></script>
+    <script src="js/engine.js?v=128"></script>
+    <script src="js/network.js?v=6"></script>
     <script src="js/dice.js?v=123"></script>
     <script src="js/audio.js?v=117"></script>
-    <script src="js/player.js?v=127"></script>
-<script src="js/lang.js?v=4"></script>
+    <script src="js/pcsheet.js?v=2"></script>
+    <script src="js/player.js?v=129"></script>
+<script src="js/lang.js?v=7"></script>
 
     
 

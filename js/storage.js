@@ -50,11 +50,30 @@ class StorageDB {
     }
 
     async addCampaign(name) {
-        const campaign = { id: 'camp_' + Date.now(), name, folders: [] };
+        const campaign = { id: 'camp_' + Date.now(), name, folders: [], tokens: [] };
         return new Promise((resolve, reject) => {
             const tx = this.db.transaction('campaigns', 'readwrite');
             tx.objectStore('campaigns').add(campaign);
             tx.oncomplete = () => resolve(campaign);
+            tx.onerror = () => reject(tx.error);
+        });
+    }
+
+    async getCampaignTokens(campaignId) {
+        if (!campaignId) return [];
+        const campaign = await this.getCampaign(campaignId);
+        return (campaign && Array.isArray(campaign.tokens)) ? campaign.tokens : [];
+    }
+
+    async saveCampaignTokens(campaignId, tokensList) {
+        if (!campaignId) return;
+        const campaign = await this.getCampaign(campaignId);
+        if (!campaign) return;
+        campaign.tokens = Array.isArray(tokensList) ? tokensList : [];
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction('campaigns', 'readwrite');
+            tx.objectStore('campaigns').put(campaign);
+            tx.oncomplete = () => resolve(campaign.tokens);
             tx.onerror = () => reject(tx.error);
         });
     }
@@ -210,6 +229,7 @@ class StorageDB {
         const newCampId = 'camp_' + Date.now() + '_' + Math.floor(Math.random()*1000);
         data.campaign.id = newCampId;
         data.campaign.folders = data.campaign.folders || [];
+        data.campaign.tokens = data.campaign.tokens || [];
         
         return new Promise((resolve, reject) => {
             const tx = this.db.transaction(['campaigns', 'maps'], 'readwrite');

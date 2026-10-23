@@ -924,7 +924,19 @@
                 }
             });
 
+            const chkFooterInv = document.getElementById('statblock-spawn-invisible');
+            const chkModalInv = document.getElementById('json-import-spawn-invisible');
+            if (chkFooterInv && chkModalInv) {
+                chkFooterInv.addEventListener('change', () => { chkModalInv.checked = chkFooterInv.checked; });
+                chkModalInv.addEventListener('change', () => { chkFooterInv.checked = chkModalInv.checked; });
+            }
+            document.getElementById('btn-confirm-json-spawn')?.addEventListener('click', () => {
+                window._autoSpawnNextJsonImport = true;
+                document.getElementById('btn-confirm-json-import')?.click();
+            });
             document.getElementById('btn-confirm-json-import')?.addEventListener('click', () => {
+                const shouldAutoSpawn = !!window._autoSpawnNextJsonImport;
+                window._autoSpawnNextJsonImport = false;
                 const textarea = document.getElementById('json-import-textarea');
                 const raw = textarea ? textarea.value.trim() : '';
                 if (!raw) return alert("Incolla prima il testo JSON!");
@@ -939,7 +951,13 @@
                         if (modal) modal.style.display = 'none';
                         textarea.value = '';
                         this.setImportTokenPreview(null);
-                        if (typeof showToast === 'function') showToast(`Mostro "${normalized.name}" importato con successo!`);
+                        if (chkFooterInv && chkModalInv) chkFooterInv.checked = chkModalInv.checked;
+                        if (shouldAutoSpawn) {
+                            window._autoSpawnNextJsonImport = false;
+                            if (currentMonster) this.spawnAsToken(currentMonster);
+                        } else if (typeof showToast === 'function') {
+                            showToast(`Mostro "${normalized.name}" importato con successo!`);
+                        }
                     } else {
                         alert("Formato JSON non riconosciuto o incompleto.");
                     }
@@ -1615,6 +1633,7 @@
                 token.hpMax = hpVal;
                 token.hpCurrent = hpVal;
                 token.hpVisibleToPlayers = true;
+                if (typeof window.upsertTokenInCampaign === 'function') window.upsertTokenInCampaign(token);
 
                 // Se presente in iniziativa, aggiorna
                 if (eng.initiative && eng.initiative.participants) {
@@ -1716,7 +1735,8 @@
                     height: pxSize,
                     sizeMultiplier: sizeMult,
                     src: tokenSrc,
-                    visible: true,
+                    category: 'mostri',
+                    visible: !(document.getElementById('statblock-spawn-invisible')?.checked),
                     imageObj: imgObj,
                     // Statistiche complete
                     ac: acVal,
@@ -1727,6 +1747,7 @@
                 };
 
                 eng.tokens.push(token);
+                if (typeof window.upsertTokenInCampaign === 'function') window.upsertTokenInCampaign(token);
                 eng.selectedTokens.clear();
                 eng.selectedTokens.add(token.id);
                 eng.selectedTokenId = token.id;
@@ -1739,7 +1760,11 @@
                 if (typeof window.syncState === 'function') window.syncState(true, false);
                 else if (typeof syncState === 'function') syncState(true, false);
                 if (typeof updateMapTokensGallery === 'function') updateMapTokensGallery();
-                if (typeof showToast === 'function') showToast(`Creato token "${assignedName}" (Full PV: ${hpVal}, CA: ${acVal})!`);
+                if (typeof showToast === 'function') {
+                    const isInv = !token.visible;
+                    const pfx = isInv ? (typeof window.t === 'function' ? window.t('🙈 Creato token INVISIBILE') : '🙈 Creato token INVISIBILE') : (typeof window.t === 'function' ? window.t('♟️ Creato token') : '♟️ Creato token');
+                    showToast(`${pfx} "${assignedName}" (Full PV: ${hpVal}, CA: ${acVal})!`);
+                }
             };
             imgObj.src = tokenSrc;
         },

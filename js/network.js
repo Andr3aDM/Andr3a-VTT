@@ -113,10 +113,12 @@ class NetworkManager {
 
                         // Se esiste già una connessione con lo stesso nome (giocatore uscito e rientrato),
                         // sostituiscila pulitamente senza duplicare il giocatore!
+                        let isReconnect = false;
                         for (let oldPid in this.connections) {
                             if (oldPid !== pid && this.connections[oldPid]) {
                                 const existingName = (this.connections[oldPid].name || '').trim().toLowerCase();
                                 if (existingName === normJoin) {
+                                    isReconnect = true;
                                     const oldConn = this.connections[oldPid].conn;
                                     this.connections[oldPid].chunkQueue = [];
                                     delete this.connections[oldPid];
@@ -133,7 +135,7 @@ class NetworkManager {
                         };
                         console.log(`Giocatore ${joinName} unito.`);
                         conn.send({ type: 'JOIN_ACCEPTED', payload: { name: joinName } });
-                        if (this.onConnectCallback) this.onConnectCallback(joinName, pid);
+                        if (this.onConnectCallback) this.onConnectCallback(joinName, pid, isReconnect);
                     }
                     this._handleRawData(data, conn.peer);
                 });

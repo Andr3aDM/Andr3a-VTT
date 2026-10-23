@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DM Dashboard - VTT (Beta 1.0)</title>
+    <title>DM Dashboard - VTT (Beta 1.3)</title>
     <link rel="stylesheet" href="css/style.css?v=2">
 <style>
         .section h3 { cursor: pointer; user-select: none; }
@@ -14,7 +14,7 @@
 </head>
 <body>
     <div id="sidebar">
-        <h2>Andr3a VTT <span style="font-size: 11px; background: #263238; color: #4dd0e1; border: 1px solid #00acc1; padding: 1px 6px; border-radius: 10px; vertical-align: middle; font-weight: bold;">Beta 1.0</span><br><span style="font-size: 14px; color: #ffcc00; font-weight: normal;">DM Console</span></h2>
+        <h2>Andr3a VTT <span style="font-size: 11px; background: #263238; color: #4dd0e1; border: 1px solid #00acc1; padding: 1px 6px; border-radius: 10px; vertical-align: middle; font-weight: bold;">Beta 1.3</span><br><span style="font-size: 14px; color: #ffcc00; font-weight: normal;">DM Console</span></h2>
         <div style="margin-top: 10px; margin-bottom: 10px;">
             <button id="btn-toggle-tracker" style="width: 100%; background: #ffcc00; color: black; font-weight: bold; padding: 7px; cursor: pointer; border-radius: 4px; border: none; font-size: 13px;">⚔️ Tracker Iniziativa</button>
         </div>
@@ -108,6 +108,17 @@
                 </div>
                 <div id="token-owners-chips" style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; min-height: 18px; align-items: center;"></div>
 
+                <!-- Riga 2B: Cartella Token & Salva in Libreria -->
+                <div style="display: flex; gap: 5px; margin-bottom: 6px; align-items: center;">
+                    <select id="token-edit-category" style="flex: 1.3; min-width: 0; padding: 4px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px;" title="Assegna cartella nella Libreria Token">
+                        <option value="mostri">📁 Cartella: Mostri</option>
+                        <option value="png">📁 Cartella: PNG</option>
+                        <option value="personaggi">📁 Cartella: Personaggi</option>
+                        <option value="vari">📁 Cartella: Vari</option>
+                    </select>
+                    <button id="btn-save-token-to-lib" type="button" style="flex: 1; padding: 4px 5px; font-size: 10.5px; white-space: nowrap; background: #37474f; color: #80cbc4; border: 1px solid #00897b; border-radius: 3px; cursor: pointer; font-weight: bold;" title="Salva questo token nella Libreria permanente sotto la cartella scelta">💾 In Libreria</button>
+                </div>
+
                 <!-- Riga 3: 4 Azioni Rapide Token (Duplica, Visibilità, Iniziativa, Elimina) -->
                 <div style="display: flex; gap: 4px; margin-bottom: 8px;">
                     <button id="btn-duplicate-token" style="flex:1.1; padding: 5px 2px; font-size: 11px; white-space: nowrap; background: #00897b; color: white; font-weight: bold; border-radius: 3px; border:none; cursor:pointer;" title="Duplica Token (Ctrl+D)">📋 Duplica</button>
@@ -135,14 +146,17 @@
                     <button id="btn-apply-hp-heal" style="width: 25px; height: 25px; background:#2e7d32; color:white; font-weight:bold; border:none; border-radius:3px; cursor:pointer;" title="Applica Cura">+</button>
                 </div>
 
-                <!-- Riga 4C: CA e Scheda Statistiche Mostro -->
+                <!-- Riga 4C: CA, Scheda Mostro e Scheda PG -->
                 <div style="display: flex; gap: 4px; margin-bottom: 6px; align-items: center;">
-                    <div style="display: flex; align-items: center; gap: 2px; flex: 0.9;" title="Classe Armatura (CA)">
+                    <div style="display: flex; align-items: center; gap: 2px; flex: 0.75;" title="Classe Armatura (CA)">
                         <span style="font-size: 11px; font-weight: bold; color: #4fc3f7;">🛡️ CA:</span>
-                        <input type="number" id="token-ac" placeholder="CA" min="0" style="width: 44px; padding: 3px 2px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 12px; text-align: center;">
+                        <input type="number" id="token-ac" placeholder="CA" min="0" style="width: 38px; padding: 3px 2px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 12px; text-align: center;">
                     </div>
-                    <button id="btn-open-statblock" type="button" style="flex: 1.4; padding: 4px 6px; font-size: 11px; font-weight: bold; background: #0277bd; color: white; border: none; border-radius: 3px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; justify-content: center; gap: 4px;" title="Apri o Assegna Scheda Statistiche Mostro">
-                        <span>📜 Scheda Mostro</span>
+                    <button id="btn-open-statblock" type="button" style="flex: 1.1; padding: 4px 4px; font-size: 10.5px; font-weight: bold; background: #0277bd; color: white; border: none; border-radius: 3px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; justify-content: center; gap: 3px;" title="Apri o Assegna Scheda Statistiche Mostro">
+                        <span>📜 Mostro</span>
+                    </button>
+                    <button id="btn-open-pcsheet" type="button" style="flex: 1.1; padding: 4px 4px; font-size: 10.5px; font-weight: bold; background: #6a1b9a; color: #ffd54f; border: 1px solid #ab47bc; border-radius: 3px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; justify-content: center; gap: 3px;" title="Apri o Importa Scheda Personaggio (PG)">
+                        <span>🧙 Scheda PG</span>
                     </button>
                 </div>
 
@@ -257,12 +271,15 @@
 
         <!-- Barra Azioni Inferiore -->
         <div id="statblock-footer" style="padding: 8px 10px; background: #222; border-top: 1px solid #333; display: flex; flex-direction: column; gap: 6px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 0 2px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 0 2px; flex-wrap: wrap; gap: 6px;">
                 <label style="color: #aaa; display: flex; align-items: center; gap: 5px; cursor: pointer;" title="Se disattivato, i tiri della scheda saranno segreti per il DM">
                     <input type="checkbox" id="statblock-rolls-public" checked style="cursor: pointer; margin: 0;">
                     <span style="color: #81d4fa; font-weight: 500;">👁️ Invia tiri ai Giocatori</span>
                 </label>
-                <span style="color: #888; font-size: 10px;">Clicca sui dadi 🎲 per tirare</span>
+                <label style="color: #aaa; display: flex; align-items: center; gap: 5px; cursor: pointer;" title="Se attivato, il tasto Crea Token genera il token direttamente come invisibile ai giocatori">
+                    <input type="checkbox" id="statblock-spawn-invisible" style="cursor: pointer; margin: 0;">
+                    <span style="color: #ffb74d; font-weight: 500;">🙈 Crea Invisibile</span>
+                </label>
             </div>
             <div style="display: flex; gap: 6px; justify-content: space-between; align-items: center;">
                 <button id="btn-translate-statblock" style="flex: 1; min-width: 0; background: #6a1b9a; color: white; border: none; padding: 7px 4px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Traduci la scheda con la terminologia ufficiale D&D in Italiano">
@@ -306,31 +323,38 @@
                 <input type="file" id="json-token-file-input" accept="image/*" style="display: none;">
             </div>
 
-            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;">
-                <button id="btn-confirm-json-import" style="background: #00897b; color: white; border: none; padding: 7px 16px; font-size: 12px; font-weight: bold; border-radius: 4px; cursor: pointer;">Importa Mostro</button>
+            <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-top: 4px;">
+                <label style="color: #ffb74d; font-size: 11.5px; font-weight: bold; display: flex; align-items: center; gap: 5px; cursor: pointer;" title="Se spuntato, il token creato sarà invisibile ai giocatori finché non lo riveli">
+                    <input type="checkbox" id="json-import-spawn-invisible" style="cursor: pointer; margin: 0;">
+                    <span>🙈 Crea Token Invisibile</span>
+                </label>
+                <div style="display: flex; gap: 6px;">
+                    <button id="btn-confirm-json-import" style="background: #00897b; color: white; border: none; padding: 7px 12px; font-size: 11.5px; font-weight: bold; border-radius: 4px; cursor: pointer;" title="Carica la scheda nel Compendio">Importa Mostro</button>
+                    <button id="btn-confirm-json-spawn" style="background: #0277bd; color: white; border: none; padding: 7px 12px; font-size: 11.5px; font-weight: bold; border-radius: 4px; cursor: pointer;" title="Importa la scheda e crea subito il token sulla mappa">♟️ Importa &amp; Crea Token</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <div id="dm-tracker" style="display:none; position: absolute; top: 20px; left: calc(100vw - 320px); width: 300px; background: #222; border: 2px solid #ffcc00; border-radius: 8px; z-index: 1000; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); resize: both; overflow: auto; flex-direction: column; min-height: 250px;">
-        <div id="dm-tracker-header" style="background: #333; padding: 10px; cursor: move; border-bottom: 1px solid #555; display: flex; justify-content: space-between; align-items: center; border-radius: 6px 6px 0 0;">
-            <strong style="color: #ffcc00;">Tracker Iniziativa</strong>
+    <div id="dm-tracker" style="display:none; position: absolute; top: 20px; left: calc(100vw - 360px); width: 340px; height: 420px; min-width: 280px; min-height: 230px; max-height: calc(100vh - 30px); max-width: calc(100vw - 30px); background: #222; border: 2px solid #ffcc00; border-radius: 8px; z-index: 1000; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.65); resize: both; overflow: hidden; flex-direction: column; box-sizing: border-box;">
+        <div id="dm-tracker-header" style="background: #333; padding: 8px 10px; cursor: move; border-bottom: 1px solid #555; display: flex; justify-content: space-between; align-items: center; border-radius: 6px 6px 0 0; flex-shrink: 0; user-select: none;">
+            <strong style="color: #ffcc00; font-size: 13.5px;">⚔️ Tracker Iniziativa</strong>
             <div>
                 <button id="btn-collapse-tracker" style="background: transparent; color: white; border: none; font-size: 16px; cursor: pointer; margin-right: 10px;">-</button>
                 <button id="btn-close-tracker" style="background: transparent; color: white; border: none; font-size: 16px; cursor: pointer;">X</button>
             </div>
         </div>
         
-        <div id="dm-tracker-body" style="padding: 10px; display: flex; flex-direction: column; flex: 1; min-height: 0;">
+        <div id="dm-tracker-body" style="padding: 8px 10px; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
             <!-- Controlli Globali -->
-            <div style="margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 5px; font-size: 12px; align-items: center;">
-                <button id="btn-tracker-state" style="flex: 1; background: #4caf50;">Avvia Combattimento</button>
-                <button id="btn-tracker-reset" style="flex: 1; background: #d32f2f;">Ferma/Reset</button>
+            <div style="margin-bottom: 6px; display: flex; flex-wrap: wrap; gap: 5px; font-size: 12px; align-items: center; flex-shrink: 0;">
+                <button id="btn-tracker-state" style="flex: 1; background: #4caf50; padding: 5px; font-size: 11.5px;">Avvia Combattimento</button>
+                <button id="btn-tracker-reset" style="flex: 1; background: #d32f2f; padding: 5px; font-size: 11.5px;">Ferma/Reset</button>
             </div>
             
-            <div style="margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 5px; font-size: 12px; align-items: center; background: #333; padding: 5px; border-radius: 5px;">
-                <label style="flex: 1;"><input type="checkbox" id="tracker-player-visible" checked> Mostra ai Giocatori</label>
-                <select id="tracker-player-pos" style="flex: 1;">
+            <div style="margin-bottom: 6px; display: flex; flex-wrap: wrap; gap: 5px; font-size: 11.5px; align-items: center; background: #333; padding: 4px 6px; border-radius: 5px; flex-shrink: 0;">
+                <label style="flex: 1; display: flex; align-items: center; gap: 3px; cursor: pointer;"><input type="checkbox" id="tracker-player-visible" checked> Mostra ai Giocatori</label>
+                <select id="tracker-player-pos" style="flex: 1; font-size: 11px; padding: 2px;">
                     <option value="top">In Alto (Orizz.)</option>
                     <option value="bottom">In Basso (Orizz.)</option>
                     <option value="left">A Sinistra (Vert.)</option>
@@ -338,27 +362,35 @@
                 </select>
             </div>
 
-            <!-- Header Colonne -->
-            <div style="display: flex; gap: 5px; margin-bottom: 5px; font-weight: bold; font-size: 13px; border-bottom: 1px solid #555; padding-bottom: 5px;">
-                <div style="flex: 2;">Nome</div>
-                <div style="flex: 1; text-align: center;">HP (+/-)</div>
-                <div style="flex: 1; text-align: center;">Iniz.</div>
-                <div style="flex: 1; text-align: center;">Azioni</div>
+            <div style="margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; background: #2a2a2a; padding: 4px 6px; border-radius: 4px; border: 1px solid #444; flex-shrink: 0;">
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; color: #80cbc4; font-weight: bold;" title="Raggruppa automaticamente i token con lo stesso nome (es. Goblin 1..5) per mantenere la lista compatta">
+                    <input type="checkbox" id="tracker-group-similar" checked style="margin: 0; cursor: pointer;">
+                    <span>📂 Raggruppa Simili</span>
+                </label>
+                <span id="tracker-count-badge" style="color: #aaa; font-size: 10.5px;">0 entità</span>
             </div>
 
-            <!-- Lista Entità -->
-            <div id="tracker-list" style="flex: 1; overflow-y: auto; min-height: 50px;">
+            <!-- Header Colonne -->
+            <div style="display: flex; gap: 5px; margin-bottom: 4px; font-weight: bold; font-size: 12px; border-bottom: 1px solid #555; padding-bottom: 4px; flex-shrink: 0;">
+                <div style="flex: 2.2;">Nome</div>
+                <div style="flex: 1; text-align: center;">HP (+/-)</div>
+                <div style="flex: 0.9; text-align: center;">Iniz.</div>
+                <div style="flex: 0.6; text-align: center;">✕</div>
+            </div>
+
+            <!-- Lista Entità (Scroll interno garantito) -->
+            <div id="tracker-list" style="flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 70px; border: 1px solid #383838; border-radius: 4px; background: #181818; padding: 2px;">
                 <!-- Popolato via JS -->
             </div>
             
             <!-- Controlli Turno (Visibili solo in combat) -->
-            <div id="tracker-combat-controls" style="display: none; margin-top: 10px; gap: 5px;">
-                <button id="btn-prev-turn" style="flex: 1; background: #555;">◀ Precedente</button>
-                <button id="btn-next-turn" style="flex: 2; background: #2196f3; font-weight: bold;">Prossimo Turno ▶</button>
+            <div id="tracker-combat-controls" style="display: none; margin-top: 6px; gap: 5px; flex-shrink: 0;">
+                <button id="btn-prev-turn" style="flex: 1; background: #555; padding: 5px; font-size: 11.5px;">◀ Precedente</button>
+                <button id="btn-next-turn" style="flex: 2; background: #2196f3; font-weight: bold; padding: 5px; font-size: 11.5px;">Prossimo Turno ▶</button>
             </div>
             
-            <div style="margin-top: 10px; text-align: center;">
-                <button id="btn-add-custom-entity" style="font-size: 11px;">+ Aggiungi Entità Extra</button>
+            <div style="margin-top: 6px; text-align: center; flex-shrink: 0;">
+                <button id="btn-add-custom-entity" style="font-size: 11px; padding: 4px 8px;">+ Aggiungi Entità Extra</button>
             </div>
         </div>
     </div>
@@ -735,24 +767,30 @@
         </div>
 
         <!-- Barra Caricamento Token -->
-        <div style="display: flex; gap: 5px;">
-            <label style="flex: 1; background: #00897b; color: white; padding: 5px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; text-align: center; cursor: pointer; white-space: nowrap;" title="Seleziona una cartella dal PC (legge tutte le immagini all'interno)">
+        <div style="display: flex; gap: 4px; align-items: center;">
+            <label style="flex: 1; background: #00897b; color: white; padding: 5px 4px; border-radius: 4px; font-size: 10.5px; font-weight: bold; text-align: center; cursor: pointer; white-space: nowrap;" title="Seleziona una cartella dal PC (legge tutte le immagini all'interno)">
                 📁 Cartella PC
                 <input type="file" id="token-folder-input" webkitdirectory directory multiple style="display:none;">
             </label>
-            <label style="flex: 1; background: #333; color: white; border: 1px solid #555; padding: 5px 6px; border-radius: 4px; font-size: 11px; text-align: center; cursor: pointer; white-space: nowrap;" title="Seleziona uno o più file immagine">
+            <label style="flex: 1; background: #333; color: white; border: 1px solid #555; padding: 5px 4px; border-radius: 4px; font-size: 10.5px; text-align: center; cursor: pointer; white-space: nowrap;" title="Seleziona uno o più file immagine">
                 🖼️ File Singoli
                 <input type="file" id="token-file-input" multiple accept="image/*" style="display:none;">
             </label>
-            <button id="btn-clear-token-library" type="button" style="background: #333; color: #e57373; border: 1px solid #555; padding: 5px 6px; border-radius: 4px; font-size: 11px; cursor: pointer;" title="Svuota la libreria personale salvata">🗑️</button>
+            <select id="token-upload-category" style="flex: 1.05; background: #1c1c1c; color: #80cbc4; border: 1px solid #00897b; border-radius: 4px; padding: 4px 2px; font-size: 10.5px; font-weight: bold;" title="Cartella di destinazione per i nuovi token caricati">
+                <option value="mostri">👹 Mostri</option>
+                <option value="png">🧑 PNG</option>
+                <option value="personaggi">🛡️ Personaggi</option>
+                <option value="vari">📦 Vari</option>
+            </select>
+            <button id="btn-clear-token-library" type="button" style="background: #333; color: #e57373; border: 1px solid #555; padding: 4px 6px; border-radius: 4px; font-size: 11px; cursor: pointer;" title="Svuota la libreria personale salvata">🗑️</button>
         </div>
 
-        <!-- Schede (Tab): In Mappa vs Libreria vs Compendio -->
+        <!-- Schede (Tab): Campagna vs Libreria vs Compendio -->
         <div style="display: flex; gap: 4px; border-bottom: 1px solid #444; padding-bottom: 5px;">
-            <button id="tab-tokens-map" type="button" class="token-tab-btn active" style="flex: 1; padding: 5px 4px; font-size: 11px; font-weight: bold; background: #00897b; color: white; border: none; border-radius: 3px; cursor: pointer;">
-                🗺️ In Mappa <span id="badge-count-map" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 1px 5px; font-size: 10px; margin-left: 2px;">0</span>
+            <button id="tab-tokens-map" type="button" class="token-tab-btn active" style="flex: 1; padding: 5px 4px; font-size: 11px; font-weight: bold; background: #00897b; color: white; border: none; border-radius: 3px; cursor: pointer;" title="Token salvati nella Campagna attiva (PG, PNG e creature della campagna)">
+                🏰 Campagna <span id="badge-count-map" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 1px 5px; font-size: 10px; margin-left: 2px;">0</span>
             </button>
-            <button id="tab-tokens-library" type="button" class="token-tab-btn" style="flex: 1; padding: 5px 4px; font-size: 11px; font-weight: normal; background: #222; color: #aaa; border: 1px solid #444; border-radius: 3px; cursor: pointer;">
+            <button id="tab-tokens-library" type="button" class="token-tab-btn" style="flex: 1; padding: 5px 4px; font-size: 11px; font-weight: normal; background: #222; color: #aaa; border: 1px solid #444; border-radius: 3px; cursor: pointer;" title="Archivio globale di tutti i file token caricati dal PC">
                 📁 Libreria <span id="badge-count-library" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 1px 5px; font-size: 10px; margin-left: 2px;">0</span>
             </button>
             <button id="btn-open-compendium-from-panel" type="button" style="padding: 5px 8px; font-size: 11px; font-weight: bold; background: #b71c1c; color: white; border: none; border-radius: 3px; cursor: pointer;" title="Apri Compendio Mostri & Schede Statistiche">
@@ -760,24 +798,33 @@
             </button>
         </div>
 
+        <!-- Filtro Cartelle / Categorie Token (Tutti, Mostri, PNG, Personaggi, Vari) -->
+        <div id="token-category-bar" style="display: flex; gap: 3px; flex-wrap: nowrap; justify-content: space-between;">
+            <button type="button" class="token-cat-btn active" data-cat="all" style="flex: 1; padding: 4px 2px; font-size: 10px; font-weight: bold; background: #00695c; color: white; border: 1px solid #00897b; border-radius: 4px; cursor: pointer; white-space: nowrap;">📂 Tutti</button>
+            <button type="button" class="token-cat-btn" data-cat="mostri" style="flex: 1; padding: 4px 2px; font-size: 10px; background: #222; color: #bbb; border: 1px solid #444; border-radius: 4px; cursor: pointer; white-space: nowrap;">👹 Mostri</button>
+            <button type="button" class="token-cat-btn" data-cat="png" style="flex: 1; padding: 4px 2px; font-size: 10px; background: #222; color: #bbb; border: 1px solid #444; border-radius: 4px; cursor: pointer; white-space: nowrap;">🧑 PNG</button>
+            <button type="button" class="token-cat-btn" data-cat="personaggi" style="flex: 1.15; padding: 4px 2px; font-size: 10px; background: #222; color: #bbb; border: 1px solid #444; border-radius: 4px; cursor: pointer; white-space: nowrap;">🛡️ PG</button>
+            <button type="button" class="token-cat-btn" data-cat="vari" style="flex: 1; padding: 4px 2px; font-size: 10px; background: #222; color: #bbb; border: 1px solid #444; border-radius: 4px; cursor: pointer; white-space: nowrap;">📦 Vari</button>
+        </div>
+
         <!-- Barra di Ricerca -->
         <input type="text" id="token-search" placeholder="🔍 Cerca token per nome..." style="background: #111; color: white; border: 1px solid #555; padding: 5px 8px; border-radius: 4px; font-size: 12px; width: 100%; box-sizing: border-box;">
 
         <!-- Area Gallerie con Scroll (max-height ~240px) -->
-        <div style="position: relative; flex: 1; min-height: 180px; max-height: 250px; overflow-y: auto; background: #141414; border: 1px solid #333; border-radius: 4px; padding: 6px;">
-            <!-- Galleria 1: In Mappa -->
-            <div id="token-gallery-map" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;"></div>
+        <div id="token-gallery-scroll" style="position: relative; flex: 1; min-height: 180px; max-height: 250px; overflow-y: auto; overflow-x: hidden; background: #141414; border: 1px solid #333; border-radius: 4px; padding: 6px; box-sizing: border-box;">
+            <!-- Galleria 1: Token della Campagna -->
+            <div id="token-gallery-map" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; width: 100%; box-sizing: border-box;"></div>
             <!-- Galleria 2: Libreria Globale -->
-            <div id="token-gallery-library" style="display: none; grid-template-columns: repeat(4, 1fr); gap: 6px;"></div>
+            <div id="token-gallery-library" style="display: none; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; width: 100%; box-sizing: border-box;"></div>
             <!-- Empty state placeholder -->
             <div id="token-gallery-empty" style="display: none; text-align: center; color: #777; font-size: 11.5px; padding: 25px 10px;">
-                Nessun token trovato. Carica una cartella o apri una mappa con pedine!
+                Nessun token trovato in questa cartella. Clicca sul badge cartella di un token per spostarlo!
             </div>
         </div>
 
         <!-- Zona Drag & Drop Hint -->
         <div id="token-drop-zone-hint" style="border: 1px dashed #444; border-radius: 4px; padding: 4px; text-align: center; font-size: 10.5px; color: #888;">
-            💡 Trascina qui file o cartelle dal PC per caricarli subito
+            💡 Trascina file dal PC o clicca il badge cartella (👹/🧑/🛡️/📦) su un token per spostarlo
         </div>
 
         <!-- Impostazioni Rapide Nuovi Token -->
@@ -802,14 +849,15 @@
         </div>
     </div>
 
-    <script src="js/network.js?v=5"></script>
-    <script src="js/engine.js?v=127"></script>
+    <script src="js/network.js?v=6"></script>
+    <script src="js/engine.js?v=128"></script>
 
     <script src="js/dice.js?v=123"></script>
     <script src="js/audio.js?v=117"></script>
-    <script src="js/dm.js?v=136"></script>
-    <script src="js/compendium.js?v=13"></script>
-    <script src="js/initiative.js?v=24"></script>
+    <script src="js/dm.js?v=139"></script>
+    <script src="js/compendium.js?v=15"></script>
+    <script src="js/pcsheet.js?v=2"></script>
+    <script src="js/initiative.js?v=25"></script>
 <script>
     document.querySelectorAll('.section h3').forEach(h3 => {
         h3.addEventListener('click', () => {
@@ -817,7 +865,7 @@
         });
     });
 </script>
-<script src="js/lang.js?v=4"></script>
+<script src="js/lang.js?v=7"></script>
 
     
 

@@ -369,18 +369,128 @@ const dict = {
     "Master": "Master",
     "Nessuna traccia in riproduzione": "No track currently playing",
     "✅ Token acquisito pronto per la mappa!": "✅ Token acquired and ready for map!",
-    "Trascina un'immagine o premi Ctrl+V per incollare l'immagine del token": "Drag an image or press Ctrl+V to paste token artwork"
+    "Trascina un'immagine o premi Ctrl+V per incollare l'immagine del token": "Drag an image or press Ctrl+V to paste token artwork",
+
+    // --- Nuove traduzioni Beta 1.0 & Beta 1.1 ---
+    "🎯 Token Selezionato": "🎯 Selected Token",
+    "Gruppo": "Group",
+    "➕ Assegna Player...": "➕ Assign Player...",
+    "🔒 Solo DM (Revoca tutti)": "🔒 DM Only (Revoke all)",
+    "👥 Tutti i Giocatori": "👥 All Players",
+    "🔒 Controllo: Solo DM": "🔒 Control: DM Only",
+    "Controllo impostato su: Solo DM": "Control set to: DM Only",
+    "Controllo assegnato a tutti i giocatori": "Control assigned to all players",
+    "Assegna il controllo a uno o più giocatori": "Assign control to one or more players",
+    "Cancella i miei disegni a mano libera": "Clear my freehand drawings",
+    "Attualmente Visibile ai Giocatori (Clicca per nascondere)": "Currently Visible to Players (Click to hide)",
+    "Attualmente Nascosto ai Giocatori (Clicca per rendere visibile)": "Currently Hidden from Players (Click to reveal)",
+    "Alcuni token sono nascosti: clicca per renderli TUTTI visibili!": "Some tokens are hidden: click to make ALL visible!",
+    "📁 Cartella: Mostri": "📁 Folder: Monsters",
+    "📁 Cartella: PNG": "📁 Folder: NPCs",
+    "📁 Cartella: Personaggi": "📁 Folder: Characters (PCs)",
+    "📁 Cartella: Vari": "📁 Folder: Misc",
+    "Assegna cartella nella Libreria Token": "Assign folder in Token Library",
+    "💾 In Libreria": "💾 To Library",
+    "Salva questo token nella Libreria permanente sotto la cartella scelta": "Save this token to permanent Library under the chosen folder",
+    "👹 Mostri": "👹 Monsters",
+    "🧑 PNG": "🧑 NPCs",
+    "🛡️ Personaggi": "🛡️ Characters",
+    "🛡️ PG": "🛡️ PCs",
+    "📦 Vari": "📦 Misc",
+    "📂 Tutti": "📂 All",
+    "Mostri": "Monsters",
+    "PNG": "NPCs",
+    "Personaggi": "Characters",
+    "Vari": "Misc",
+    "Cartella:": "Folder:",
+    "Cartella assegnata:": "Assigned folder:",
+    "Clicca per cambiare cartella": "Click to change folder",
+    "Clicca per posizionare:": "Click to place:",
+    "salvati in": "saved in",
+    "salvati in Libreria": "saved to Library",
+    "Cartella di destinazione per i nuovi token caricati": "Destination folder for newly uploaded tokens",
+    "Nessun token trovato in questa cartella. Clicca sul badge cartella di un token per spostarlo!": "No tokens found in this folder. Click a token's folder badge to move it!",
+    "💡 Trascina file dal PC o clicca il badge cartella (👹/🧑/🛡️/📦) su un token per spostarlo": "💡 Drag files from PC or click the folder badge (👹/🧑/🛡️/📦) on a token to move it",
+    "🙈 Crea Invisibile": "🙈 Spawn Invisible",
+    "Se attivato, il tasto Crea Token genera il token direttamente come invisibile ai giocatori": "If checked, Create Token spawns the token directly hidden from players",
+    "🙈 Crea Token Invisibile": "🙈 Create Invisible Token",
+    "Se spuntato, il token creato sarà invisibile ai giocatori finché non lo riveli": "If checked, the created token will be invisible to players until revealed",
+    "♟️ Importa & Crea Token": "♟️ Import & Spawn Token",
+    "Importa la scheda e crea subito il token sulla mappa": "Import statblock and immediately spawn token on map",
+    "Carica la scheda nel Compendio": "Load statblock into Compendium",
+    "⚔️ Tracker Iniziativa": "⚔️ Initiative Tracker",
+    "📂 Raggruppa Simili": "📂 Group Similar",
+    "Raggruppa automaticamente i token con lo stesso nome (es. Goblin 1..5) per mantenere la lista compatta": "Automatically group tokens with the same base name (e.g. Goblin 1..5) to keep the list compact",
+    "entità": "entities",
+    "0 entità": "0 entities",
+    "HP Gruppo": "Group HP",
+    "Modifica HP a tutto il gruppo (es. -10)": "Modify HP for the entire group (e.g. -10)",
+    "Rimuovi tutto il gruppo dall'iniziativa": "Remove entire group from initiative",
+    "Clicca per espandere/comprimere il gruppo": "Click to expand/collapse group",
+    "🟢 Giocatore connesso:": "🟢 Player connected:",
+    "🔄 Giocatore riconnesso:": "🔄 Player reconnected:",
+    "🔴 Giocatore disconnesso:": "🔴 Player disconnected:",
+    "🟢 Schermo Giocatore Locale connesso!": "🟢 Local Player Screen connected!",
+    "♟️ Token creato:": "♟️ Token created:",
+    "🙈 Token creato (Invisibile):": "🙈 Token created (Invisible):",
+    "♟️ Creato token": "♟️ Created token",
+    "🙈 Creato token INVISIBILE": "🙈 Created INVISIBLE token",
+    "💾 Nuova mappa salvata:": "💾 New map saved:",
+    "💾 Mappa salvata:": "💾 Map saved:",
+    "🗺️ Mappa caricata:": "🗺️ Map loaded:",
+    "🏰 Campagna": "🏰 Campaign",
+    "Token salvati nella Campagna attiva (PG, PNG e creature della campagna)": "Tokens saved in active Campaign (PCs, NPCs & campaign creatures)",
+    "Nessun token nella Campagna in questa cartella.": "No tokens in the Campaign for this folder.",
+    "Rimuovi dai token della Campagna": "Remove from Campaign tokens",
+    "Presente in mappa": "Present on map",
+    "Clicca per mettere in campo (Full Vita) • Tasto destro per cambiare cartella": "Click to place on map (Full HP) • Right-click to change folder",
+    "📜 Mostro": "📜 Monster",
+    "🧙 Scheda PG": "🧙 PC Sheet",
+    "🧙 Apri Scheda PG": "🧙 Open PC Sheet",
+    "Apri Scheda Personaggio (PG)": "Open Character Sheet (PC)",
+    "Apri o Importa Scheda Personaggio (PG)": "Open or Import Character Sheet (PC)",
+    "Apri la Scheda del tuo Personaggio": "Open your Character Sheet",
+    "Scheda Personaggio": "Character Sheet",
+    "⚔️ Combattimento & Abilità": "⚔️ Combat & Skills",
+    "✨ Incantesimi": "✨ Spells",
+    "📜 Privilegi & Tratti": "📜 Features & Traits",
+    "🎒 Inventario": "🎒 Inventory",
+    "🔄 Aggiorna": "🔄 Update",
+    "⚙️ Link": "⚙️ Link",
+    "🔗 1. Apri Dati": "🔗 1. Open Data",
+    "📋 2. Incolla Appunti": "📋 2. Paste Clipboard",
+    "Nessun token ti è ancora stato assegnato dal Master sulla mappa!": "No token has been assigned to you by the GM on the map yet!"
 };
+
+const dynamicPatterns = [
+    { re: /^🎯\s*(\d+)\s*Token Selezionati$/i, en: (m) => `🎯 ${m[1]} Selected Tokens` },
+    { re: /^👁️\s*Misti\s*\((\d+\/\d+)\)$/i, en: (m) => `👁️ Mixed (${m[1]})` },
+    { re: /^Rinomina tutti i\s*(\d+)\s*token\.\.\.$/i, en: (m) => `Rename all ${m[1]} tokens...` },
+    { re: /^(\d+)\s*entità$/i, en: (m) => `${m[1]} entities` },
+    { re: /^Revoca controllo a\s+(.+)$/i, en: (m) => `Revoke control from ${m[1]}` },
+    { re: /^Controllo revocato a\s+(.+)$/i, en: (m) => `Control revoked from ${m[1]}` },
+    { re: /^Controllo aggiunto a:\s+(.+)$/i, en: (m) => `Control added to: ${m[1]}` },
+    { re: /^(\d+)\s*token resi VISIBILI ai giocatori!$/i, en: (m) => `${m[1]} tokens made VISIBLE to players!` },
+    { re: /^(\d+)\s*token NASCOSTI ai giocatori!$/i, en: (m) => `${m[1]} tokens HIDDEN from players!` },
+    { re: /^Duplicato\s+(.+)\s+\(Full PV\)!$/i, en: (m) => `Duplicated ${m[1]} (Full HP)!` },
+    { re: /^Duplicati\s+(\d+)\s+token\s+\(Full PV\)!$/i, en: (m) => `Duplicated ${m[1]} tokens (Full HP)!` },
+    { re: /^Aggiunti\s+(\d+)\s+token all'Iniziativa!$/i, en: (m) => `Added ${m[1]} tokens to Initiative!` },
+    { re: /^Condizione applicata a\s+(\d+)\s+token!$/i, en: (m) => `Condition applied to ${m[1]} tokens!` },
+    { re: /^Condizione rimossa da\s+(\d+)\s+token!$/i, en: (m) => `Condition removed from ${m[1]} tokens!` }
+];
 
 let currentLang = localStorage.getItem('vtt_lang') || 'it';
 
 // Funzione globale helper per tradurre stringhe dinamiche
 window.t = function(key) {
     if (!key) return key;
-    if (currentLang === 'en' && dict[key]) return dict[key];
-    const clean = String(key).replace(/:$/, '').trim();
-    if (currentLang === 'en' && dict[clean]) {
-        return dict[clean] + (String(key).endsWith(':') ? ':' : '');
+    if (currentLang === 'en') {
+        if (dict[key]) return dict[key];
+        const clean = String(key).replace(/:$/, '').trim();
+        if (dict[clean]) {
+            return dict[clean] + (String(key).endsWith(':') ? ':' : '');
+        }
+        return translateText(String(key));
     }
     return key;
 };
@@ -407,6 +517,12 @@ function translateText(original) {
         if (dict[decoded]) return dict[decoded];
     }
 
+    // Prova pattern dinamici con numeri/nomi
+    for (let i = 0; i < dynamicPatterns.length; i++) {
+        const m = trimmed.match(dynamicPatterns[i].re);
+        if (m) return dynamicPatterns[i].en(m);
+    }
+
     return trimmed;
 }
 
@@ -416,8 +532,8 @@ function translateNode(node) {
         if (text === '' || text.length <= 1) return;
         if (/^[0-9\s.,:\-+*/\\()#%€$!?|><=_]+$/.test(text)) return;
         
-        // Salva testo originale italiano
-        if (!node.originalText) {
+        // Se il testo è stato modificato dinamicamente via JS, aggiorna originalText
+        if (!node.originalText || (node.lastTranslatedText && text !== node.lastTranslatedText && text !== node.originalText)) {
             node.originalText = text;
         }
         
@@ -427,6 +543,7 @@ function translateNode(node) {
             targetText = translateText(node.originalText);
         }
         
+        node.lastTranslatedText = targetText;
         if (node.nodeValue.trim() !== targetText) {
             const leading = node.nodeValue.match(/^\s*/)[0];
             const trailing = node.nodeValue.match(/\s*$/)[0];
@@ -439,9 +556,12 @@ function translateNode(node) {
         if (node.tagName === 'OPTION') {
             const optText = node.textContent.trim();
             if (optText) {
-                if (!node.originalOptionText) node.originalOptionText = optText;
+                if (!node.originalOptionText || (node.lastTranslatedOptionText && optText !== node.lastTranslatedOptionText && optText !== node.originalOptionText)) {
+                    node.originalOptionText = optText;
+                }
                 let target = node.originalOptionText;
                 if (currentLang === 'en') target = translateText(node.originalOptionText);
+                node.lastTranslatedOptionText = target;
                 if (node.textContent.trim() !== target) {
                     node.textContent = target;
                 }
@@ -450,18 +570,26 @@ function translateNode(node) {
         
         // Traduzione per placeholder
         if (node.hasAttribute('placeholder')) {
-            if (!node.originalPlaceholder) node.originalPlaceholder = node.getAttribute('placeholder');
+            const curPh = node.getAttribute('placeholder');
+            if (!node.originalPlaceholder || (node.lastTranslatedPlaceholder && curPh !== node.lastTranslatedPlaceholder && curPh !== node.originalPlaceholder)) {
+                node.originalPlaceholder = curPh;
+            }
             let target = node.originalPlaceholder;
             if (currentLang === 'en') target = translateText(node.originalPlaceholder);
-            if (node.getAttribute('placeholder') !== target) node.setAttribute('placeholder', target);
+            node.lastTranslatedPlaceholder = target;
+            if (curPh !== target) node.setAttribute('placeholder', target);
         }
         
         // Traduzione per title / tooltip
         if (node.hasAttribute('title')) {
-            if (!node.originalTitle) node.originalTitle = node.getAttribute('title');
+            const curTitle = node.getAttribute('title');
+            if (!node.originalTitle || (node.lastTranslatedTitle && curTitle !== node.lastTranslatedTitle && curTitle !== node.originalTitle)) {
+                node.originalTitle = curTitle;
+            }
             let target = node.originalTitle;
             if (currentLang === 'en') target = translateText(node.originalTitle);
-            if (node.getAttribute('title') !== target) node.setAttribute('title', target);
+            node.lastTranslatedTitle = target;
+            if (curTitle !== target) node.setAttribute('title', target);
         }
 
         // Traduzione per input buttons / submit

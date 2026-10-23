@@ -12,8 +12,11 @@ let startPanX = 0;
 let startPanY = 0;
 let isMapLocked = false;
 let startMouseY = 0;
-window.VTT_VERSION = 'Beta 1.0';
+window.VTT_VERSION = 'Beta 1.3';
 const tokenImageCache = new Map();
+const tokenPcSheetCache = new Map();
+let lastPlayerClickedTokenId = null;
+let lastPlayerClickedTokenTime = 0;
 
 function isTokenOwnedByLocalPlayer(token) {
     if (!token || !network || !network.playerName) return false;
@@ -225,6 +228,20 @@ network.onMessage((data, peerId) => {
             };
             img.src = p.src;
         }
+    } else if (data.type === 'PC_SHEET_SYNC') {
+        const p = data.payload;
+        if (p && p.tokenId && p.pcSheet) {
+            tokenPcSheetCache.set(p.tokenId, p.pcSheet);
+            const tok = engine.tokens.find(t => t.id === p.tokenId);
+            if (tok) {
+                tok.pcSheet = p.pcSheet;
+                tok.hasPcSheet = true;
+                tok.pcSheetVer = p.pcSheet.updatedAt || 1;
+            }
+            if (window.pcSheetManager) {
+                window.pcSheetManager.refreshIfOpen(p.tokenId);
+            }
+        }
     } else if (data.type === 'SHARED_IMAGE_DATA') {
         if (data.imageId === currentSharedImageId) {
             document.getElementById('handout-image').src = data.data;
@@ -269,52 +286,98 @@ network.onMessage((data, peerId) => {
             const trackerDiv = document.getElementById('player-tracker');
             const trackerList = document.getElementById('player-tracker-list');
             if (state.initiative.active && state.initiative.isVisibleToPlayers) {
-                trackerDiv.style.display = 'block';
+                trackerDiv.style.display = 'flex';
+                trackerDiv.style.flexDirection = 'column';
                 trackerDiv.style.top = 'auto';
                 trackerDiv.style.bottom = 'auto';
                 trackerDiv.style.left = 'auto';
                 trackerDiv.style.right = 'auto';
                 trackerDiv.style.transform = 'none';
-                trackerList.style.flexDirection = 'row';
-                
-                if (state.initiative.playerPosition === 'top') {
-                    trackerDiv.style.top = '20px';
+                trackerDiv.style.boxSizing = 'border-box';
+
+                const pos = state.initiative.playerPosition || 'top';
+                const isVertical = (pos === 'left' || pos === 'right');
+
+                if (pos === 'top') {
+                    trackerDiv.style.top = '12px';
                     trackerDiv.style.left = '50%';
                     trackerDiv.style.transform = 'translateX(-50%)';
-                } else if (state.initiative.playerPosition === 'bottom') {
-                    trackerDiv.style.bottom = '20px';
+                    trackerDiv.style.maxWidth = 'calc(100vw - 24px)';
+                    trackerDiv.style.maxHeight = '32vh';
+                    trackerList.style.flexDirection = 'row';
+                    trackerList.style.flexWrap = 'wrap';
+                    trackerList.style.maxHeight = 'calc(32vh - 36px)';
+                    trackerList.style.overflowY = 'auto';
+                } else if (pos === 'bottom') {
+                    trackerDiv.style.bottom = '16px';
                     trackerDiv.style.left = '50%';
                     trackerDiv.style.transform = 'translateX(-50%)';
-                } else if (state.initiative.playerPosition === 'left') {
-                    trackerDiv.style.left = '20px';
+                    trackerDiv.style.maxWidth = 'calc(100vw - 120px)';
+                    trackerDiv.style.maxHeight = '30vh';
+                    trackerList.style.flexDirection = 'row';
+                    trackerList.style.flexWrap = 'wrap';
+                    trackerList.style.maxHeight = 'calc(30vh - 36px)';
+                    trackerList.style.overflowY = 'auto';
+                } else if (pos === 'left') {
+                    trackerDiv.style.left = '12px';
                     trackerDiv.style.top = '50%';
                     trackerDiv.style.transform = 'translateY(-50%)';
+                    trackerDiv.style.maxWidth = '210px';
+                    trackerDiv.style.maxHeight = 'calc(100vh - 110px)';
                     trackerList.style.flexDirection = 'column';
-                } else if (state.initiative.playerPosition === 'right') {
-                    trackerDiv.style.right = '20px';
+                    trackerList.style.flexWrap = 'nowrap';
+                    trackerList.style.maxHeight = 'calc(100vh - 150px)';
+                    trackerList.style.overflowY = 'auto';
+                } else if (pos === 'right') {
+                    trackerDiv.style.right = '12px';
                     trackerDiv.style.top = '50%';
                     trackerDiv.style.transform = 'translateY(-50%)';
+                    trackerDiv.style.maxWidth = '210px';
+                    trackerDiv.style.maxHeight = 'calc(100vh - 110px)';
                     trackerList.style.flexDirection = 'column';
+                    trackerList.style.flexWrap = 'nowrap';
+                    trackerList.style.maxHeight = 'calc(100vh - 150px)';
+                    trackerList.style.overflowY = 'auto';
                 }
                 
                 trackerList.innerHTML = '';
                 const visibleParticipants = state.initiative.participants.filter(p => !p.isHidden);
+                const isCompact = visibleParticipants.length > 7;
+                let activeElement = null;
+
                 visibleParticipants.forEach(p => {
                     const originalIndex = state.initiative.participants.findIndex(orig => orig.id === p.id);
                     const isCurrent = state.initiative.currentTurnIndex === originalIndex;
                     
                     const div = document.createElement('div');
-                    div.style.padding = '8px 12px';
-                    div.style.background = isCurrent ? '#2e7d32' : '#444';
+                    div.style.padding = isCompact ? '4px 8px' : '6px 10px';
+                    div.style.fontSize = isCompact ? '11.5px' : '13px';
+                    div.style.background = isCurrent ? '#2e7d32' : '#3a3a3a';
                     div.style.borderRadius = '5px';
                     div.style.fontWeight = isCurrent ? 'bold' : 'normal';
-                    div.innerText = `${p.name} (${p.init})`;
+                    div.style.whiteSpace = 'nowrap';
+                    div.style.maxWidth = isVertical ? '180px' : '200px';
+                    div.style.overflow = 'hidden';
+                    div.style.textOverflow = 'ellipsis';
+                    div.style.boxSizing = 'border-box';
+                    if (isVertical) div.style.width = '100%';
+                    div.innerText = `${p.name} (${p.init !== '' && p.init !== undefined ? p.init : 0})`;
+                    div.title = `${p.name} (${p.init !== '' && p.init !== undefined ? p.init : 0})`;
                     if (isCurrent) {
                         div.style.border = '2px solid #00e676';
-                        div.style.boxShadow = '0 0 10px #00e676';
+                        div.style.boxShadow = '0 0 8px #00e676';
+                        activeElement = div;
+                    } else {
+                        div.style.border = '1px solid #555';
                     }
                     trackerList.appendChild(div);
                 });
+
+                if (activeElement && typeof activeElement.scrollIntoView === 'function') {
+                    setTimeout(() => {
+                        try { activeElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' }); } catch (e) {}
+                    }, 30);
+                }
             } else {
                 trackerDiv.style.display = 'none';
             }
@@ -394,12 +457,28 @@ network.onMessage((data, peerId) => {
         }
 
         if (!window._requestedImgKeysAt) window._requestedImgKeysAt = new Map();
+        if (!window._requestedPcSheetsAt) window._requestedPcSheetsAt = new Map();
         const nowMs = Date.now();
 
         // RENDERING SINCRONO ISTANTANEO (0ms):
         // Aggiorna posizioni, aure, visibilità e PV immediatamente senza attendere il caricamento asincrono delle immagini!
         const finalTokens = state.tokens.map(t => {
             const existing = engine.tokens.find(et => et.id === t.id);
+
+            // Ripristina la scheda PG dalla cache locale o richiedila se aggiornata
+            if (tokenPcSheetCache.has(t.id)) {
+                t.pcSheet = tokenPcSheetCache.get(t.id);
+            } else if (existing && existing.pcSheet) {
+                t.pcSheet = existing.pcSheet;
+                tokenPcSheetCache.set(t.id, existing.pcSheet);
+            }
+            if (t.hasPcSheet && (!t.pcSheet || (t.pcSheetVer && t.pcSheet.updatedAt !== t.pcSheetVer))) {
+                const lastSheetReq = window._requestedPcSheetsAt.get(t.id) || 0;
+                if (nowMs - lastSheetReq > 3000) {
+                    window._requestedPcSheetsAt.set(t.id, nowMs);
+                    network.send({ type: 'REQUEST_PC_SHEET', tokenId: t.id });
+                }
+            }
 
             if (t.imgKey && tokenImageCache.has(t.imgKey)) {
                 t.imageObj = tokenImageCache.get(t.imgKey);
@@ -479,6 +558,9 @@ network.onMessage((data, peerId) => {
             engine.tokens = finalTokens;
         }
         engine.renderAll();
+        if (window.pcSheetManager) {
+            window.pcSheetManager.refreshIfOpen();
+        }
     } else if (data.type === 'FOG_SYNC') {
         engine.pendingFogImage = data.payload;
         if (engine.mapImage) {
@@ -841,12 +923,26 @@ function pHandleEnd(e) {
                 endY = e.changedTouches[0].clientY;
             }
             if (Math.abs(endX - startMouseX) < 10 && Math.abs(endY - startMouseY) < 10) {
-                document.getElementById('player-token-panel').style.display = 'block';
-                const aura = activeToken.ref.aura || {};
-                document.getElementById('ptoken-aura-active').checked = aura.active || false;
-                document.getElementById('ptoken-aura-size').value = aura.sizeRaw || 15;
-                document.getElementById('ptoken-aura-color').value = aura.color || '#ffff00';
-                window.editingPlayerToken = activeToken.ref;
+                const clickedTok = activeToken.ref;
+                window.editingPlayerToken = clickedTok;
+                engine.selectedTokenId = clickedTok.id;
+
+                const nowClick = Date.now();
+                if (lastPlayerClickedTokenId === clickedTok.id && (nowClick - lastPlayerClickedTokenTime) < 380) {
+                    lastPlayerClickedTokenId = null;
+                    lastPlayerClickedTokenTime = 0;
+                    if (window.pcSheetManager) {
+                        window.pcSheetManager.open(clickedTok);
+                    }
+                } else {
+                    lastPlayerClickedTokenId = clickedTok.id;
+                    lastPlayerClickedTokenTime = nowClick;
+                    document.getElementById('player-token-panel').style.display = 'block';
+                    const aura = clickedTok.aura || {};
+                    document.getElementById('ptoken-aura-active').checked = aura.active || false;
+                    document.getElementById('ptoken-aura-size').value = aura.sizeRaw || 15;
+                    document.getElementById('ptoken-aura-color').value = aura.color || '#ffff00';
+                }
             }        } else if (activeToken.type === 'shape') {
             activeToken.ref._lastLocalEdit = Date.now();
             engine.renderAll();
@@ -1045,6 +1141,25 @@ document.getElementById('pbtn-close-token').addEventListener('click', () => {
     document.getElementById('player-token-panel').style.display = 'none';
     window.editingPlayerToken = null;
 });
+
+function openLocalPlayerPcSheet() {
+    let targetTok = window.editingPlayerToken;
+    if (!targetTok || !isTokenOwnedByLocalPlayer(targetTok)) {
+        const ownedList = engine.tokens.filter(t => isTokenOwnedByLocalPlayer(t));
+        targetTok = ownedList.find(t => t.pcSheet || t.hasPcSheet) || ownedList[0] || null;
+    }
+    if (!targetTok) {
+        alert(typeof window.t === 'function' ? window.t('Nessun token ti è ancora stato assegnato dal Master sulla mappa!') : 'Nessun token ti è ancora stato assegnato dal Master sulla mappa!');
+        return;
+    }
+    engine.selectedTokenId = targetTok.id;
+    if (window.pcSheetManager) {
+        window.pcSheetManager.open(targetTok);
+    }
+}
+
+document.getElementById('pbtn-open-pcsheet')?.addEventListener('click', openLocalPlayerPcSheet);
+document.getElementById('pbtn-toolbar-pcsheet')?.addEventListener('click', openLocalPlayerPcSheet);
 
 
 
