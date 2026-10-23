@@ -11,6 +11,7 @@ class NetworkManager {
         
         this.onMessageCallback = null;
         this.onConnectCallback = null;
+        this.onDisconnectCallback = null;
         this.listeners = [];
         this._incomingChunks = {}; // chunkId -> { total, received, parts }
         this._chunkSeq = 0;
@@ -27,6 +28,7 @@ class NetworkManager {
 
     onMessage(cb) { this.onMessageCallback = cb; }
     onConnect(cb) { this.onConnectCallback = cb; }
+    onDisconnect(cb) { this.onDisconnectCallback = cb; }
     addListener(cb) {
         if (!this.listeners) this.listeners = [];
         this.listeners.push(cb);
@@ -106,28 +108,49 @@ class NetworkManager {
                 conn.on('data', (data) => {
                     if (data && data.type === 'PLAYER_JOIN') {
                         const pid = conn.peer;
+                        const joinName = (data.payload && data.payload.name ? String(data.payload.name) : '').trim() || 'Giocatore';
+                        const normJoin = joinName.toLowerCase();
+
+                        // Se esiste già una connessione con lo stesso nome (giocatore uscito e rientrato),
+                        // sostituiscila pulitamente senza duplicare il giocatore!
+                        for (let oldPid in this.connections) {
+                            if (oldPid !== pid && this.connections[oldPid]) {
+                                const existingName = (this.connections[oldPid].name || '').trim().toLowerCase();
+                                if (existingName === normJoin) {
+                                    const oldConn = this.connections[oldPid].conn;
+                                    this.connections[oldPid].chunkQueue = [];
+                                    delete this.connections[oldPid];
+                                    try { if (oldConn && oldConn !== conn) oldConn.close(); } catch (e) {}
+                                }
+                            }
+                        }
+
                         this.connections[pid] = {
                             conn: conn,
-                            name: data.payload.name,
+                            name: joinName,
                             chunkQueue: [],
                             pumping: false
                         };
-                        console.log(`Giocatore ${data.payload.name} unito.`);
-                        conn.send({ type: 'JOIN_ACCEPTED', payload: {} });
-                        if (this.onConnectCallback) this.onConnectCallback(data.payload.name, pid);
+                        console.log(`Giocatore ${joinName} unito.`);
+                        conn.send({ type: 'JOIN_ACCEPTED', payload: { name: joinName } });
+                        if (this.onConnectCallback) this.onConnectCallback(joinName, pid);
                     }
                     this._handleRawData(data, conn.peer);
                 });
-                conn.on('close', () => {
-                    for(let k in this.connections) {
+                const handleConnClose = () => {
+                    for (let k in this.connections) {
                         if (this.connections[k].conn === conn) {
-                            console.log(`Giocatore ${this.connections[k].name} disconnesso.`);
+                            const leftName = this.connections[k].name;
+                            console.log(`Giocatore ${leftName} disconnesso.`);
                             this.connections[k].chunkQueue = [];
                             delete this.connections[k];
+                            if (this.onDisconnectCallback) this.onDisconnectCallback(leftName, k);
                             break;
                         }
                     }
-                });
+                };
+                conn.on('close', handleConnClose);
+                conn.on('error', handleConnClose);
             });
         });
     }

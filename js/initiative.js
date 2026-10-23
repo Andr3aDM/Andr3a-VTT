@@ -32,16 +32,30 @@ function removePartyMember(index) {
     party.splice(index, 1);
     localStorage.setItem('dnd_party', JSON.stringify(party));
     renderPartyList();
+    if (typeof window.getSelectedTargetTokens === 'function') {
+        const targets = window.getSelectedTargetTokens();
+        if (targets.length > 0 && typeof window.updateSelectedTokenControls === 'function') {
+            window.updateSelectedTokenControls(targets[targets.length - 1]);
+        }
+    }
 }
 
 document.getElementById('btn-add-player').addEventListener('click', () => {
     const nameInput = document.getElementById('new-player-name');
     const name = nameInput.value.trim();
     if (name) {
-        party.push(name);
-        localStorage.setItem('dnd_party', JSON.stringify(party));
+        if (!party.some(p => p.trim().toLowerCase() === name.toLowerCase())) {
+            party.push(name);
+            localStorage.setItem('dnd_party', JSON.stringify(party));
+        }
         nameInput.value = '';
         renderPartyList();
+        if (typeof window.getSelectedTargetTokens === 'function') {
+            const targets = window.getSelectedTargetTokens();
+            if (targets.length > 0 && typeof window.updateSelectedTokenControls === 'function') {
+                window.updateSelectedTokenControls(targets[targets.length - 1]);
+            }
+        }
     }
 });
 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DM Dashboard - VTT</title>
+    <title>DM Dashboard - VTT (Beta 1.0)</title>
     <link rel="stylesheet" href="css/style.css?v=2">
 <style>
         .section h3 { cursor: pointer; user-select: none; }
@@ -14,7 +14,7 @@
 </head>
 <body>
     <div id="sidebar">
-        <h2>Andr3a VTT <br><span style="font-size: 14px; color: #ffcc00; font-weight: normal;">DM Console</span></h2>
+        <h2>Andr3a VTT <span style="font-size: 11px; background: #263238; color: #4dd0e1; border: 1px solid #00acc1; padding: 1px 6px; border-radius: 10px; vertical-align: middle; font-weight: bold;">Beta 1.0</span><br><span style="font-size: 14px; color: #ffcc00; font-weight: normal;">DM Console</span></h2>
         <div style="margin-top: 10px; margin-bottom: 10px;">
             <button id="btn-toggle-tracker" style="width: 100%; background: #ffcc00; color: black; font-weight: bold; padding: 7px; cursor: pointer; border-radius: 4px; border: none; font-size: 13px;">⚔️ Tracker Iniziativa</button>
         </div>
@@ -81,7 +81,7 @@
             </div>
             <div id="selected-token-controls" style="display: none; margin-top:8px; padding: 8px 10px; background: #2a2a2a; border-radius: 6px; border: 1px solid #444;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
-                    <h4 style="margin: 0; font-size: 13px; color: #ffca28; display:flex; align-items:center; gap:5px;">🎯 Token Selezionato</h4>
+                    <h4 id="selected-token-title" style="margin: 0; font-size: 13px; color: #ffca28; display:flex; align-items:center; gap:5px;">🎯 Token Selezionato</h4>
                 </div>
 
                 <!-- Riga 1: Nome & Visibilità Targhetta -->
@@ -95,17 +95,18 @@
                 </div>
 
                 <!-- Riga 2: Taglia & Giocatore (50% / 50%) -->
-                <div style="display: flex; gap: 5px; margin-bottom: 6px;">
+                <div style="display: flex; gap: 5px; margin-bottom: 5px;">
                     <select id="token-edit-size" style="flex:1; min-width: 0; padding: 4px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px;" title="Modifica Taglia">
                         <option value="1">Taglia: Media (1x1)</option>
                         <option value="2">Taglia: Grande (2x2)</option>
                         <option value="3">Taglia: Enorme (3x3)</option>
                         <option value="4">Taglia: Mastod. (4x4)</option>
                     </select>
-                    <select id="token-owner" style="flex:1; min-width: 0; padding: 4px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px;" title="Assegna questo token a un giocatore">
-                        <option value="">👤 Solo DM</option>
+                    <select id="token-owner" style="flex:1; min-width: 0; padding: 4px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px;" title="Assegna il controllo a uno o più giocatori">
+                        <option value="">➕ Assegna Player...</option>
                     </select>
                 </div>
+                <div id="token-owners-chips" style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; min-height: 18px; align-items: center;"></div>
 
                 <!-- Riga 3: 4 Azioni Rapide Token (Duplica, Visibilità, Iniziativa, Elimina) -->
                 <div style="display: flex; gap: 4px; margin-bottom: 8px;">
@@ -801,14 +802,14 @@
         </div>
     </div>
 
-    <script src="js/network.js?v=4"></script>
+    <script src="js/network.js?v=5"></script>
     <script src="js/engine.js?v=127"></script>
 
     <script src="js/dice.js?v=123"></script>
     <script src="js/audio.js?v=117"></script>
-    <script src="js/dm.js?v=135"></script>
+    <script src="js/dm.js?v=136"></script>
     <script src="js/compendium.js?v=13"></script>
-    <script src="js/initiative.js?v=23"></script>
+    <script src="js/initiative.js?v=24"></script>
 <script>
     document.querySelectorAll('.section h3').forEach(h3 => {
         h3.addEventListener('click', () => {

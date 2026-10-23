@@ -40,14 +40,136 @@ if (btnOpenPlayerOnline) {
     });
 }
 
+window.VTT_VERSION = 'Beta 1.0';
+
+function getTokenOwners(token) {
+    if (!token) return [];
+    const list = [];
+    const seen = new Set();
+    const addName = (n) => {
+        if (!n || typeof n !== 'string') return;
+        const trimmed = n.trim();
+        if (!trimmed) return;
+        const low = trimmed.toLowerCase();
+        if (!seen.has(low)) {
+            seen.add(low);
+            list.push(trimmed);
+        }
+    };
+    if (Array.isArray(token.owners)) {
+        token.owners.forEach(addName);
+    } else if (token.owner && typeof token.owner === 'string') {
+        addName(token.owner);
+    }
+    return list;
+}
+
+function setTokenOwners(token, ownersArray) {
+    if (!token) return;
+    const clean = [];
+    const seen = new Set();
+    (ownersArray || []).forEach(n => {
+        if (!n || typeof n !== 'string') return;
+        const t = n.trim();
+        if (!t) return;
+        const low = t.toLowerCase();
+        if (!seen.has(low)) {
+            seen.add(low);
+            clean.push(t);
+        }
+    });
+    token.owners = clean;
+    token.owner = clean.length > 0 ? clean[0] : '';
+}
+
+function isTokenOwnedBy(token, playerName) {
+    if (!token || !playerName) return false;
+    const cleanP = String(playerName).trim().toLowerCase();
+    if (!cleanP) return false;
+    return getTokenOwners(token).some(o => o.toLowerCase() === cleanP);
+}
+
+function getSelectedTargetTokens() {
+    if (engine.selectedTokens && engine.selectedTokens.size > 0) {
+        const list = engine.tokens.filter(t => engine.selectedTokens.has(t.id));
+        if (list.length > 0) return list;
+    }
+    if (engine.selectedTokenId) {
+        const single = engine.tokens.find(t => t.id === engine.selectedTokenId);
+        if (single) return [single];
+    }
+    return [];
+}
+window.getSelectedTargetTokens = getSelectedTargetTokens;
+window.getTokenOwners = getTokenOwners;
+window.setTokenOwners = setTokenOwners;
+window.isTokenOwnedBy = isTokenOwnedBy;
+
+function renderOnlinePlayersList() {
+    const div = document.getElementById('online-players');
+    if (!div) return;
+    const uniqueNames = [];
+    const seen = new Set();
+    for (let k in network.connections) {
+        const entry = network.connections[k];
+        if (entry && entry.name) {
+            const clean = entry.name.trim();
+            const low = clean.toLowerCase();
+            if (clean && !seen.has(low)) {
+                seen.add(low);
+                uniqueNames.push(clean);
+            }
+        }
+    }
+    if (uniqueNames.length === 0) {
+        div.innerText = "Nessun giocatore connesso.";
+    } else {
+        div.innerHTML = uniqueNames.map(n => `<div>🟢 ${escapeHTML(n)}</div>`).join('');
+    }
+}
+
 network.onConnect((playerName, pid) => {
-    if(playerName) {
-        const div = document.getElementById('online-players');
-        if(div.innerText === "Nessun giocatore connesso.") div.innerText = "";
-        div.innerHTML += `<div>🟢 ${escapeHTML(playerName)}</div>`;
+    if (playerName) {
+        const cleanJoin = playerName.trim();
+        const lowJoin = cleanJoin.toLowerCase();
+
+        // Riallinea il nome su tutti i token, AoE e disegni già assegnati a questo giocatore
+        // così se esce e rientra con lo stesso nome conserva tutte le sue assegnazioni!
+        engine.tokens.forEach(t => {
+            const owners = getTokenOwners(t);
+            if (owners.some(o => o.toLowerCase() === lowJoin)) {
+                setTokenOwners(t, owners.map(o => o.toLowerCase() === lowJoin ? cleanJoin : o));
+            }
+        });
+        if (engine.shapes) {
+            engine.shapes.forEach(s => {
+                if (s.owner && s.owner.trim().toLowerCase() === lowJoin) s.owner = cleanJoin;
+            });
+        }
+        if (engine.publicStrokes) {
+            engine.publicStrokes.forEach(st => {
+                if (st.owner && st.owner.trim().toLowerCase() === lowJoin) st.owner = cleanJoin;
+            });
+        }
+
+        renderOnlinePlayersList();
+        const targets = getSelectedTargetTokens();
+        if (targets.length > 0 && typeof window.updateSelectedTokenControls === 'function') {
+            window.updateSelectedTokenControls(targets[targets.length - 1]);
+        }
         // Nota: l'invio di mappa, stato e nebbia avviene in PLAYER_READY mirato solo al nuovo peerId
     }
 });
+
+if (typeof network.onDisconnect === 'function') {
+    network.onDisconnect(() => {
+        renderOnlinePlayersList();
+        const targets = getSelectedTargetTokens();
+        if (targets.length > 0 && typeof window.updateSelectedTokenControls === 'function') {
+            window.updateSelectedTokenControls(targets[targets.length - 1]);
+        }
+    });
+}
 
 network.onMessage((data, peerId) => {
     if (data.type === 'PLAYER_READY') {
@@ -85,8 +207,8 @@ network.onMessage((data, peerId) => {
     } else if (data.type === 'PLAYER_MOVE_TOKEN') {
         const payload = data.payload;
         const token = engine.tokens.find(t => t.id === payload.id);
-        let pName = (peerId === 'local') ? (token ? token.owner : null) : (network.connections[peerId] ? network.connections[peerId].name : null);
-        if (token && token.owner === pName) {
+        const senderName = (peerId === 'local') ? (payload.player || null) : (network.connections[peerId] ? network.connections[peerId].name : null);
+        if (token && isTokenOwnedBy(token, senderName)) {
             token.x = payload.x;
             token.y = payload.y;
             engine.renderTokensLayer();
@@ -106,8 +228,8 @@ network.onMessage((data, peerId) => {
     } else if (data.type === 'PLAYER_END_TOKEN') {
         const payload = data.payload;
         const token = engine.tokens.find(t => t.id === payload.id);
-        let pName = (peerId === 'local') ? (token ? token.owner : null) : (network.connections[peerId] ? network.connections[peerId].name : null);
-        if (token && token.owner === pName) {
+        const senderName = (peerId === 'local') ? (payload.player || null) : (network.connections[peerId] ? network.connections[peerId].name : null);
+        if (token && isTokenOwnedBy(token, senderName)) {
             token.x = payload.x;
             token.y = payload.y;
             engine.renderTokensLayer();
@@ -171,9 +293,24 @@ network.onMessage((data, peerId) => {
             }
         }
     } else if (data.type === 'PLAYER_DRAW') {
-        engine.publicStrokes.push(data.payload);
-        engine.renderAll();
-        syncState(true);
+        const senderName = (peerId === 'local') ? (data.payload?.owner || 'local') : (network.connections[peerId] ? network.connections[peerId].name : (data.payload?.owner || 'player'));
+        if (data.payload) {
+            data.payload.owner = senderName;
+            engine.publicStrokes.push(data.payload);
+            engine.renderAll();
+            syncState(true);
+        }
+    } else if (data.type === 'PLAYER_CLEAR_DRAWINGS') {
+        const senderName = (peerId === 'local') ? (data.payload?.owner || 'local') : (network.connections[peerId] ? network.connections[peerId].name : (data.payload?.owner || ''));
+        if (senderName) {
+            const normSender = String(senderName).trim().toLowerCase();
+            engine.publicStrokes = (engine.publicStrokes || []).filter(st => {
+                const stOwner = (st.owner || '').trim().toLowerCase();
+                return stOwner !== normSender;
+            });
+            engine.renderAll();
+            syncState(true);
+        }
     } else if (data.type === 'PLAYER_ADD_SHAPE') {
         engine.shapes.push(data.payload);
         engine.renderAll();
@@ -232,7 +369,8 @@ network.onMessage((data, peerId) => {
         syncState(true);
     } else if (data.type === 'PLAYER_UPDATE_TOKEN_AURA') {
         const token = engine.tokens.find(t => t.id === data.payload.id);
-        if (token) {
+        const senderName = (peerId === 'local') ? (data.payload.player || null) : (network.connections[peerId] ? network.connections[peerId].name : null);
+        if (token && isTokenOwnedBy(token, senderName)) {
             token.aura = data.payload.auraObj;
             engine.renderAll();
             syncState(true);
@@ -540,6 +678,7 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
             conditions: t.conditions,
             condition: t.condition,
             owner: t.owner,
+            owners: getTokenOwners(t),
             imgKey: imgKey,
             src: isShortUrl ? cleanSrc : null
         };
@@ -1265,6 +1404,7 @@ document.getElementById('btn-remove-fog').addEventListener('click', () => {
 document.getElementById('btn-clear-drawings-pub').addEventListener('click', () => {
     engine.publicStrokes = [];
     engine.renderAll();
+    syncState(true);
     if (isViewSyncActive) {
         sendViewSync(true);
     }
@@ -1560,17 +1700,146 @@ document.getElementById('token-search')?.addEventListener('input', () => {
     }
 });
 
+function getAvailablePlayerNames() {
+    const names = [];
+    const seen = new Set();
+    const add = (n) => {
+        if (!n || typeof n !== 'string') return;
+        const t = n.trim();
+        if (!t) return;
+        const low = t.toLowerCase();
+        if (!seen.has(low)) {
+            seen.add(low);
+            names.push(t);
+        }
+    };
+    for (let k in network.connections) {
+        if (network.connections[k] && network.connections[k].name) {
+            add(network.connections[k].name);
+        }
+    }
+    try {
+        const savedParty = JSON.parse(localStorage.getItem('dnd_party') || '[]');
+        if (Array.isArray(savedParty)) savedParty.forEach(add);
+    } catch (e) {}
+    engine.tokens.forEach(t => getTokenOwners(t).forEach(add));
+    return names;
+}
+
+window.renderTokenOwnersChips = function() {
+    const container = document.getElementById('token-owners-chips');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const targets = getSelectedTargetTokens();
+    if (targets.length === 0) return;
+
+    // Conta per ogni proprietario su quanti token selezionati è presente
+    const ownerCounts = new Map();
+    const ownerCanonical = new Map();
+    targets.forEach(t => {
+        getTokenOwners(t).forEach(o => {
+            const low = o.toLowerCase();
+            if (!ownerCanonical.has(low)) ownerCanonical.set(low, o);
+            ownerCounts.set(low, (ownerCounts.get(low) || 0) + 1);
+        });
+    });
+
+    if (ownerCounts.size === 0) {
+        const dmBadge = document.createElement('span');
+        dmBadge.style.cssText = 'font-size: 10.5px; color: #999; background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 10px; padding: 1px 8px;';
+        dmBadge.textContent = '🔒 Controllo: Solo DM';
+        container.appendChild(dmBadge);
+        return;
+    }
+
+    ownerCounts.forEach((count, lowKey) => {
+        const displayName = ownerCanonical.get(lowKey);
+        const chip = document.createElement('span');
+        chip.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; background: #004d40; color: #e0f2f1; border: 1px solid #00897b; border-radius: 12px; padding: 1px 7px; font-size: 10.5px; font-weight: bold;';
+        const countSuffix = (targets.length > 1 && count < targets.length) ? ` (${count}/${targets.length})` : '';
+        
+        const txt = document.createElement('span');
+        txt.textContent = `👤 ${displayName}${countSuffix}`;
+        
+        const btnRevoke = document.createElement('button');
+        btnRevoke.type = 'button';
+        btnRevoke.textContent = '✕';
+        btnRevoke.title = `Revoca controllo a ${displayName}`;
+        btnRevoke.style.cssText = 'background: #c62828; color: white; border: none; border-radius: 50%; width: 14px; height: 14px; font-size: 9px; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; margin-left: 2px;';
+        btnRevoke.onclick = (e) => {
+            e.stopPropagation();
+            targets.forEach(t => {
+                const updated = getTokenOwners(t).filter(o => o.toLowerCase() !== lowKey);
+                setTokenOwners(t, updated);
+            });
+            window.renderTokenOwnersChips();
+            syncState(true);
+            if (typeof showToast === 'function') {
+                showToast(`Controllo revocato a ${displayName}`);
+            }
+        };
+
+        chip.appendChild(txt);
+        chip.appendChild(btnRevoke);
+        container.appendChild(chip);
+    });
+};
+
+function updateVisibilityButtonUI(targets) {
+    const btnVis = document.getElementById('btn-toggle-visibility');
+    if (!btnVis || !targets || targets.length === 0) return;
+    const hiddenCount = targets.filter(t => t.visible === false).length;
+    if (hiddenCount === 0) {
+        btnVis.innerHTML = '👁️ Visib.';
+        btnVis.style.background = '#2e7d32';
+        btnVis.style.borderColor = '#4caf50';
+        btnVis.title = 'Attualmente Visibile ai Giocatori (Clicca per nascondere)';
+    } else if (hiddenCount === targets.length) {
+        btnVis.innerHTML = '🚫 Nasc.';
+        btnVis.style.background = '#424242';
+        btnVis.style.borderColor = '#777';
+        btnVis.title = 'Attualmente Nascosto ai Giocatori (Clicca per rendere visibile)';
+    } else {
+        btnVis.innerHTML = `👁️ Misti (${targets.length - hiddenCount}/${targets.length})`;
+        btnVis.style.background = '#ef6c00';
+        btnVis.style.borderColor = '#ffa726';
+        btnVis.title = 'Alcuni token sono nascosti: clicca per renderli TUTTI visibili!';
+    }
+}
+
 window.updateSelectedTokenControls = function(ent) {
     const controls = document.getElementById('selected-token-controls');
     if (!controls) return;
-    if (!ent) {
+    const targets = getSelectedTargetTokens();
+    if (!ent && targets.length > 0) ent = targets[targets.length - 1];
+    if (!ent || targets.length === 0) {
         controls.style.display = 'none';
         return;
     }
     controls.style.display = 'block';
 
+    const titleEl = document.getElementById('selected-token-title');
+    if (titleEl) {
+        if (targets.length > 1) {
+            titleEl.innerHTML = `🎯 ${targets.length} Token Selezionati <span style="font-size:10px; background:#00838f; color:white; padding:1px 5px; border-radius:8px; font-weight:normal;">Gruppo</span>`;
+        } else {
+            titleEl.innerHTML = `🎯 Token Selezionato`;
+        }
+    }
+
+    updateVisibilityButtonUI(targets);
+
     const nameInput = document.getElementById('token-name-edit');
-    if (nameInput) nameInput.value = ent.name || (ent.originalName ? ent.originalName.replace(/\.[^/.]+$/, "") : '');
+    if (nameInput) {
+        if (targets.length > 1) {
+            nameInput.placeholder = `Rinomina tutti i ${targets.length} token...`;
+            nameInput.value = ent.name || (ent.originalName ? ent.originalName.replace(/\.[^/.]+$/, "") : '');
+        } else {
+            nameInput.placeholder = 'Nome (es. Goblin 1)';
+            nameInput.value = ent.name || (ent.originalName ? ent.originalName.replace(/\.[^/.]+$/, "") : '');
+        }
+    }
 
     const visInput = document.getElementById('token-name-visibility');
     if (visInput) visInput.value = ent.nameVisibility || 'all';
@@ -1610,20 +1879,28 @@ window.updateSelectedTokenControls = function(ent) {
 
     const ownerSelect = document.getElementById('token-owner');
     if (ownerSelect) {
-        ownerSelect.innerHTML = '<option value="">👤 Solo DM</option>';
-        let players = [];
-        for (let k in network.connections) {
-            if (network.connections[k].name) players.push(network.connections[k].name);
+        ownerSelect.innerHTML = '<option value="">➕ Assegna Player...</option>';
+        const optClear = document.createElement('option');
+        optClear.value = '__clear__';
+        optClear.innerText = '🔒 Solo DM (Revoca tutti)';
+        ownerSelect.appendChild(optClear);
+
+        const players = getAvailablePlayerNames();
+        if (players.length > 1) {
+            const optAll = document.createElement('option');
+            optAll.value = '__all__';
+            optAll.innerText = '👥 Tutti i Giocatori';
+            ownerSelect.appendChild(optAll);
         }
-        if (ent.owner && !players.includes(ent.owner)) players.push(ent.owner);
         players.forEach(pName => {
             const opt = document.createElement('option');
             opt.value = pName;
-            opt.innerText = pName;
+            opt.innerText = '👤 + ' + pName;
             ownerSelect.appendChild(opt);
         });
-        ownerSelect.value = ent.owner || '';
+        ownerSelect.value = '';
     }
+    window.renderTokenOwnersChips();
 
     const aura = ent.aura || {};
     const auraActive = document.getElementById('token-aura-active');
@@ -1704,7 +1981,9 @@ function duplicateSelectedTokens() {
             ac: sourceToken.ac !== undefined ? sourceToken.ac : 0,
             statblock: sourceToken.statblock ? JSON.parse(JSON.stringify(sourceToken.statblock)) : null,
             aura: sourceToken.aura ? JSON.parse(JSON.stringify(sourceToken.aura)) : null,
-            owner: sourceToken.owner || ''
+            conditions: sourceToken.conditions ? JSON.parse(JSON.stringify(sourceToken.conditions)) : [],
+            owner: sourceToken.owner || '',
+            owners: getTokenOwners(sourceToken)
         };
 
         engine.tokens.push(newToken);
@@ -1853,48 +2132,82 @@ function addTokenToMap(name, src, explicitHp = null) {
 }
 
 document.getElementById('btn-toggle-visibility').addEventListener('click', () => {
-    const token = engine.tokens.find(t => t.id === engine.selectedTokenId);
-    if (token) {
-        token.visible = !token.visible;
+    const targets = getSelectedTargetTokens();
+    if (targets.length === 0) return;
+
+    // Se almeno un token del gruppo è nascosto, rendili TUTTI visibili; altrimenti nascondili tutti!
+    const makeVisible = targets.some(t => t.visible === false);
+    let initUpdated = false;
+
+    targets.forEach(token => {
+        token.visible = makeVisible;
         if (engine.initiative && engine.initiative.participants) {
             const pItem = engine.initiative.participants.find(p => p.tokenId === token.id);
             if (pItem) {
                 pItem.isHidden = !token.visible;
-                if (typeof renderTrackerList === 'function') renderTrackerList();
+                initUpdated = true;
             }
         }
-        engine.renderAll();
-        syncState();
+    });
+
+    if (initUpdated && typeof renderTrackerList === 'function') {
+        renderTrackerList();
+    }
+    updateVisibilityButtonUI(targets);
+    engine.renderAll();
+    syncState(true);
+    if (targets.length > 1 && typeof showToast === 'function') {
+        showToast(makeVisible ? `${targets.length} token resi VISIBILI ai giocatori!` : `${targets.length} token NASCOSTI ai giocatori!`);
     }
 });
 
 document.getElementById('token-name-edit').addEventListener('input', (e) => {
-    const token = engine.tokens.find(t => t.id === engine.selectedTokenId);
-    if (token) {
-        token.name = e.target.value;
-        engine.renderAll();
-        syncState();
+    const targets = getSelectedTargetTokens();
+    if (targets.length === 0) return;
+    const rawVal = e.target.value;
+
+    if (targets.length === 1) {
+        targets[0].name = rawVal;
+        if (engine.initiative && engine.initiative.participants) {
+            const p = engine.initiative.participants.find(x => x.tokenId === targets[0].id);
+            if (p) p.name = rawVal || window.getSmartTokenName(targets[0]);
+        }
+    } else {
+        const base = rawVal.replace(/\s+\d+$/, '').trim();
+        targets.forEach((t, idx) => {
+            t.name = base ? `${base} ${idx + 1}` : '';
+            if (engine.initiative && engine.initiative.participants) {
+                const p = engine.initiative.participants.find(x => x.tokenId === t.id);
+                if (p) p.name = t.name || window.getSmartTokenName(t);
+            }
+        });
     }
+    if (engine.initiative && typeof renderTrackerList === 'function') renderTrackerList();
+    engine.renderAll();
+    syncState();
 });
 
 document.getElementById('token-name-visibility').addEventListener('change', (e) => {
-    const token = engine.tokens.find(t => t.id === engine.selectedTokenId);
-    if (token) {
-        token.nameVisibility = e.target.value;
-        engine.renderAll();
-        syncState();
-    }
+    const targets = getSelectedTargetTokens();
+    if (targets.length === 0) return;
+    targets.forEach(t => {
+        t.nameVisibility = e.target.value;
+    });
+    engine.renderAll();
+    syncState(true);
 });
 
 document.getElementById('token-edit-size').addEventListener('change', (e) => {
-    const token = engine.tokens.find(t => t.id === engine.selectedTokenId);
-    if (token) {
-        token.sizeMultiplier = parseInt(e.target.value) || 1;
-        token.width = engine.grid.size * token.sizeMultiplier;
-        token.height = engine.grid.size * token.sizeMultiplier;
-        engine.renderAll();
-        syncState();
-    }
+    const targets = getSelectedTargetTokens();
+    if (targets.length === 0) return;
+    const mult = parseInt(e.target.value) || 1;
+    targets.forEach(token => {
+        token.sizeMultiplier = mult;
+        token.width = engine.grid.size * mult;
+        token.height = engine.grid.size * mult;
+    });
+    engine.renderAll();
+    syncState(true);
 });
 
 document.getElementById('btn-delete-token').addEventListener('click', () => {
@@ -1917,6 +2230,20 @@ document.getElementById('btn-delete-token').addEventListener('click', () => {
 
 
 function updateTokenHP(e) {
+    const targetTokens = getSelectedTargetTokens();
+    if (targetTokens.length === 0) return;
+
+    // Se è stata toccata SOLO la checkbox di visibilità PV, aggiorna la visibilità su tutti i token selezionati senza sovrascrivere i loro PV!
+    if (e && e.target && e.target.id === 'token-hp-visible') {
+        const isVisible = e.target.checked;
+        targetTokens.forEach(token => {
+            token.hpVisibleToPlayers = isVisible;
+        });
+        engine.renderAll();
+        syncState(true);
+        return;
+    }
+
     const maxInput = document.getElementById('token-hp-max');
     const currInput = document.getElementById('token-hp-current');
     if (!maxInput || !currInput) return;
@@ -1935,13 +2262,6 @@ function updateTokenHP(e) {
     }
 
     const isVisible = document.getElementById('token-hp-visible').checked;
-
-    // Se ci sono più token selezionati, applica a tutti in blocco!
-    const targetTokens = (engine.selectedTokens && engine.selectedTokens.size > 1)
-        ? engine.tokens.filter(t => engine.selectedTokens.has(t.id))
-        : (engine.selectedTokenId ? [engine.tokens.find(t => t.id === engine.selectedTokenId)].filter(Boolean) : []);
-
-    if (targetTokens.length === 0) return;
 
     targetTokens.forEach(token => {
         token.hpMax = maxVal;
@@ -1964,12 +2284,39 @@ function updateTokenHP(e) {
 }
 
 
-document.getElementById('token-owner').addEventListener('change', () => {
-    const token = engine.tokens.find(t => t.id === engine.selectedTokenId);
-    if (token) {
-        token.owner = document.getElementById('token-owner').value.trim();
-        syncState();
+document.getElementById('token-owner').addEventListener('change', (e) => {
+    const val = e.target.value;
+    if (!val) return;
+    const targets = getSelectedTargetTokens();
+    if (targets.length === 0) {
+        e.target.value = '';
+        return;
     }
+
+    if (val === '__clear__') {
+        targets.forEach(t => setTokenOwners(t, []));
+        if (typeof showToast === 'function') showToast('Controllo impostato su: Solo DM');
+    } else if (val === '__all__') {
+        const allPlayers = getAvailablePlayerNames();
+        targets.forEach(t => setTokenOwners(t, allPlayers));
+        if (typeof showToast === 'function') showToast('Controllo assegnato a tutti i giocatori!');
+    } else {
+        const cleanVal = val.trim();
+        targets.forEach(t => {
+            const current = getTokenOwners(t);
+            if (!current.some(o => o.toLowerCase() === cleanVal.toLowerCase())) {
+                current.push(cleanVal);
+            }
+            setTokenOwners(t, current);
+        });
+        if (typeof showToast === 'function') {
+            showToast(targets.length > 1 ? `Giocatore ${cleanVal} assegnato a ${targets.length} token!` : `Giocatore ${cleanVal} assegnato al token!`);
+        }
+    }
+
+    e.target.value = '';
+    window.renderTokenOwnersChips();
+    syncState(true);
 });
 
 document.getElementById('token-hp-current').addEventListener('input', updateTokenHP);
@@ -1981,9 +2328,7 @@ document.getElementById('token-hp-visible').addEventListener('change', updateTok
 // Listener CA (Classe Armatura)
 document.getElementById('token-ac')?.addEventListener('input', (e) => {
     const val = parseInt(e.target.value) || 0;
-    const targetTokens = (engine.selectedTokens && engine.selectedTokens.size > 1)
-        ? engine.tokens.filter(t => engine.selectedTokens.has(t.id))
-        : (engine.selectedTokenId ? [engine.tokens.find(t => t.id === engine.selectedTokenId)].filter(Boolean) : []);
+    const targetTokens = getSelectedTargetTokens();
     targetTokens.forEach(t => {
         t.ac = val;
         if (engine.initiative && engine.initiative.participants) {
@@ -1997,7 +2342,8 @@ document.getElementById('token-ac')?.addEventListener('input', (e) => {
 
 // Listener apertura Scheda Statistiche Compendio
 document.getElementById('btn-open-statblock')?.addEventListener('click', () => {
-    const token = engine.tokens.find(t => t.id === engine.selectedTokenId);
+    const targets = getSelectedTargetTokens();
+    const token = targets.length > 0 ? targets[targets.length - 1] : null;
     if (window.compendium) {
         window.compendium.open(token ? token.statblock : null);
     }
@@ -2011,9 +2357,8 @@ function applyHpMod(isHeal) {
         modVal = Math.abs(modVal);
         if (!isHeal) modVal = -modVal;
         
-        const targetTokens = (engine.selectedTokens && engine.selectedTokens.size > 1)
-            ? engine.tokens.filter(t => engine.selectedTokens.has(t.id))
-            : (engine.selectedTokenId ? [engine.tokens.find(t => t.id === engine.selectedTokenId)].filter(Boolean) : []);
+        const targetTokens = getSelectedTargetTokens();
+        if (targetTokens.length === 0) return;
 
         targetTokens.forEach(token => {
             let curr = token.hpCurrent !== undefined ? token.hpCurrent : (token.hpMax || 0);
@@ -2028,7 +2373,7 @@ function applyHpMod(isHeal) {
             }
         });
 
-        const primToken = engine.tokens.find(t => t.id === engine.selectedTokenId);
+        const primToken = targetTokens[targetTokens.length - 1];
         if (primToken) {
             document.getElementById('token-hp-current').value = primToken.hpCurrent !== undefined ? primToken.hpCurrent : '';
         }
@@ -2038,32 +2383,35 @@ function applyHpMod(isHeal) {
             renderTrackerList();
         }
         engine.renderAll();
-        syncState();
+        syncState(true);
     }
 }
 document.getElementById('btn-apply-hp-dmg').addEventListener('click', () => applyHpMod(false));
 document.getElementById('btn-apply-hp-heal').addEventListener('click', () => applyHpMod(true));
 
 function updateTokenAuraCond() {
-    const token = engine.tokens.find(t => t.id === engine.selectedTokenId);
-    if (!token) return;
+    const targets = getSelectedTargetTokens();
+    if (targets.length === 0) return;
     
     let _raw = parseFloat(document.getElementById('token-aura-size').value); if(isNaN(_raw)) _raw = 0; let sizeRaw = Math.max(0.1, _raw);
     
     const unit = document.getElementById('token-aura-unit').value;
     const squares = unit === 'ft' ? sizeRaw / 5 : sizeRaw / 1.5;
+    const isActive = document.getElementById('token-aura-active').checked;
+    const auraColor = document.getElementById('token-aura-color').value;
     
-    token.aura = {
-        active: document.getElementById('token-aura-active').checked,
-        sizeRaw: sizeRaw,
-        unit: unit,
-        sizePx: squares * engine.grid.size,
-        color: document.getElementById('token-aura-color').value
-    };
+    targets.forEach(token => {
+        token.aura = {
+            active: isActive,
+            sizeRaw: sizeRaw,
+            unit: unit,
+            sizePx: squares * engine.grid.size,
+            color: auraColor
+        };
+    });
     
-    // Ora la condizione si aggiorna tramite pulsante dedicato
     engine.renderAll();
-    syncState();
+    syncState(true);
 }
 
 document.getElementById('token-aura-active').addEventListener('change', updateTokenAuraCond);
@@ -2083,27 +2431,35 @@ document.getElementById('token-aura-unit').addEventListener('change', (e) => {
 });
 document.getElementById('token-aura-color').addEventListener('input', updateTokenAuraCond);
 
-// listeners per l'aura
-// Condizioni rimosse dal vecchio listener
-
 window.renderConditionsList = function() {
     const listDiv = document.getElementById('active-conditions-list');
+    if (!listDiv) return;
     listDiv.innerHTML = '';
-    const token = engine.tokens.find(t => t.id === engine.selectedTokenId);
-    if (!token) return;
-    
-    // Migrazione al volo se aveva la vecchia condizione singola
-    if (token.condition && !token.conditions) {
-        if (token.condition.active) {
-            token.conditions = [token.condition];
-        } else {
-            token.conditions = [];
+    const targets = getSelectedTargetTokens();
+    if (targets.length === 0) return;
+
+    // Aggrega tutte le condizioni presenti sui token selezionati
+    const condMap = new Map();
+    targets.forEach(token => {
+        if (token.condition && !token.conditions) {
+            if (token.condition.active) token.conditions = [token.condition];
+            else token.conditions = [];
+            delete token.condition;
         }
-        delete token.condition;
-    }
-    if (!token.conditions) token.conditions = [];
-    
-    token.conditions.forEach((cond, index) => {
+        if (!token.conditions) token.conditions = [];
+        token.conditions.forEach(cond => {
+            const key = (cond.text || cond.type || '').trim();
+            if (!key) return;
+            if (!condMap.has(key)) {
+                condMap.set(key, { cond: cond, count: 1 });
+            } else {
+                condMap.get(key).count++;
+            }
+        });
+    });
+
+    condMap.forEach((entry, key) => {
+        const cond = entry.cond;
         const d = document.createElement('div');
         d.style.display = 'flex';
         d.style.justifyContent = 'space-between';
@@ -2115,7 +2471,8 @@ window.renderConditionsList = function() {
         
         const span = document.createElement('span');
         span.style.fontSize = '12px';
-        span.innerText = cond.text;
+        const suffix = (targets.length > 1 && entry.count < targets.length) ? ` (${entry.count}/${targets.length})` : '';
+        span.innerText = cond.text + suffix;
         
         const btn = document.createElement('button');
         btn.innerText = 'X';
@@ -2126,43 +2483,54 @@ window.renderConditionsList = function() {
         btn.style.cursor = 'pointer';
         
         btn.onclick = () => {
-            token.conditions.splice(index, 1);
+            targets.forEach(token => {
+                if (Array.isArray(token.conditions)) {
+                    token.conditions = token.conditions.filter(c => (c.text || c.type || '').trim() !== key);
+                }
+            });
             renderConditionsList();
             engine.renderAll();
-            syncState();
+            syncState(true);
         };
         
         d.appendChild(span);
         d.appendChild(btn);
         listDiv.appendChild(d);
     });
-}
+};
 
 document.getElementById('btn-add-condition').addEventListener('click', () => {
-    const token = engine.tokens.find(t => t.id === engine.selectedTokenId);
-    if (!token) return;
+    const targets = getSelectedTargetTokens();
+    if (targets.length === 0) return;
     
     const cType = document.getElementById('token-condition-type').value;
     const cLang = document.getElementById('token-condition-lang').value;
     const parts = cType.split(',');
     const text = cLang === 'it' ? parts[0] : parts[1];
+    const color = document.getElementById('token-condition-color').value;
     
-    if (!token.conditions) {
-        if (token.condition && token.condition.active) token.conditions = [token.condition];
-        else token.conditions = [];
-        delete token.condition;
-    }
-    
-    token.conditions.push({
-        type: cType,
-        lang: cLang,
-        color: document.getElementById('token-condition-color').value,
-        text: text
+    targets.forEach(token => {
+        if (!token.conditions) {
+            if (token.condition && token.condition.active) token.conditions = [token.condition];
+            else token.conditions = [];
+            delete token.condition;
+        }
+        const existingIdx = token.conditions.findIndex(c => (c.text || '') === text);
+        if (existingIdx >= 0) {
+            token.conditions[existingIdx].color = color;
+        } else {
+            token.conditions.push({
+                type: cType,
+                lang: cLang,
+                color: color,
+                text: text
+            });
+        }
     });
     
     renderConditionsList();
     engine.renderAll();
-    syncState();
+    syncState(true);
 });
 
 
@@ -2424,24 +2792,24 @@ function handleStart(e) {
             }
         }
 
-        engine.selectedTokenId = null;
         engine.selectedShapeId = null;
-        document.getElementById('selected-token-controls').style.display = 'none';
         document.getElementById('selected-shape-controls').style.display = 'none';
 
         if (clickedEntity) {
             const ent = clickedEntity.ref;
             if (clickedEntity.type === 'note') {
+                engine.selectedTokenId = null;
+                document.getElementById('selected-token-controls').style.display = 'none';
                 selectedNote = ent;
                 document.getElementById('selected-note-controls').style.display = 'block';
                 document.getElementById('note-title').value = ent.title || "";
                 document.getElementById('note-text').value = ent.text || "";
+                activeStroke = ent;
             } else if (clickedEntity.type === 'token') {
                 if (e.shiftKey) {
                     if (engine.selectedTokens.has(ent.id)) {
                         engine.selectedTokens.delete(ent.id);
-                        if (engine.selectedTokenId === ent.id) engine.selectedTokenId = null;
-                        document.getElementById('selected-token-controls').style.display = engine.selectedTokenId ? 'block' : 'none';
+                        engine.selectedTokenId = engine.selectedTokens.size > 0 ? Array.from(engine.selectedTokens).pop() : null;
                         activeStroke = null;
                     } else {
                         engine.selectedTokens.add(ent.id);
@@ -2456,11 +2824,25 @@ function handleStart(e) {
                     engine.selectedTokenId = ent.id;
                     activeStroke = ent;
                 }
+
+                // Se stiamo trascinando un token che fa parte di una selezione multipla, prepara gli offset del gruppo!
+                if (activeStroke && engine.selectedTokens && engine.selectedTokens.size > 1 && engine.selectedTokens.has(activeStroke.id)) {
+                    activeStroke._groupDragOffsets = engine.tokens
+                        .filter(gt => gt.id !== activeStroke.id && engine.selectedTokens.has(gt.id))
+                        .map(gt => ({ token: gt, dx: gt.x - activeStroke.x, dy: gt.y - activeStroke.y }));
+                } else if (activeStroke) {
+                    activeStroke._groupDragOffsets = null;
+                }
                 
-                if (engine.selectedTokenId === ent.id) {
-                    if (window.updateSelectedTokenControls) window.updateSelectedTokenControls(ent);
+                if (engine.selectedTokenId || (engine.selectedTokens && engine.selectedTokens.size > 0)) {
+                    const prim = engine.tokens.find(t => t.id === engine.selectedTokenId) || ent;
+                    if (window.updateSelectedTokenControls) window.updateSelectedTokenControls(prim);
+                } else {
+                    document.getElementById('selected-token-controls').style.display = 'none';
                 }
             } else if (clickedEntity.type === 'shape') {
+                engine.selectedTokenId = null;
+                document.getElementById('selected-token-controls').style.display = 'none';
                 engine.selectedShapeId = ent.id;
                 if (aoePanel) aoePanel.style.display = 'flex';
                 document.getElementById('selected-shape-controls').style.display = 'flex';
@@ -2470,8 +2852,8 @@ function handleStart(e) {
                 document.getElementById('shape-edit-width').step = '1';
                 document.getElementById('shape-edit-size').value = Math.round(ent.sizeFt * 10) / 10;
                 document.getElementById('shape-edit-width').value = ent.widthFt !== undefined ? Math.round(ent.widthFt * 10) / 10 : 5;
+                activeStroke = ent;
             }
-            activeStroke = ent; 
         } else {
             if (!e.shiftKey) {
                 engine.selectedTokens.clear();
@@ -2580,13 +2962,32 @@ function handleMove(e) {
         if (activeStroke.id && activeStroke.id.startsWith('token_')) {
             activeStroke.x = worldPos.x - activeStroke.width/2;
             activeStroke.y = worldPos.y - activeStroke.height/2;
-            if (activeStroke.visible !== false && Date.now() - (window.lastGmTokenMoveSend || 0) > 35) {
-                window.lastGmTokenMoveSend = Date.now();
-                network.send({
-                    type: 'REMOTE_TOKEN_MOVE',
-                    ephemeral: true,
-                    payload: { id: activeStroke.id, x: activeStroke.x, y: activeStroke.y }
+            if (activeStroke._groupDragOffsets && activeStroke._groupDragOffsets.length > 0) {
+                activeStroke._groupDragOffsets.forEach(item => {
+                    item.token.x = activeStroke.x + item.dx;
+                    item.token.y = activeStroke.y + item.dy;
                 });
+            }
+            if (Date.now() - (window.lastGmTokenMoveSend || 0) > 35) {
+                window.lastGmTokenMoveSend = Date.now();
+                if (activeStroke.visible !== false) {
+                    network.send({
+                        type: 'REMOTE_TOKEN_MOVE',
+                        ephemeral: true,
+                        payload: { id: activeStroke.id, x: activeStroke.x, y: activeStroke.y }
+                    });
+                }
+                if (activeStroke._groupDragOffsets && activeStroke._groupDragOffsets.length > 0) {
+                    activeStroke._groupDragOffsets.forEach(item => {
+                        if (item.token.visible !== false) {
+                            network.send({
+                                type: 'REMOTE_TOKEN_MOVE',
+                                ephemeral: true,
+                                payload: { id: item.token.id, x: item.token.x, y: item.token.y }
+                            });
+                        }
+                    });
+                }
             }
             engine.renderTokensLayer();
         } else if (activeStroke.id && activeStroke.id.startsWith('aoe_')) {
@@ -2685,7 +3086,9 @@ function handleEnd(e) {
                 if (e.shiftKey) {
                     if (engine.selectedTokens.has(clicked.id)) {
                         engine.selectedTokens.delete(clicked.id);
-                        if (engine.selectedTokenId === clicked.id) engine.selectedTokenId = null;
+                        if (engine.selectedTokenId === clicked.id) {
+                            engine.selectedTokenId = engine.selectedTokens.size > 0 ? Array.from(engine.selectedTokens).pop() : null;
+                        }
                     } else {
                         engine.selectedTokens.add(clicked.id);
                         engine.selectedTokenId = clicked.id;
@@ -2756,6 +3159,20 @@ function handleEnd(e) {
                     final: true,
                     payload: { id: activeStroke.id, x: activeStroke.x, y: activeStroke.y }
                 });
+            }
+            if (activeStroke._groupDragOffsets && activeStroke._groupDragOffsets.length > 0) {
+                activeStroke._groupDragOffsets.forEach(item => {
+                    item.token.x = Math.round(((activeStroke.x + item.dx) - effOffsetX) / engine.grid.size) * engine.grid.size + effOffsetX;
+                    item.token.y = Math.round(((activeStroke.y + item.dy) - effOffsetY) / engine.grid.size) * engine.grid.size + effOffsetY;
+                    if (item.token.visible !== false) {
+                        network.send({
+                            type: 'REMOTE_TOKEN_MOVE',
+                            final: true,
+                            payload: { id: item.token.id, x: item.token.x, y: item.token.y }
+                        });
+                    }
+                });
+                activeStroke._groupDragOffsets = null;
             }
         } else if (activeStroke.id && activeStroke.id.startsWith('aoe_')) {
             network.send({

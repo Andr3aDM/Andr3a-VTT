@@ -12,7 +12,22 @@ let startPanX = 0;
 let startPanY = 0;
 let isMapLocked = false;
 let startMouseY = 0;
+window.VTT_VERSION = 'Beta 1.0';
 const tokenImageCache = new Map();
+
+function isTokenOwnedByLocalPlayer(token) {
+    if (!token || !network || !network.playerName) return false;
+    const myName = String(network.playerName).trim().toLowerCase();
+    if (!myName) return false;
+    if (Array.isArray(token.owners) && token.owners.length > 0) {
+        return token.owners.some(o => String(o).trim().toLowerCase() === myName);
+    }
+    if (token.owner && typeof token.owner === 'string') {
+        return token.owner.trim().toLowerCase() === myName;
+    }
+    return false;
+}
+window.isTokenOwnedByLocalPlayer = isTokenOwnedByLocalPlayer;
 
 function createFallbackTokenBadge(name) {
     const fbCanvas = document.createElement('canvas');
@@ -305,8 +320,21 @@ network.onMessage((data, peerId) => {
             }
         }
 
-        // Annulla il rubber-banding applicando il Timestamp Lock
+        // Se il DM ha revocato il controllo del token mentre il player lo stava muovendo o modificando, rilascia immediatamente!
         state.tokens.forEach(incomingTok => {
+            const stillOwned = isTokenOwnedByLocalPlayer(incomingTok);
+            if (!stillOwned) {
+                if (activeToken && activeToken.type === 'token' && activeToken.ref && activeToken.ref.id === incomingTok.id) {
+                    activeToken = null;
+                    isDragging = false;
+                }
+                if (window.editingPlayerToken && window.editingPlayerToken.id === incomingTok.id) {
+                    window.editingPlayerToken = null;
+                    const ptp = document.getElementById('player-token-panel');
+                    if (ptp) ptp.style.display = 'none';
+                }
+                return;
+            }
             const localTok = engine.tokens.find(t => t.id === incomingTok.id);
             if (activeToken && activeToken.type === 'token' && activeToken.ref && activeToken.ref.id === incomingTok.id) {
                 incomingTok.x = activeToken.ref.x;
@@ -504,6 +532,22 @@ document.getElementById('pbtn-sphere').addEventListener('click', () => spawnShap
 document.getElementById('pbtn-line').addEventListener('click', () => spawnShape('line'));
 document.getElementById('pbtn-square').addEventListener('click', () => spawnShape('square'));
 
+document.getElementById('pbtn-clear-my-drawings')?.addEventListener('click', () => {
+    const myOwner = (network.playerName || 'local').trim();
+    const normOwner = myOwner.toLowerCase();
+    if (engine.publicStrokes && engine.publicStrokes.length > 0) {
+        engine.publicStrokes = engine.publicStrokes.filter(st => {
+            const stOwner = (st.owner || '').trim().toLowerCase();
+            return stOwner !== normOwner;
+        });
+        engine.renderAll();
+    }
+    network.send({
+        type: 'PLAYER_CLEAR_DRAWINGS',
+        payload: { owner: myOwner }
+    });
+});
+
 // --- GESTIONE BARRA STRUMENTI PLAYER & TV (DEFAULT NASCOSTA) ---
 const btnToggleToolbar = document.getElementById('btn-toggle-toolbar');
 const ptb = document.getElementById('player-toolbar');
@@ -607,6 +651,7 @@ function pHandleStart(e) {
         isDragging = true;
         activeStroke = {
             id: 'stroke_' + Date.now() + Math.floor(Math.random()*1000),
+            owner: network.playerName || 'local',
             color: document.getElementById('player-color').value,
             width: 10,
             points: [worldPos]
@@ -624,10 +669,10 @@ function pHandleStart(e) {
     if (currentTool === 'move') {
         let hitEntity = false;
         
-        // Cerca token di proprietà
+        // Cerca token di proprietà (supporta assegnazione singola o multi-giocatore)
         for (let i = engine.tokens.length - 1; i >= 0; i--) {
             const t = engine.tokens[i];
-            if (t.owner === network.playerName && 
+            if (isTokenOwnedByLocalPlayer(t) && 
                 worldPos.x >= t.x && worldPos.x <= t.x + t.width &&
                 worldPos.y >= t.y && worldPos.y <= t.y + t.height) {
                 
@@ -705,7 +750,7 @@ function pHandleMove(e) {
             if (Date.now() - (window.lastMoveSend || 0) > 40) {
                 network.send({
                     type: 'PLAYER_MOVE_TOKEN',
-                    payload: { id: activeToken.ref.id, x: activeToken.ref.x, y: activeToken.ref.y }
+                    payload: { id: activeToken.ref.id, x: activeToken.ref.x, y: activeToken.ref.y, player: network.playerName }
                 });
                 window.lastMoveSend = Date.now();
             }
@@ -786,7 +831,7 @@ function pHandleEnd(e) {
             engine.renderAll();
             network.send({
                 type: 'PLAYER_END_TOKEN',
-                payload: { id: activeToken.ref.id, x: targetX, y: targetY }
+                payload: { id: activeToken.ref.id, x: targetX, y: targetY, player: network.playerName }
             });
             
             // Controlla se è stato solo un click (senza drag)
@@ -846,6 +891,9 @@ function pHandleEnd(e) {
         activeLaser = null;
     }
     else if (currentTool === 'draw' && activeStroke) {
+        if (!activeStroke.owner) activeStroke.owner = network.playerName || 'local';
+        engine.publicStrokes.push(activeStroke);
+        engine.renderAll();
         network.send({
             type: 'PLAYER_DRAW',
             payload: activeStroke
@@ -962,12 +1010,18 @@ function updatePlayerTokenAura() {
     
     engine.renderAll();
     
+    if (!isTokenOwnedByLocalPlayer(window.editingPlayerToken)) {
+        document.getElementById('player-token-panel').style.display = 'none';
+        window.editingPlayerToken = null;
+        return;
+    }
     // Manda l'aggiornamento al DM
     network.send({
         type: 'PLAYER_UPDATE_TOKEN_AURA',
         payload: {
             id: window.editingPlayerToken.id,
-            auraObj: window.editingPlayerToken.aura
+            auraObj: window.editingPlayerToken.aura,
+            player: network.playerName
         }
     });
 }

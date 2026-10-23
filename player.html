@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Andr3a VTT - Schermo Giocatori</title>
+    <title>Andr3a VTT - Schermo Giocatori (Beta 1.0)</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
         /* Nasconde la sidebar per i giocatori e massimizza la mappa */
@@ -53,7 +53,8 @@
     
     <div id="login-overlay" style="position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center;">
         <div style="background: #222; padding: 20px; border-radius: 8px; border: 2px solid #ffcc00; color: white; width: 300px; text-align: center;">
-            <h2 style="color: #ffcc00; margin-top: 0;">Unisciti alla Partita</h2>
+            <h2 style="color: #ffcc00; margin-top: 0; margin-bottom: 4px;">Unisciti alla Partita</h2>
+            <div style="margin-bottom: 12px;"><span style="font-size: 10.5px; background: #263238; color: #4dd0e1; border: 1px solid #00acc1; padding: 2px 8px; border-radius: 10px; font-weight: bold;">Beta 1.0</span></div>
             <input type="text" id="login-name" placeholder="Il tuo Nome (es: Marco)" style="width: 100%; padding: 8px; margin-bottom: 10px; box-sizing: border-box; background: #333; color: white; border: 1px solid #555;">
             <input type="text" id="login-room" placeholder="Codice Stanza (es: ABCD-1234)" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box; background: #333; color: white; border: 1px solid #555; text-transform: uppercase;">
             <button id="btn-login-online" style="width: 100%; padding: 10px; background: #4caf50; color: white; border: none; font-weight: bold; cursor: pointer; margin-bottom: 10px; border-radius:4px;">Connetti Online</button>
@@ -133,6 +134,7 @@
           <div style="width: 1px; height: 30px; background: #555; margin: 0 5px;"></div>
         <button class="ptool-btn active" data-tool="move" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Muovi Token">🖐️</button>
         <button class="ptool-btn" data-tool="draw" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Disegna (Pubblico)">✏️</button>
+        <button id="pbtn-clear-my-drawings" type="button" style="background:none; border:none; color:white; font-size:19px; cursor:pointer;" title="Cancella i miei disegni a mano libera">🧹</button>
         <button class="ptool-btn" data-tool="ruler" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Metro">📏</button>
         <button class="ptool-btn" data-tool="laser" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;" title="Puntatore Laser">⚡</button>
         <div style="width: 1px; height: 30px; background: #555; margin: 0 5px;"></div>
@@ -228,10 +230,10 @@
     <!-- Fine Dadi e Audio -->
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
     <script src="js/engine.js?v=127"></script>
-    <script src="js/network.js?v=4"></script>
+    <script src="js/network.js?v=5"></script>
     <script src="js/dice.js?v=123"></script>
     <script src="js/audio.js?v=117"></script>
-    <script src="js/player.js?v=126"></script>
+    <script src="js/player.js?v=127"></script>
 <script src="js/lang.js?v=4"></script>
 
     
