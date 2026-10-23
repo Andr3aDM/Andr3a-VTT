@@ -244,7 +244,7 @@
                 <span>📜</span> <span>Compendio & Scheda Mostro</span>
             </strong>
             <div style="display:flex; align-items:center; gap: 6px;">
-                <button id="btn-statblock-json-import" style="background: #333; color: #4db6ac; border: 1px solid #555; padding: 2px 7px; font-size: 11px; border-radius: 3px; cursor: pointer;" title="Incolla JSON Creatura">📥 Incolla JSON</button>
+                <button id="btn-statblock-json-import" style="background: #333; color: #4db6ac; border: 1px solid #555; padding: 2px 7px; font-size: 11px; border-radius: 3px; cursor: pointer;" title="Incolla JSON o Testo Scheda Creatura/PNG">📥 Incolla JSON / Testo</button>
                 <button id="btn-close-statblock" style="background: transparent; color: #bbb; border: none; font-size: 16px; cursor: pointer; padding: 0 4px;" title="Chiudi">✕</button>
             </div>
         </div>
@@ -276,10 +276,18 @@
                     <input type="checkbox" id="statblock-rolls-public" checked style="cursor: pointer; margin: 0;">
                     <span style="color: #81d4fa; font-weight: 500;">👁️ Invia tiri ai Giocatori</span>
                 </label>
-                <label style="color: #aaa; display: flex; align-items: center; gap: 5px; cursor: pointer;" title="Se attivato, il tasto Crea Token genera il token direttamente come invisibile ai giocatori">
-                    <input type="checkbox" id="statblock-spawn-invisible" style="cursor: pointer; margin: 0;">
-                    <span style="color: #ffb74d; font-weight: 500;">🙈 Crea Invisibile</span>
-                </label>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label style="color: #aaa; display: flex; align-items: center; gap: 4px;" title="Scegli se creare il token come Mostro (numerato 1, 2...) o come PNG (nome singolo senza numero)">
+                        <select id="statblock-spawn-category" style="background: #141414; color: #ffd54f; border: 1px solid #555; border-radius: 4px; padding: 2px 5px; font-size: 10.5px; width: auto; margin: 0; cursor: pointer; font-weight: bold;">
+                            <option value="mostri">👹 Mostro</option>
+                            <option value="png">🎭 PNG</option>
+                        </select>
+                    </label>
+                    <label style="color: #aaa; display: flex; align-items: center; gap: 5px; cursor: pointer;" title="Se attivato, il tasto Crea Token genera il token direttamente come invisibile ai giocatori">
+                        <input type="checkbox" id="statblock-spawn-invisible" style="cursor: pointer; margin: 0;">
+                        <span style="color: #ffb74d; font-weight: 500;">🙈 Crea Invisibile</span>
+                    </label>
+                </div>
             </div>
             <div style="display: flex; gap: 6px; justify-content: space-between; align-items: center;">
                 <button id="btn-translate-statblock" style="flex: 1; min-width: 0; background: #6a1b9a; color: white; border: none; padding: 7px 4px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Traduci la scheda con la terminologia ufficiale D&D in Italiano">
@@ -295,17 +303,17 @@
         </div>
     </div>
 
-    <!-- Modale per incollare JSON Creatura -->
+    <!-- Modale per incollare JSON o Testo Statblock Creatura / PNG -->
     <div id="modal-json-import" style="display:none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.75); z-index: 2000; align-items: center; justify-content: center;">
-        <div style="background: #222; border: 2px solid #00897b; border-radius: 8px; width: 460px; padding: 15px; color: white; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.85);">
+        <div style="background: #222; border: 2px solid #00897b; border-radius: 8px; width: 490px; max-width: 95vw; padding: 15px; color: white; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.85);">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <strong style="color: #4db6ac; font-size: 13.5px; display:flex; align-items:center; gap:6px;">📥 Incolla JSON &amp; Token Creatura</strong>
+                <strong style="color: #4db6ac; font-size: 13.5px; display:flex; align-items:center; gap:6px;">📥 Incolla JSON o Testo Scheda (Mostro / PNG)</strong>
                 <button id="btn-close-json-modal" style="background: none; border: none; color: #aaa; font-size: 16px; cursor: pointer;">✕</button>
             </div>
-            <div style="font-size: 11px; color: #bbb;">
-                Copia il mostro in formato JSON (<em>"Copy as JSON"</em>) e incollalo qui sotto:
+            <div style="font-size: 11px; color: #bbb; line-height: 1.35;">
+                Incolla il <strong>JSON</strong> oppure seleziona e copia con il mouse il <strong>testo della scheda</strong> (Nome, Armor Class, Hit Points, STR/DEX/CON, Actions...) e premi <strong>Ctrl+V</strong> qui sotto:
             </div>
-            <textarea id="json-import-textarea" placeholder='{"name": "Ancient Time Dragon", "ac": 22, "hp": 407, ...}' style="width: 100%; height: 130px; background: #111; color: #fff; border: 1px solid #555; border-radius: 4px; font-family: monospace; font-size: 11px; padding: 8px; box-sizing: border-box; resize: vertical;"></textarea>
+            <textarea id="json-import-textarea" placeholder="Incolla qui il testo copiato dalla pagina (es. Paladin / Armor Class 18 / Hit Points 153...) oppure un oggetto JSON {&quot;name&quot;: &quot;...&quot;}" style="width: 100%; height: 140px; background: #111; color: #fff; border: 1px solid #555; border-radius: 4px; font-family: monospace; font-size: 11px; padding: 8px; box-sizing: border-box; resize: vertical; margin: 0;"></textarea>
 
             <!-- Box Token Mostro con Incolla / Drag & Drop -->
             <div id="json-token-dropzone" style="display: flex; gap: 10px; align-items: center; background: #181818; border: 1px dashed #00897b; border-radius: 6px; padding: 8px 10px; cursor: pointer;" title="Trascina un'immagine o premi Ctrl+V per incollare l'immagine del token">
@@ -314,7 +322,7 @@
                     <img id="json-token-img" style="display:none; width: 100%; height: 100%; object-fit: cover;">
                 </div>
                 <div style="flex: 1; font-size: 11px; color: #bbb;">
-                    <div style="font-weight: bold; color: #80cbc4; margin-bottom: 2px;">🖼️ Token Ufficiale Mostro (Opzionale)</div>
+                    <div style="font-weight: bold; color: #80cbc4; margin-bottom: 2px;">🖼️ Immagine Token (Opzionale)</div>
                     <div id="json-token-status-text" style="font-size: 10.5px; color: #999;">
                         Click destro sull'immagine &rarr; <em>"Copia immagine"</em> e premi <strong>Ctrl+V</strong> qui.
                     </div>
@@ -323,13 +331,19 @@
                 <input type="file" id="json-token-file-input" accept="image/*" style="display: none;">
             </div>
 
-            <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-top: 4px;">
-                <label style="color: #ffb74d; font-size: 11.5px; font-weight: bold; display: flex; align-items: center; gap: 5px; cursor: pointer;" title="Se spuntato, il token creato sarà invisibile ai giocatori finché non lo riveli">
-                    <input type="checkbox" id="json-import-spawn-invisible" style="cursor: pointer; margin: 0;">
-                    <span>🙈 Crea Token Invisibile</span>
-                </label>
+            <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-top: 4px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <select id="json-import-spawn-category" style="background: #141414; color: #ffd54f; border: 1px solid #555; border-radius: 4px; padding: 4px 6px; font-size: 11px; width: auto; margin: 0; cursor: pointer; font-weight: bold;" title="Scegli se salvare il token in Mostri (numerato) o PNG (nome singolo)">
+                        <option value="mostri">👹 Mostro</option>
+                        <option value="png">🎭 PNG</option>
+                    </select>
+                    <label style="color: #ffb74d; font-size: 11.5px; font-weight: bold; display: flex; align-items: center; gap: 5px; cursor: pointer;" title="Se spuntato, il token creato sarà invisibile ai giocatori finché non lo riveli">
+                        <input type="checkbox" id="json-import-spawn-invisible" style="cursor: pointer; margin: 0;">
+                        <span>🙈 Crea Invisibile</span>
+                    </label>
+                </div>
                 <div style="display: flex; gap: 6px;">
-                    <button id="btn-confirm-json-import" style="background: #00897b; color: white; border: none; padding: 7px 12px; font-size: 11.5px; font-weight: bold; border-radius: 4px; cursor: pointer;" title="Carica la scheda nel Compendio">Importa Mostro</button>
+                    <button id="btn-confirm-json-import" style="background: #00897b; color: white; border: none; padding: 7px 12px; font-size: 11.5px; font-weight: bold; border-radius: 4px; cursor: pointer;" title="Carica la scheda nel Compendio">Importa Scheda</button>
                     <button id="btn-confirm-json-spawn" style="background: #0277bd; color: white; border: none; padding: 7px 12px; font-size: 11.5px; font-weight: bold; border-radius: 4px; cursor: pointer;" title="Importa la scheda e crea subito il token sulla mappa">♟️ Importa &amp; Crea Token</button>
                 </div>
             </div>
@@ -855,7 +869,7 @@
     <script src="js/dice.js?v=123"></script>
     <script src="js/audio.js?v=117"></script>
     <script src="js/dm.js?v=139"></script>
-    <script src="js/compendium.js?v=15"></script>
+    <script src="js/compendium.js?v=16"></script>
     <script src="js/pcsheet.js?v=2"></script>
     <script src="js/initiative.js?v=25"></script>
 <script>
@@ -865,7 +879,7 @@
         });
     });
 </script>
-<script src="js/lang.js?v=7"></script>
+<script src="js/lang.js?v=8"></script>
 
     
 
