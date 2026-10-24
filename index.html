@@ -350,6 +350,25 @@
         </div>
     </div>
 
+    <!-- Modale Conferma Modifiche Non Salvate (Cambio Mappa / Upload) -->
+    <div id="modal-unsaved-map" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.78); z-index: 3000; align-items: center; justify-content: center;">
+        <div style="background: #1e2026; border: 2px solid #ffd54f; border-radius: 8px; width: 440px; max-width: 92vw; padding: 18px; color: white; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.92); font-family: 'Segoe UI', Tahoma, sans-serif;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 24px;">⚠️</span>
+                <strong style="color: #ffd54f; font-size: 14.5px;">Modifiche alla Mappa non Salvate</strong>
+            </div>
+            <div id="modal-unsaved-map-text" style="font-size: 12.5px; color: #ddd; line-height: 1.45;">
+                Ci sono modifiche non salvate alla mappa attuale. Se procedi senza salvare, le modifiche andranno perse. Cosa desideri fare?
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; flex-wrap: wrap;">
+                <button id="btn-unsaved-cancel" type="button" style="background: #333; color: #bbb; border: 1px solid #555; padding: 7px 12px; font-size: 11.5px; border-radius: 4px; cursor: pointer;">✕ Annulla</button>
+                <button id="btn-unsaved-discard" type="button" style="background: #c62828; color: white; border: none; padding: 7px 12px; font-size: 11.5px; font-weight: bold; border-radius: 4px; cursor: pointer;">🗑️ Elimina modifiche</button>
+                <button id="btn-unsaved-save-new" type="button" style="background: #0277bd; color: white; border: none; padding: 7px 13px; font-size: 11.5px; font-weight: bold; border-radius: 4px; cursor: pointer;">➕ Salva come Nuova</button>
+                <button id="btn-unsaved-overwrite" type="button" style="background: #2e7d32; color: white; border: none; padding: 7px 13px; font-size: 11.5px; font-weight: bold; border-radius: 4px; cursor: pointer;">💾 Sovrascrivi Mappa</button>
+            </div>
+        </div>
+    </div>
+
     <div id="dm-tracker" style="display:none; position: absolute; top: 20px; left: calc(100vw - 360px); width: 340px; height: 420px; min-width: 280px; min-height: 230px; max-height: calc(100vh - 30px); max-width: calc(100vw - 30px); background: #222; border: 2px solid #ffcc00; border-radius: 8px; z-index: 1000; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.65); resize: both; overflow: hidden; flex-direction: column; box-sizing: border-box;">
         <div id="dm-tracker-header" style="background: #333; padding: 8px 10px; cursor: move; border-bottom: 1px solid #555; display: flex; justify-content: space-between; align-items: center; border-radius: 6px 6px 0 0; flex-shrink: 0; user-select: none;">
             <strong style="color: #ffcc00; font-size: 13.5px;">⚔️ Tracker Iniziativa</strong>
@@ -546,9 +565,9 @@
                         <option value="">-- Seleziona Mappa --</option>
                     </select>
                     <div style="display:flex; gap:5px;">
-                        <button id="btn-load-map" style="flex:1; background-color:#0288d1; color: white; border: none; padding: 4px; border-radius: 3px; cursor: pointer;">Carica</button>
-                        <button id="btn-save-map" style="flex:1; background-color:#388e3c; color: white; border: none; padding: 4px; border-radius: 3px; cursor: pointer;">Salva</button>
-                        <button id="btn-save-new-map" style="flex:1; background-color:#1b5e20; color: white; border: none; padding: 4px; border-radius: 3px; cursor: pointer;">Salva Nuova</button>
+                        <button id="btn-load-map" style="flex:1; background-color:#0288d1; color: white; border: none; padding: 4px; border-radius: 3px; cursor: pointer; font-size: 11px;">Carica</button>
+                        <button id="btn-save-map" style="flex:1.1; background-color:#388e3c; color: white; border: none; padding: 4px; border-radius: 3px; cursor: pointer; font-size: 11px;">Sovrascrivi</button>
+                        <button id="btn-save-new-map" style="flex:1.1; background-color:#1b5e20; color: white; border: none; padding: 4px; border-radius: 3px; cursor: pointer; font-size: 11px;">Salva Nuova</button>
                     </div>
                     <div style="display:flex; gap:5px; margin-top:5px;">
                         <button id="btn-move-map" style="flex:1; background-color:#e65100; color: white; border: none; padding: 4px; border-radius: 3px; cursor: pointer; font-size: 11.5px;" title="Sposta la mappa selezionata in un'altra cartella">📁 Sposta in...</button>
@@ -868,7 +887,7 @@
 
     <script src="js/dice.js?v=123"></script>
     <script src="js/audio.js?v=117"></script>
-    <script src="js/dm.js?v=139"></script>
+    <script src="js/dm.js?v=142"></script>
     <script src="js/compendium.js?v=16"></script>
     <script src="js/pcsheet.js?v=2"></script>
     <script src="js/initiative.js?v=25"></script>
@@ -879,7 +898,7 @@
         });
     });
 </script>
-<script src="js/lang.js?v=8"></script>
+<script src="js/lang.js?v=10"></script>
 
     
 

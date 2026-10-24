@@ -441,6 +441,25 @@ let activeLaser = null;
 let lastLaserSync = 0;
 let tokenImages = {};
 let currentMapBase64 = null;
+let isMapDirty = false;
+let isSuppressingDirty = false;
+
+window.markMapDirty = function(dirty = true) {
+    if (isSuppressingDirty && dirty) return;
+    if (isMapDirty === dirty) return;
+    isMapDirty = dirty;
+    updateLoadedMapIndicator();
+};
+
+// Blocco chiusura scheda browser se ci sono modifiche alla mappa non salvate
+window.addEventListener('beforeunload', (e) => {
+    if (isMapDirty && currentMapBase64) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+    }
+});
+
 let lastClickedTokenId = null;
 let lastClickedTokenTime = 0;
 let lastStatblockOpenTime = 0;
@@ -684,6 +703,9 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
     }
     if (!targetPeerId) {
         lastSyncTime = now;
+        if (!isSuppressingDirty && currentMapBase64) {
+            markMapDirty(true);
+        }
     }
 
     if (sendFullImages && !targetPeerId) {
@@ -820,12 +842,18 @@ function syncFog(targetPeerId = null) {
 document.getElementById('btn-open-player').addEventListener('click', () => {
     window.open('player.html?mode=tv', '_blank', 'width=800,height=600');
     setTimeout(() => {
+        const wasDirty = isMapDirty;
+        isSuppressingDirty = true;
         syncState(true, true);
         const mapPayload = getNetworkMapPayload();
         if (mapPayload) {
             network.send({ type: 'MAP_UPDATE', payload: mapPayload });
         }
         syncFog();
+        isSuppressingDirty = false;
+        if (!wasDirty) {
+            markMapDirty(false);
+        }
     }, 600);
 });
 
@@ -835,24 +863,29 @@ if (mapUploadEl) {
     mapUploadEl.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                currentMapBase64 = ev.target.result;
-                const img = new Image();
-                img.onload = () => {
-                    engine.setMap(img);
-                    network.send({ type: 'MAP_UPDATE', payload: getNetworkMapPayload() });
-                    syncState(true, true);
-                    syncFog();
-                    if (typeof showToast === 'function') {
+            checkUnsavedMapChanges(() => {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    currentMapBase64 = ev.target.result;
+                    const img = new Image();
+                    img.onload = () => {
+                        engine.setMap(img);
+                        network.send({ type: 'MAP_UPDATE', payload: getNetworkMapPayload() });
+                        syncState(true, true);
+                        syncFog();
                         const cleanMapName = file.name.replace(/\.[^/.]+$/, "");
-                        const pfx = typeof window.t === 'function' ? window.t('🗺️ Mappa caricata:') : '🗺️ Mappa caricata:';
-                        showToast(`${pfx} "${cleanMapName}"`);
-                    }
+                        currentLoadedMapId = null;
+                        currentLoadedMapName = cleanMapName;
+                        markMapDirty(true);
+                        if (typeof showToast === 'function') {
+                            const pfx = typeof window.t === 'function' ? window.t('🗺️ Mappa caricata:') : '🗺️ Mappa caricata:';
+                            showToast(`${pfx} "${cleanMapName}"`);
+                        }
+                    };
+                    img.src = currentMapBase64;
                 };
-                img.src = currentMapBase64;
-            };
-            reader.readAsDataURL(file);
+                reader.readAsDataURL(file);
+            });
         }
         e.target.value = '';
     });
@@ -987,6 +1020,7 @@ async function refreshCampaigns(autoSelectLast = false) {
     });
     if (prevValue && campaigns.some(c => c.id === prevValue)) {
         select.value = prevValue;
+        currentCampaignId = prevValue;
         document.getElementById('map-manager').style.display = 'block';
         await refreshFolders(prevValue);
         await refreshMaps(prevValue, currentLoadedMapId || "");
@@ -994,12 +1028,14 @@ async function refreshCampaigns(autoSelectLast = false) {
     } else if (autoSelectLast && campaigns.length > 0 && !select.value) {
         const firstId = campaigns[0].id;
         select.value = firstId;
+        currentCampaignId = firstId;
         localStorage.setItem('vtt_last_campaign_id', firstId);
         document.getElementById('map-manager').style.display = 'block';
         await refreshFolders(firstId);
         await refreshMaps(firstId, currentLoadedMapId || "");
         await loadCampaignTokensFor(firstId);
     } else {
+        currentCampaignId = select.value || '';
         await loadCampaignTokensFor(select.value || '');
     }
 }
@@ -1029,6 +1065,7 @@ document.getElementById('btn-delete-campaign').addEventListener('click', async (
     }
 });
 
+let currentCampaignId = "";
 let currentLoadedMapId = null;
 let currentLoadedMapName = "";
 let currentSelectedFolder = "";
@@ -1042,7 +1079,20 @@ function updateLoadedMapIndicator() {
     const saveBtn = document.getElementById('btn-save-map');
     if (badge) {
         if (currentLoadedMapName) {
-            badge.textContent = `● In uso: ${currentLoadedMapName}`;
+            if (isMapDirty) {
+                badge.textContent = `🟡 In uso: ${currentLoadedMapName} * (Non salvata)`;
+                badge.style.color = '#ffb74d';
+                badge.title = `Ci sono modifiche non salvate su "${currentLoadedMapName}"!`;
+            } else {
+                badge.textContent = `🟢 In uso: ${currentLoadedMapName}`;
+                badge.style.color = '#4caf50';
+                badge.title = `Mappa sincronizzata e salvata nel database`;
+            }
+            badge.style.display = 'inline';
+        } else if (currentMapBase64 && isMapDirty) {
+            badge.textContent = `🟡 Nuova Mappa * (Non salvata)`;
+            badge.style.color = '#ffb74d';
+            badge.title = `Mappa caricata ma non ancora salvata nel database`;
             badge.style.display = 'inline';
         } else {
             badge.textContent = '';
@@ -1051,37 +1101,56 @@ function updateLoadedMapIndicator() {
     }
     if (saveBtn) {
         if (currentLoadedMapName) {
-            saveBtn.title = `Salva le modifiche su "${currentLoadedMapName}"`;
+            saveBtn.title = isMapDirty 
+                ? `⚠️ Salva le modifiche non salvate su "${currentLoadedMapName}"` 
+                : `Salva le modifiche su "${currentLoadedMapName}"`;
         } else {
             saveBtn.title = `Salva le modifiche alla mappa`;
+        }
+        if (isMapDirty) {
+            saveBtn.style.boxShadow = '0 0 8px rgba(255, 183, 77, 0.7)';
+            saveBtn.style.border = '1px solid #ffd54f';
+        } else {
+            saveBtn.style.boxShadow = 'none';
+            saveBtn.style.border = 'none';
         }
     }
 }
 
 document.getElementById('campaign-select').addEventListener('change', async (e) => {
     const id = e.target.value;
-    currentSelectedFolder = "";
-    if (id) {
-        localStorage.setItem('vtt_last_campaign_id', id);
-        if (currentLoadedMapId) {
-            const loadedMap = await vttDB.getMap(currentLoadedMapId);
-            if (!loadedMap || loadedMap.campaignId !== id) {
-                currentLoadedMapId = null;
-                currentLoadedMapName = "";
+    const oldCampaignId = currentCampaignId;
+    checkUnsavedMapChanges(async () => {
+        currentCampaignId = id;
+        currentSelectedFolder = "";
+        if (id) {
+            localStorage.setItem('vtt_last_campaign_id', id);
+            if (currentLoadedMapId) {
+                const loadedMap = await vttDB.getMap(currentLoadedMapId);
+                if (!loadedMap || loadedMap.campaignId !== id) {
+                    currentLoadedMapId = null;
+                    currentLoadedMapName = "";
+                }
             }
+            document.getElementById('map-manager').style.display = 'block';
+            await refreshFolders(id);
+            await refreshMaps(id, currentLoadedMapId || "");
+            await loadCampaignTokensFor(id);
+            markMapDirty(false);
+            updateLoadedMapIndicator();
+        } else {
+            document.getElementById('map-manager').style.display = 'none';
+            currentLoadedMapId = null;
+            currentLoadedMapName = "";
+            await loadCampaignTokensFor('');
+            markMapDirty(false);
+            updateLoadedMapIndicator();
         }
-        document.getElementById('map-manager').style.display = 'block';
-        await refreshFolders(id);
-        await refreshMaps(id, currentLoadedMapId || "");
-        await loadCampaignTokensFor(id);
-        updateLoadedMapIndicator();
-    } else {
-        document.getElementById('map-manager').style.display = 'none';
-        currentLoadedMapId = null;
-        currentLoadedMapName = "";
-        await loadCampaignTokensFor('');
-        updateLoadedMapIndicator();
-    }
+    }, () => {
+        if (oldCampaignId !== undefined) {
+            e.target.value = oldCampaignId;
+        }
+    });
 });
 
 async function refreshFolders(campaignId) {
@@ -1194,19 +1263,12 @@ document.getElementById('btn-delete-folder').addEventListener('click', async () 
 });
 
 
-document.getElementById('btn-save-new-map').addEventListener('click', async () => {
-    const campaignId = document.getElementById('campaign-select').value;
-    if (!campaignId) return alert('Seleziona una campagna dal menu a tendina prima di salvare!');
-    if (!currentMapBase64) return alert('Devi caricare una mappa prima di poterla salvare!');
-
-    const name = prompt('Nome di questo salvataggio (es. "Taverna - Inizio Combattimento"):');
-    if (!name) return;
-
-    const state = {
+function getEngineMapState() {
+    return {
         grid: engine.grid,
         tokens: engine.tokens.map(t => ({...t, imageObj: null})),
         shapes: engine.shapes,
-            initiative: engine.initiative,
+        initiative: engine.initiative,
         publicStrokes: engine.publicStrokes,
         privateStrokes: engine.privateStrokes,
         notes: engine.notes,
@@ -1216,20 +1278,39 @@ document.getElementById('btn-save-new-map').addEventListener('click', async () =
         scale: engine.scale,
         sharedImageId: engine.sharedImageId || null
     };
+}
 
+async function performSaveNewMap() {
+    const campaignId = document.getElementById('campaign-select')?.value;
+    if (!campaignId) {
+        alert('Seleziona una campagna dal menu a tendina prima di salvare!');
+        return false;
+    }
+    if (!currentMapBase64) {
+        alert('Devi caricare una mappa prima di poterla salvare!');
+        return false;
+    }
+
+    const defaultName = currentLoadedMapName ? `${currentLoadedMapName} (Copia)` : 'Nuova Mappa';
+    const name = prompt('Nome di questo nuovo salvataggio (es. "Taverna - Inizio Combattimento"):', defaultName);
+    if (!name) return false;
+
+    const state = getEngineMapState();
     const targetFolder = (currentSelectedFolder && currentSelectedFolder !== '__none__') ? currentSelectedFolder : "";
     const savedMap = await vttDB.saveMap(campaignId, name, currentMapBase64, state, null, targetFolder);
     currentLoadedMapId = savedMap.id;
     currentLoadedMapName = savedMap.name;
     await refreshMaps(campaignId, savedMap.id);
+    markMapDirty(false);
     updateLoadedMapIndicator();
     if (typeof showToast === 'function') {
         const pfx = typeof window.t === 'function' ? window.t('💾 Nuova mappa salvata:') : '💾 Nuova mappa salvata:';
         showToast(`${pfx} "${savedMap.name}"` + (targetFolder ? ` (${targetFolder})` : ''));
     }
-});
+    return true;
+}
 
-document.getElementById('btn-save-map').addEventListener('click', async () => {
+async function performOverwriteMap() {
     const select = document.getElementById('map-select');
     
     // Se non c'è ancora una mappa caricata ma l'utente ne ha selezionata una dal menu a tendina
@@ -1242,125 +1323,255 @@ document.getElementById('btn-save-map').addEventListener('click', async () => {
     }
 
     if (!currentLoadedMapId) {
-        return document.getElementById('btn-save-new-map').click();
+        return performSaveNewMap();
     }
-    const campaignId = document.getElementById('campaign-select').value;
-    if (!campaignId) return alert('Seleziona una campagna!');
-    if (!currentMapBase64) return;
 
-    const state = {
-        grid: engine.grid,
-        tokens: engine.tokens.map(t => ({...t, imageObj: null})),
-        shapes: engine.shapes,
-            initiative: engine.initiative,
-        publicStrokes: engine.publicStrokes,
-        privateStrokes: engine.privateStrokes,
-        notes: engine.notes,
-        fogBase64: engine.getFogBase64(),
-        offsetX: engine.offsetX,
-        offsetY: engine.offsetY,
-        scale: engine.scale,
-        sharedImageId: engine.sharedImageId || null
-    };
+    let campaignId = document.getElementById('campaign-select')?.value;
+    const existingMap = await vttDB.getMap(currentLoadedMapId);
+    if (existingMap && existingMap.campaignId) {
+        campaignId = existingMap.campaignId;
+    }
+    if (!campaignId) {
+        alert('Seleziona una campagna!');
+        return false;
+    }
+    if (!currentMapBase64) return false;
 
+    const state = getEngineMapState();
     await vttDB.saveMap(campaignId, currentLoadedMapName, currentMapBase64, state, currentLoadedMapId);
     await refreshMaps(campaignId, currentLoadedMapId);
+    markMapDirty(false);
     updateLoadedMapIndicator();
-    // Cambiamo l'alert in qualcosa di meno invasivo per i salvataggi continui
-    const btn = document.getElementById('btn-save-map'); const oldText = btn.innerText; btn.innerText = 'Salvato!'; setTimeout(() => btn.innerText = oldText, 1500);
+    const btn = document.getElementById('btn-save-map');
+    if (btn) {
+        const oldText = btn.innerText;
+        btn.innerText = 'Salvato!';
+        setTimeout(() => btn.innerText = oldText, 1500);
+    }
     if (typeof showToast === 'function') {
         const pfx = typeof window.t === 'function' ? window.t('💾 Mappa salvata:') : '💾 Mappa salvata:';
         showToast(`${pfx} "${currentLoadedMapName}"`);
     }
+    return true;
+}
+
+function checkUnsavedMapChanges(onProceed, onCancel = null) {
+    if (!isMapDirty || !currentMapBase64) {
+        onProceed();
+        return;
+    }
+
+    const modal = document.getElementById('modal-unsaved-map');
+    const textEl = document.getElementById('modal-unsaved-map-text');
+    const btnOverwrite = document.getElementById('btn-unsaved-overwrite');
+    const btnSaveNew = document.getElementById('btn-unsaved-save-new');
+    const btnDiscard = document.getElementById('btn-unsaved-discard');
+    const btnCancel = document.getElementById('btn-unsaved-cancel');
+
+    if (!modal || !btnSaveNew || !btnDiscard || !btnCancel) {
+        if (confirm(`Ci sono modifiche non salvate alla mappa "${currentLoadedMapName || 'attuale'}"!\nVuoi salvare prima di procedere?`)) {
+            performOverwriteMap().then(saved => {
+                if (saved) onProceed();
+                else if (typeof onCancel === 'function') onCancel();
+            });
+        } else {
+            markMapDirty(false);
+            onProceed();
+        }
+        return;
+    }
+
+    const mapName = currentLoadedMapName || 'Mappa attuale';
+    if (currentLoadedMapId) {
+        if (textEl) {
+            textEl.innerHTML = `Ci sono modifiche non salvate su <b>"${mapName}"</b>.<br>Vuoi sovrascrivere il salvataggio esistente, salvarne una nuova copia o eliminare le modifiche?`;
+        }
+        if (btnOverwrite) {
+            btnOverwrite.style.display = 'inline-block';
+            btnOverwrite.innerHTML = `💾 Sovrascrivi "${mapName}"`;
+        }
+        if (btnSaveNew) {
+            btnSaveNew.innerHTML = `➕ Salva come Nuova`;
+        }
+    } else {
+        if (textEl) {
+            textEl.innerHTML = `Questa mappa ha delle modifiche non salvate.<br>Vuoi salvarla come nuova mappa nella campagna prima di procedere?`;
+        }
+        if (btnOverwrite) {
+            btnOverwrite.style.display = 'none';
+        }
+        if (btnSaveNew) {
+            btnSaveNew.innerHTML = `💾 Salva Nuova Mappa`;
+        }
+    }
+
+    modal.style.display = 'flex';
+
+    const cleanup = () => {
+        modal.style.display = 'none';
+        if (btnOverwrite) btnOverwrite.onclick = null;
+        btnSaveNew.onclick = null;
+        btnDiscard.onclick = null;
+        btnCancel.onclick = null;
+    };
+
+    if (btnOverwrite) {
+        btnOverwrite.onclick = async () => {
+            cleanup();
+            const saved = await performOverwriteMap();
+            if (saved) {
+                onProceed();
+            } else if (typeof onCancel === 'function') {
+                onCancel();
+            }
+        };
+    }
+
+    btnSaveNew.onclick = async () => {
+        cleanup();
+        const saved = await performSaveNewMap();
+        if (saved) {
+            onProceed();
+        } else if (typeof onCancel === 'function') {
+            onCancel();
+        }
+    };
+
+    btnDiscard.onclick = () => {
+        cleanup();
+        markMapDirty(false);
+        onProceed();
+    };
+
+    btnCancel.onclick = () => {
+        cleanup();
+        if (typeof onCancel === 'function') {
+            onCancel();
+        }
+    };
+}
+
+document.getElementById('btn-save-new-map').addEventListener('click', async () => {
+    await performSaveNewMap();
+});
+
+document.getElementById('btn-save-map').addEventListener('click', async () => {
+    await performOverwriteMap();
 });
 
 document.getElementById('btn-load-map').addEventListener('click', async () => {
     const select = document.getElementById('map-select');
-    if (!select.value) return alert('Seleziona una mappa da caricare!');
+    const targetMapId = select ? select.value : null;
+    if (!targetMapId) return alert('Seleziona una mappa da caricare!');
     
-    const mapData = await vttDB.getMap(select.value);
-    if (!mapData) return alert('Impossibile leggere la mappa dal database.');
-    
-    currentLoadedMapId = mapData.id;
-    currentLoadedMapName = mapData.name;
-    updateLoadedMapIndicator();
-    
-    currentMapBase64 = mapData.mapImageBase64;
-    const state = mapData.state;
+    // Se la mappa selezionata è già quella attualmente caricata e non ci sono modifiche non salvate
+    if (targetMapId === currentLoadedMapId && !isMapDirty) {
+        return;
+    }
 
-    const img = new Image();
-    img.onload = () => {
-        engine.setMap(img);
+    const prevMapId = currentLoadedMapId;
+
+    checkUnsavedMapChanges(async () => {
+        const mapData = await vttDB.getMap(targetMapId);
+        if (!mapData) return alert('Impossibile leggere la mappa dal database.');
         
-        engine.grid = state.grid || engine.grid;
-        if (state.grid) {
-              document.getElementById('grid-size').value = state.grid.size;
-              if (document.getElementById('grid-size-slider')) document.getElementById('grid-size-slider').value = state.grid.size;
-              document.getElementById('grid-color').value = state.grid.color;
-            document.getElementById('grid-glow').value = state.grid.glow;
+        isSuppressingDirty = true;
+        currentLoadedMapId = mapData.id;
+        currentLoadedMapName = mapData.name;
+        if (select) {
+            select.value = mapData.id;
         }
-        engine.publicStrokes = state.publicStrokes || [];
-        engine.privateStrokes = state.privateStrokes || [];
-        engine.shapes = state.shapes || [];
-        engine.notes = state.notes || [];
-        engine.offsetX = state.offsetX || 0;
-        engine.offsetY = state.offsetY || 0;
-        engine.scale = state.scale || 1;
-        engine.updateWorkspaceTransform();
+        updateLoadedMapIndicator();
         
-        if (state.tokens && state.tokens.length > 0) {
-            engine.tokens = []; // svuota i token vecchi
-            let loadedTokensCount = 0;
-            const totalToLoad = state.tokens.length;
-            const finalizeLoadedTokens = () => {
-                loadedTokensCount++;
-                if (loadedTokensCount === totalToLoad) {
-                    engine.renderAll();
-                    syncState(true, true);
-                    if (typeof tokenPanel !== 'undefined' && tokenPanel && tokenPanel.style.display !== 'none') {
-                        updateMapTokensGallery();
-                    }
+        currentMapBase64 = mapData.mapImageBase64;
+        const state = mapData.state;
+
+        const img = new Image();
+        img.onload = () => {
+            engine.setMap(img);
+            
+            engine.grid = state.grid || engine.grid;
+            if (state.grid) {
+                document.getElementById('grid-size').value = state.grid.size;
+                if (document.getElementById('grid-size-slider')) document.getElementById('grid-size-slider').value = state.grid.size;
+                document.getElementById('grid-color').value = state.grid.color;
+                document.getElementById('grid-glow').value = state.grid.glow;
+            }
+            engine.publicStrokes = state.publicStrokes || [];
+            engine.privateStrokes = state.privateStrokes || [];
+            engine.shapes = state.shapes || [];
+            engine.notes = state.notes || [];
+            engine.offsetX = state.offsetX || 0;
+            engine.offsetY = state.offsetY || 0;
+            engine.scale = state.scale || 1;
+            engine.updateWorkspaceTransform();
+
+            if (state.fogBase64) {
+                engine.applyFogImage(state.fogBase64);
+                setTimeout(() => { syncFog(); }, 150);
+            } else {
+                engine.clearFog();
+                syncFog();
+            }
+
+            const finishLoadingMap = () => {
+                engine.renderAll();
+                syncState(true, true);
+                if (typeof tokenPanel !== 'undefined' && tokenPanel && tokenPanel.style.display !== 'none') {
+                    updateMapTokensGallery();
+                }
+                isSuppressingDirty = false;
+                markMapDirty(false);
+                updateLoadedMapIndicator();
+                if (select) {
+                    select.value = mapData.id;
                 }
             };
-            state.tokens.forEach(t => {
-                if (t.statblock && t.statblock._raw && t.statblock._raw.tokenSrc) {
-                    delete t.statblock._raw.tokenSrc;
-                }
-                const tImg = new Image();
-                tImg.onload = () => {
-                    t.imageObj = tImg;
-                    // Comprimi automaticamente in RAM eventuali vecchi token pesanti salvati nel DB!
-                    getOrCompressTokenSrc(t);
-                    engine.tokens.push(t);
-                    finalizeLoadedTokens();
-                };
-                tImg.onerror = () => {
-                    engine.tokens.push(t);
-                    finalizeLoadedTokens();
-                };
-                tImg.src = t.src;
-            });
-        } else {
-            engine.tokens = [];
-            engine.renderAll();
-            syncState();
-            if (typeof tokenPanel !== 'undefined' && tokenPanel && tokenPanel.style.display !== 'none') {
-                updateMapTokensGallery();
-            }
-        }
 
-        if (state.fogBase64) {
-            engine.applyFogImage(state.fogBase64);
-            setTimeout(() => { syncFog(); }, 150);
+            if (state.tokens && state.tokens.length > 0) {
+                engine.tokens = []; // svuota i token vecchi
+                let loadedTokensCount = 0;
+                const totalToLoad = state.tokens.length;
+                const finalizeLoadedTokens = () => {
+                    loadedTokensCount++;
+                    if (loadedTokensCount === totalToLoad) {
+                        finishLoadingMap();
+                    }
+                };
+                state.tokens.forEach(t => {
+                    if (t.statblock && t.statblock._raw && t.statblock._raw.tokenSrc) {
+                        delete t.statblock._raw.tokenSrc;
+                    }
+                    const tImg = new Image();
+                    tImg.onload = () => {
+                        t.imageObj = tImg;
+                        getOrCompressTokenSrc(t);
+                        engine.tokens.push(t);
+                        finalizeLoadedTokens();
+                    };
+                    tImg.onerror = () => {
+                        engine.tokens.push(t);
+                        finalizeLoadedTokens();
+                    };
+                    tImg.src = t.src;
+                });
+            } else {
+                engine.tokens = [];
+                finishLoadingMap();
+            }
+            
+            network.send({ type: 'MAP_UPDATE', payload: getNetworkMapPayload() });
+            if (typeof showToast === 'function') {
+                const pfx = typeof window.t === 'function' ? window.t('🗺️ Mappa caricata:') : '🗺️ Mappa caricata:';
+                showToast(`${pfx} "${mapData.name}"`);
+            }
+        };
+        img.src = currentMapBase64;
+    }, () => {
+        if (select && prevMapId) {
+            select.value = prevMapId;
         }
-        
-        network.send({ type: 'MAP_UPDATE', payload: getNetworkMapPayload() });
-        if (typeof showToast === 'function') {
-            const pfx = typeof window.t === 'function' ? window.t('🗺️ Mappa caricata:') : '🗺️ Mappa caricata:';
-            showToast(`${pfx} "${mapData.name}"`);
-        }
-    };
-    img.src = currentMapBase64;
+    });
 });
 
 // -- EXPORT / IMPORT --
@@ -1410,6 +1621,7 @@ document.getElementById('btn-delete-map').addEventListener('click', async () => 
         if (currentLoadedMapId === id) {
             currentLoadedMapId = null;
             currentLoadedMapName = "";
+            markMapDirty(false);
         }
         await refreshMaps(document.getElementById('campaign-select').value, (currentLoadedMapId || ""));
         updateLoadedMapIndicator();
@@ -1523,17 +1735,20 @@ document.querySelectorAll('.tool-btn').forEach(btn => {
 document.getElementById('btn-reset-fog').addEventListener('click', () => {
     engine.resetFog();
     syncFog();
+    markMapDirty(true);
 });
 
 document.getElementById('btn-remove-fog').addEventListener('click', () => {
     engine.clearFog();
     syncFog();
+    markMapDirty(true);
 });
 
 document.getElementById('btn-clear-drawings-pub').addEventListener('click', () => {
     engine.publicStrokes = [];
     engine.renderAll();
     syncState(true);
+    markMapDirty(true);
     if (isViewSyncActive) {
         sendViewSync(true);
     }
@@ -2640,6 +2855,7 @@ function addTokenToMap(name, src, explicitHp = null, explicitCategory = null, te
 
         engine.renderAll();
         if (isVisible) syncState(true, false);
+        else markMapDirty(true);
         if (typeof tokenPanel !== 'undefined' && tokenPanel && tokenPanel.style.display !== 'none') {
             updateMapTokensGallery();
         }
@@ -3802,12 +4018,14 @@ function handleEnd(e) {
                 });
                 activeStroke._groupDragOffsets = null;
             }
+            if (currentMapBase64) markMapDirty(true);
         } else if (activeStroke.id && activeStroke.id.startsWith('aoe_')) {
             network.send({
                 type: 'REMOTE_SHAPE_MOVE',
                 final: true,
                 payload: { id: activeStroke.id, x: activeStroke.x, y: activeStroke.y }
             });
+            if (currentMapBase64) markMapDirty(true);
         } else {
             syncState(true);
         }
@@ -3823,8 +4041,10 @@ function handleEnd(e) {
         }
     } else if (currentTool.startsWith('draw-')) {
         syncState(true);
+        markMapDirty(true);
     } else if (currentTool.startsWith('fog-')) {
         syncFog();
+        markMapDirty(true);
     }
 
     isDragging = false;
