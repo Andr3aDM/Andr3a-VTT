@@ -373,6 +373,7 @@ network.onMessage((data, peerId) => {
             if (data.payload.widthFt !== undefined) s.widthFt = data.payload.widthFt;
             s.angle = data.payload.angle;
             s.color = data.payload.color;
+            if (data.payload.highlightTokens !== undefined) s.highlightTokens = data.payload.highlightTokens;
             engine.renderAll();
             syncState(true);
         }
@@ -2604,6 +2605,8 @@ window.updateSelectedTokenControls = function(ent) {
     if (auraSize) auraSize.step = (aura.unit || 'ft') === 'ft' ? '5' : '1.5';
     const auraColor = document.getElementById('token-aura-color');
     if (auraColor) auraColor.value = aura.color || '#ffff00';
+    const auraHl = document.getElementById('token-aura-highlight');
+    if (auraHl) auraHl.checked = aura.highlightTokens !== false;
 
     if (typeof window.renderConditionsList === 'function') {
         window.renderConditionsList();
@@ -3236,6 +3239,7 @@ function updateTokenAuraCond() {
     const squares = unit === 'ft' ? sizeRaw / 5 : sizeRaw / 1.5;
     const isActive = document.getElementById('token-aura-active').checked;
     const auraColor = document.getElementById('token-aura-color').value;
+    const isHighlight = document.getElementById('token-aura-highlight') ? document.getElementById('token-aura-highlight').checked : true;
     
     targets.forEach(token => {
         token.aura = {
@@ -3243,7 +3247,8 @@ function updateTokenAuraCond() {
             sizeRaw: sizeRaw,
             unit: unit,
             sizePx: squares * engine.grid.size,
-            color: auraColor
+            color: auraColor,
+            highlightTokens: isHighlight
         };
     });
     
@@ -3252,6 +3257,7 @@ function updateTokenAuraCond() {
 }
 
 document.getElementById('token-aura-active').addEventListener('change', updateTokenAuraCond);
+document.getElementById('token-aura-highlight')?.addEventListener('change', updateTokenAuraCond);
 document.getElementById('token-aura-size').addEventListener('input', updateTokenAuraCond);
 document.getElementById('token-aura-unit').addEventListener('change', (e) => {
     const input = document.getElementById('token-aura-size');
@@ -3403,6 +3409,8 @@ document.getElementById('btn-add-aoe').addEventListener('click', () => {
     const color = document.getElementById('aoe-color').value;
     const centerWorld = engine.screenToWorld(engine.layers.ui.width/2, engine.layers.ui.height/2);
 
+    const highlightTokens = document.getElementById('aoe-highlight-tokens') ? document.getElementById('aoe-highlight-tokens').checked : true;
+
     engine.shapes.push({
         id: 'aoe_' + Date.now(),
         type: type,
@@ -3412,11 +3420,24 @@ document.getElementById('btn-add-aoe').addEventListener('click', () => {
         widthFt: widthFt,
         color: color,
         angle: 0,
-        visible: true
+        visible: true,
+        highlightTokens: highlightTokens
     });
     engine.renderAll();
     syncState();
 });
+
+const shapeEditHighlight = document.getElementById('shape-edit-highlight-tokens');
+if (shapeEditHighlight) {
+    shapeEditHighlight.addEventListener('change', (e) => {
+        const shape = engine.shapes.find(s => s.id === engine.selectedShapeId);
+        if (shape) {
+            shape.highlightTokens = e.target.checked;
+            engine.renderTokensLayer();
+            syncState();
+        }
+    });
+}
 
 document.getElementById('btn-shape-rot-left').addEventListener('click', () => {
     const shape = engine.shapes.find(s => s.id === engine.selectedShapeId);
@@ -3696,6 +3717,8 @@ function handleStart(e) {
                 document.getElementById('shape-edit-width').step = '1';
                 document.getElementById('shape-edit-size').value = Math.round(ent.sizeFt * 10) / 10;
                 document.getElementById('shape-edit-width').value = ent.widthFt !== undefined ? Math.round(ent.widthFt * 10) / 10 : 5;
+                const highlightCb = document.getElementById('shape-edit-highlight-tokens');
+                if (highlightCb) highlightCb.checked = ent.highlightTokens !== false;
                 activeStroke = ent;
             }
         } else {

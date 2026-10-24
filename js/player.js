@@ -596,6 +596,7 @@ document.querySelectorAll('.ptool-btn').forEach(b => b.style.opacity = b.classLi
 // Shape spawners
 function spawnShape(type) {
     const centerPos = engine.screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
+    const highlight = document.getElementById('pshape-highlight') ? document.getElementById('pshape-highlight').checked : true;
     const shape = {
         id: 'aoe_' + Date.now() + Math.floor(Math.random()*1000),
         type: type === 'sphere' ? 'circle' : type,
@@ -604,6 +605,7 @@ function spawnShape(type) {
         widthFt: type === 'line' ? 5 : undefined,
         angle: 0,
         visible: true,
+        highlightTokens: highlight,
         owner: network.playerName,
         color: document.getElementById('player-color').value
     };
@@ -942,6 +944,8 @@ function pHandleEnd(e) {
                     document.getElementById('ptoken-aura-active').checked = aura.active || false;
                     document.getElementById('ptoken-aura-size').value = aura.sizeRaw || 15;
                     document.getElementById('ptoken-aura-color').value = aura.color || '#ffff00';
+                    const auraHl = document.getElementById('ptoken-aura-highlight');
+                    if (auraHl) auraHl.checked = aura.highlightTokens !== false;
                 }
             }        } else if (activeToken.type === 'shape') {
             activeToken.ref._lastLocalEdit = Date.now();
@@ -976,6 +980,8 @@ function pHandleEnd(e) {
                 document.getElementById('pshape-width').value = Number.isInteger(wVal) ? wVal : wVal.toFixed(1);
                 document.getElementById('pshape-angle').value = activeToken.ref.angle || 0;
                 document.getElementById('pshape-color').value = activeToken.ref.color || '#00ffff';
+                const hlEl = document.getElementById('pshape-highlight');
+                if (hlEl) hlEl.checked = activeToken.ref.highlightTokens !== false;
                 window.editingPlayerShape = activeToken.ref;
             }
         }
@@ -1039,6 +1045,8 @@ function updatePlayerShape() {
     window.editingPlayerShape.widthFt = unit === 'm' ? (_w / 1.5) * 5 : _w;
     window.editingPlayerShape.angle = parseInt(document.getElementById('pshape-angle').value) || 0;
     window.editingPlayerShape.color = document.getElementById('pshape-color').value;
+    const hlEl = document.getElementById('pshape-highlight');
+    if (hlEl) window.editingPlayerShape.highlightTokens = hlEl.checked;
     window.editingPlayerShape._lastLocalEdit = Date.now();
     engine.renderAll();
     
@@ -1051,6 +1059,7 @@ document.getElementById('pshape-size').addEventListener('input', updatePlayerSha
 document.getElementById('pshape-width').addEventListener('input', updatePlayerShape);
 document.getElementById('pshape-angle').addEventListener('input', updatePlayerShape);
 document.getElementById('pshape-color').addEventListener('input', updatePlayerShape);
+document.getElementById('pshape-highlight')?.addEventListener('change', updatePlayerShape);
 document.getElementById('pshape-unit').addEventListener('change', (e) => {
     const input = document.getElementById('pshape-size');
     const inputW = document.getElementById('pshape-width');
@@ -1096,12 +1105,14 @@ function updatePlayerTokenAura() {
     const unit = document.getElementById('ptoken-aura-unit').value;
     const squares = unit === 'ft' ? sizeRaw / 5 : sizeRaw / 1.5;
     
+    const auraHl = document.getElementById('ptoken-aura-highlight');
     window.editingPlayerToken.aura = {
         active: document.getElementById('ptoken-aura-active').checked,
         sizeRaw: sizeRaw,
         unit: unit,
         sizePx: squares * engine.grid.size,
-        color: document.getElementById('ptoken-aura-color').value
+        color: document.getElementById('ptoken-aura-color').value,
+        highlightTokens: auraHl ? auraHl.checked : true
     };
     
     engine.renderAll();
@@ -1122,6 +1133,7 @@ function updatePlayerTokenAura() {
     });
 }
 document.getElementById('ptoken-aura-active').addEventListener('change', updatePlayerTokenAura);
+document.getElementById('ptoken-aura-highlight')?.addEventListener('change', updatePlayerTokenAura);
 document.getElementById('ptoken-aura-size').addEventListener('input', updatePlayerTokenAura);
 document.getElementById('ptoken-aura-unit').addEventListener('change', (e) => {
     const input = document.getElementById('ptoken-aura-size');

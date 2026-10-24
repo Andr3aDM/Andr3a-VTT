@@ -86,6 +86,11 @@
         <label style="font-size:12px;">Colore Aura:</label>
         <input type="color" id="ptoken-aura-color" value="#ffff00" style="width: 100%; height: 30px; padding: 0; border: none; background: none; margin-bottom: 10px;">
         
+        <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom: 10px; color:#ffee58;">
+            <input type="checkbox" id="ptoken-aura-highlight" checked style="cursor:pointer;">
+            <span data-i18n="Evidenzia token nell'area">🎯 Evidenzia token nell'area</span>
+        </label>
+        
         <button id="pbtn-close-token" style="width: 100%; padding: 5px; background: #555; color: white; border: none; cursor: pointer; border-radius:4px;">Chiudi</button>
     </div>
 
@@ -109,6 +114,11 @@
         
         <label style="font-size:12px;">Colore:</label>
         <input type="color" id="pshape-color" value="#00ffff" style="width: 100%; height: 30px; padding: 0; border: none; background: none; margin-bottom: 10px;">
+        
+        <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom: 10px; color:#00ffff;">
+            <input type="checkbox" id="pshape-highlight" checked style="cursor:pointer;">
+            <span data-i18n="Evidenzia token coinvolti">🎯 Evidenzia token coinvolti</span>
+        </label>
         
         <button id="pbtn-delete-shape" style="width: 100%; padding: 5px; background: #cc0000; color: white; border: none; cursor: pointer; border-radius:4px; margin-bottom: 5px;">Elimina Magia</button>
         <button id="pbtn-close-shape" style="width: 100%; padding: 5px; background: #555; color: white; border: none; cursor: pointer; border-radius:4px;">Chiudi</button>
@@ -232,12 +242,12 @@
     </div>
     <!-- Fine Dadi e Audio -->
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
-    <script src="js/engine.js?v=128"></script>
+    <script src="js/engine.js?v=130"></script>
     <script src="js/network.js?v=6"></script>
     <script src="js/dice.js?v=123"></script>
     <script src="js/audio.js?v=117"></script>
     <script src="js/pcsheet.js?v=2"></script>
-    <script src="js/player.js?v=129"></script>
+    <script src="js/player.js?v=131"></script>
 <script src="js/lang.js?v=7"></script>
 
     

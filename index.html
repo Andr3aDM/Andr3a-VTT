@@ -161,7 +161,7 @@
                 </div>
 
                 <!-- Riga 5: Aura Mobile Compatta -->
-                <div style="display: flex; gap: 5px; margin-bottom: 6px; align-items:center; border-top: 1px solid #444; padding-top: 5px;">
+                <div style="display: flex; gap: 5px; margin-bottom: 3px; align-items:center; border-top: 1px solid #444; padding-top: 5px;">
                     <label style="display:flex; align-items:center; gap:4px; font-size:11px; font-weight:bold; color: #ffee58; cursor:pointer; white-space:nowrap;" title="Attiva/Disattiva Aura">
                         <input type="checkbox" id="token-aura-active">
                         <span>✨ Aura:</span>
@@ -172,6 +172,12 @@
                         <option value="m">m</option>
                     </select>
                     <input type="color" id="token-aura-color" value="#ffff00" style="width: 28px; height: 24px; border: none; border-radius: 3px; cursor: pointer; background: transparent; padding: 0;" title="Colore Aura">
+                </div>
+                <div style="display: flex; gap: 5px; margin-bottom: 6px; align-items:center; justify-content: flex-end;">
+                    <label style="display:flex; align-items:center; gap:4px; font-size:10.5px; color:#ffee58; cursor:pointer;" title="Evidenzia token all'interno dell'aura">
+                        <input type="checkbox" id="token-aura-highlight" checked style="cursor:pointer;">
+                        <span data-i18n="Evidenzia token nell'area">🎯 Evidenzia token nell'area</span>
+                    </label>
                 </div>
 
                 <!-- Riga 6: Stato / Condizione -->
@@ -683,6 +689,10 @@
                 </select>
                 <input type="color" id="aoe-color" value="#ff0000" style="flex: 1; height: 28px; cursor: pointer; border: none; background: none;" title="Colore">
             </div>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer; color: #ddd; margin: 2px 0;">
+                <input type="checkbox" id="aoe-highlight-tokens" checked style="cursor: pointer;">
+                <span data-i18n="Evidenzia token nell'area">🎯 Evidenzia token nell'area</span>
+            </label>
             <button id="btn-add-aoe" style="width: 100%; background: #ff5722; color: white; font-weight: bold; border: none; padding: 6px; border-radius: 4px; cursor: pointer; margin-top: 2px;">+ Crea AoE al Centro Mappa</button>
         </div>
 
@@ -702,6 +712,10 @@
                 </select>
                 <button id="btn-delete-shape" style="background-color: #d32f2f; color: white; border: none; padding: 5px 8px; border-radius: 3px; cursor: pointer; font-weight: bold; flex:1.5;">Elimina</button>
             </div>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer; color: #00bcd4; margin-top: 2px;">
+                <input type="checkbox" id="shape-edit-highlight-tokens" checked style="cursor: pointer;">
+                <span data-i18n="Evidenzia token nell'area">🎯 Evidenzia token nell'area</span>
+            </label>
         </div>
     </div>
 
@@ -883,11 +897,11 @@
     </div>
 
     <script src="js/network.js?v=6"></script>
-    <script src="js/engine.js?v=128"></script>
+    <script src="js/engine.js?v=130"></script>
 
     <script src="js/dice.js?v=123"></script>
     <script src="js/audio.js?v=117"></script>
-    <script src="js/dm.js?v=142"></script>
+    <script src="js/dm.js?v=144"></script>
     <script src="js/compendium.js?v=16"></script>
     <script src="js/pcsheet.js?v=2"></script>
     <script src="js/initiative.js?v=25"></script>

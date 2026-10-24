@@ -149,6 +149,7 @@ class VTTEngine {
             this.ctx.tokens.clearRect(0, 0, w, h);
             this.renderShapes();
             this.renderTokens();
+            this.updateTokensInShapes();
         }
         this.renderUI();
     }
@@ -182,6 +183,7 @@ class VTTEngine {
         this.renderDrawings();
         this.renderShapes(); // Draw AoE before tokens
         this.renderTokens();
+        this.updateTokensInShapes();
         this.renderUI();
     }
 
@@ -283,6 +285,218 @@ class VTTEngine {
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, -2, 15, 4);
                 ctx.restore();
+            }
+        });
+    }
+
+    hexToRgba(hexOrColor, alpha = 1) {
+        if (!hexOrColor) return `rgba(255, 87, 34, ${alpha})`;
+        if (hexOrColor.startsWith('rgba')) {
+            return hexOrColor.replace(/[\d\.]+\)$/, `${alpha})`);
+        }
+        if (hexOrColor.startsWith('rgb')) {
+            return hexOrColor.replace('rgb', 'rgba').replace(')', `, ${alpha})`);
+        }
+        let c = hexOrColor.replace('#', '').trim();
+        if (c.length === 3) c = c.split('').map(x => x + x).join('');
+        if (c.length >= 6) {
+            const num = parseInt(c.slice(0, 6), 16);
+            if (!isNaN(num)) {
+                const r = (num >> 16) & 255;
+                const g = (num >> 8) & 255;
+                const b = num & 255;
+                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            }
+        }
+        return `rgba(255, 87, 34, ${alpha})`;
+    }
+
+    isTokenInShape(token, shape, pixelsPerFoot) {
+        if (!token || !shape) return false;
+        const sizePx = (shape.sizeFt || 15) * pixelsPerFoot;
+        
+        // 1. Cerchio / Sfera
+        if (shape.type === 'circle') {
+            const cx = Math.max(token.x, Math.min(shape.x, token.x + token.width));
+            const cy = Math.max(token.y, Math.min(shape.y, token.y + token.height));
+            return ((shape.x - cx) ** 2 + (shape.y - cy) ** 2) <= sizePx * sizePx;
+        }
+        
+        // 2. Quadrato (Cubo) / Linea (Rettangolo Orientato)
+        if (shape.type === 'square' || shape.type === 'line') {
+            const isLine = shape.type === 'line';
+            const halfWidth = isLine ? (((shape.widthFt || 5) / 2) * pixelsPerFoot) : (sizePx / 2);
+            const minL_X = isLine ? 0 : -sizePx / 2;
+            const maxL_X = isLine ? sizePx : sizePx / 2;
+            const minL_Y = -halfWidth;
+            const maxL_Y = halfWidth;
+            
+            const shapeAngle = shape.angle || 0;
+            const rad = -shapeAngle * Math.PI / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            
+            const toLocal = (px, py) => {
+                const dx = px - shape.x;
+                const dy = py - shape.y;
+                return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+            };
+            
+            const c1 = toLocal(token.x, token.y);
+            const c2 = toLocal(token.x + token.width, token.y);
+            const c3 = toLocal(token.x + token.width, token.y + token.height);
+            const c4 = toLocal(token.x, token.y + token.height);
+            
+            const minLX = Math.min(c1.x, c2.x, c3.x, c4.x);
+            const maxLX = Math.max(c1.x, c2.x, c3.x, c4.x);
+            if (maxLX < minL_X || minLX > maxL_X) return false;
+            
+            const minLY = Math.min(c1.y, c2.y, c3.y, c4.y);
+            const maxLY = Math.max(c1.y, c2.y, c3.y, c4.y);
+            if (maxLY < minL_Y || minLY > maxL_Y) return false;
+            
+            // Verifica separazione sugli assi del mondo
+            const wrad = shapeAngle * Math.PI / 180;
+            const wcos = Math.cos(wrad);
+            const wsin = Math.sin(wrad);
+            const toWorld = (lx, ly) => ({
+                x: shape.x + lx * wcos - ly * wsin,
+                y: shape.y + lx * wsin + ly * wcos
+            });
+            
+            const sc1 = toWorld(minL_X, minL_Y);
+            const sc2 = toWorld(maxL_X, minL_Y);
+            const sc3 = toWorld(maxL_X, maxL_Y);
+            const sc4 = toWorld(minL_X, maxL_Y);
+            
+            const minWX = Math.min(sc1.x, sc2.x, sc3.x, sc4.x);
+            const maxWX = Math.max(sc1.x, sc2.x, sc3.x, sc4.x);
+            if (maxWX < token.x || minWX > token.x + token.width) return false;
+            
+            const minWY = Math.min(sc1.y, sc2.y, sc3.y, sc4.y);
+            const maxWY = Math.max(sc1.y, sc2.y, sc3.y, sc4.y);
+            if (maxWY < token.y || minWY > token.y + token.height) return false;
+            
+            return true;
+        }
+        
+        // 3. Cono
+        if (shape.type === 'cone') {
+            const cx = Math.max(token.x, Math.min(shape.x, token.x + token.width));
+            const cy = Math.max(token.y, Math.min(shape.y, token.y + token.height));
+            if ((shape.x - cx)**2 + (shape.y - cy)**2 > sizePx * sizePx) return false;
+            
+            if (shape.x >= token.x && shape.x <= token.x + token.width && shape.y >= token.y && shape.y <= token.y + token.height) return true;
+            
+            const shapeAngleRad = (shape.angle || 0) * Math.PI / 180;
+            const halfAngle = Math.atan(0.5);
+            
+            const testPoints = [
+                { x: token.x, y: token.y },
+                { x: token.x + token.width, y: token.y },
+                { x: token.x + token.width, y: token.y + token.height },
+                { x: token.x, y: token.y + token.height },
+                { x: token.x + token.width / 2, y: token.y + token.height / 2 },
+                { x: token.x + token.width / 2, y: token.y },
+                { x: token.x + token.width / 2, y: token.y + token.height },
+                { x: token.x, y: token.y + token.height / 2 },
+                { x: token.x + token.width, y: token.y + token.height / 2 }
+            ];
+            
+            for (let i = 0; i < testPoints.length; i++) {
+                const pt = testPoints[i];
+                const dSq = (pt.x - shape.x)**2 + (pt.y - shape.y)**2;
+                if (dSq <= sizePx * sizePx) {
+                    const a = Math.atan2(pt.y - shape.y, pt.x - shape.x);
+                    let diff = (a - shapeAngleRad + Math.PI * 3) % (Math.PI * 2) - Math.PI;
+                    if (Math.abs(diff) <= halfAngle) return true;
+                }
+            }
+            
+            function segIntersectsBox(x0, y0, x1, y1, minX, minY, maxX, maxY) {
+                let dx = x1 - x0, dy = y1 - y0;
+                let p = [-dx, dx, -dy, dy];
+                let q = [x0 - minX, maxX - x0, y0 - minY, maxY - y0];
+                let u1 = 0, u2 = 1;
+                for (let i = 0; i < 4; i++) {
+                    if (p[i] === 0) {
+                        if (q[i] < 0) return false;
+                    } else {
+                        let t = q[i] / p[i];
+                        if (p[i] < 0) { if (t > u2) return false; if (t > u1) u1 = t; }
+                        else { if (t < u1) return false; if (t < u2) u2 = t; }
+                    }
+                }
+                return true;
+            }
+            
+            const a1 = shapeAngleRad - halfAngle;
+            const a2 = shapeAngleRad + halfAngle;
+            if (segIntersectsBox(shape.x, shape.y, shape.x + Math.cos(a1) * sizePx, shape.y + Math.sin(a1) * sizePx, token.x, token.y, token.x + token.width, token.y + token.height)) return true;
+            if (segIntersectsBox(shape.x, shape.y, shape.x + Math.cos(a2) * sizePx, shape.y + Math.sin(a2) * sizePx, token.x, token.y, token.x + token.width, token.y + token.height)) return true;
+            
+            return false;
+        }
+        
+        return false;
+    }
+
+    updateTokensInShapes() {
+        if (!this.tokens || this.tokens.length === 0) {
+            if (this._tokensWithAoE && this._tokensWithAoE.size > 0) {
+                this._tokensWithAoE.clear();
+            }
+            return;
+        }
+        
+        if (!this._tokensWithAoE) {
+            this._tokensWithAoE = new Map();
+        } else {
+            this._tokensWithAoE.clear();
+        }
+        
+        const pixelsPerFoot = (this.grid && this.grid.size ? this.grid.size : 50) / 5;
+        
+        const activeShapes = (this.shapes || []).filter(s => {
+            if (!this.isDM && !s.visible) return false;
+            return s.highlightTokens !== false;
+        });
+
+        const activeTokenAuras = this.tokens.filter(t => {
+            if (!this.isDM && !t.visible) return false;
+            return t.aura && t.aura.active && t.aura.sizePx > 0 && t.aura.highlightTokens !== false;
+        });
+        
+        if (activeShapes.length === 0 && activeTokenAuras.length === 0) return;
+        
+        this.tokens.forEach(token => {
+            if (!this.isDM && !token.visible) return;
+            const colors = [];
+
+            // 1. Sagome AoE sulla mappa
+            activeShapes.forEach(shape => {
+                if (this.isTokenInShape(token, shape, pixelsPerFoot)) {
+                    colors.push(shape.color || '#ff5722');
+                }
+            });
+
+            // 2. Aure mobili emanate da altri token
+            activeTokenAuras.forEach(sourceToken => {
+                if (sourceToken.id === token.id) return;
+                const acx = sourceToken.x + sourceToken.width / 2;
+                const acy = sourceToken.y + sourceToken.height / 2;
+                const ar = sourceToken.aura.sizePx;
+                
+                const cx = Math.max(token.x, Math.min(acx, token.x + token.width));
+                const cy = Math.max(token.y, Math.min(acy, token.y + token.height));
+                const distSq = (acx - cx) ** 2 + (acy - cy) ** 2;
+                if (distSq <= ar * ar) {
+                    colors.push(sourceToken.aura.color || '#ffff00');
+                }
+            });
+
+            if (colors.length > 0) {
+                this._tokensWithAoE.set(token.id, colors);
             }
         });
     }
@@ -403,11 +617,16 @@ class VTTEngine {
 
         // Draw Overlays: Nome, Barra PV, e Condizioni in PRIMO PIANO
         this.tokens.forEach(token => {
-            if (!this.isDM && !token.visible) return;
-            
-            const px = token.x;
-            const py = token.y;
-            const sizePx = token.width;
+            this.drawTokenOverlays(ctx, token);
+        });
+    }
+
+    drawTokenOverlays(ctx, token) {
+        if (!this.isDM && !token.visible) return;
+        
+        const px = token.x;
+        const py = token.y;
+        const sizePx = token.width;
             
             // 1. Targhetta con Nome (ALL'INTERNO del token, ZONA ALTA)
             const displayName = token.name || (token.originalName ? token.originalName.replace(/\.[^/.]+$/, "") : '');
@@ -861,7 +1080,6 @@ class VTTEngine {
                 ctx.lineWidth = 4;
                 ctx.strokeRect(token.x, token.y, token.width, token.height);
             }
-        });
     }
 
     renderDrawings() {
@@ -992,29 +1210,128 @@ class VTTEngine {
         }
         
         let hasActiveInitiative = (this.initiative && this.initiative.active && this.initiative.participants.length > 0);
-        
+        let turnToken = null;
         if (hasActiveInitiative) {
             const currentParticipant = this.initiative.participants[this.initiative.currentTurnIndex];
             if (currentParticipant && currentParticipant.isToken && currentParticipant.tokenId) {
-                const token = this.tokens.find(t => t.id === currentParticipant.tokenId);
-                if (token && (this.isDM || token.visible)) {
-                    // Pulsing highlight
-                    const pulse = (Math.sin(Date.now() / 200) + 1) / 2; // 0 to 1
-                    ctx.strokeStyle = `rgba(0, 255, 0, ${0.4 + pulse * 0.6})`;
-                    ctx.lineWidth = 6 * this.scale;
-                    
-                    const px = (token.x + token.width/2) * this.scale + this.offsetX;
-                    const py = (token.y + token.height/2) * this.scale + this.offsetY;
-                    const r = (token.width/2 + 10) * this.scale;
-                    
-                    ctx.beginPath();
-                    ctx.arc(px, py, r, 0, Math.PI * 2);
-                    ctx.stroke();
+                const t = this.tokens.find(tok => tok.id === currentParticipant.tokenId);
+                if (t && (this.isDM || t.visible)) {
+                    turnToken = t;
                 }
             }
         }
 
-        
+        const pulse = (Math.sin(now / 200) + 1) / 2; // 0 to 1
+        const hasAoEHighlights = this._tokensWithAoE && this._tokensWithAoE.size > 0;
+
+        // Disegna anelli Turno (verde, interno) e AoE (colorato/alternato, esterno)
+        if (turnToken || hasAoEHighlights) {
+            ctx.save();
+            ctx.translate(this.offsetX, this.offsetY);
+            ctx.scale(this.scale, this.scale);
+
+            // Raccogli tutti i token che necessitano di anelli
+            const tokensWithRings = new Set();
+            if (turnToken) tokensWithRings.add(turnToken);
+            if (hasAoEHighlights) {
+                this._tokensWithAoE.forEach((colors, tokenId) => {
+                    const tok = this.tokens.find(t => t.id === tokenId);
+                    if (tok && (this.isDM || tok.visible)) {
+                        tokensWithRings.add(tok);
+                    }
+                });
+            }
+
+            tokensWithRings.forEach(token => {
+                const cx = token.x + token.width / 2;
+                const cy = token.y + token.height / 2;
+                const R = token.width / 2;
+                const isCurrentTurn = (turnToken && turnToken.id === token.id);
+                const aoeColors = (this._tokensWithAoE && this._tokensWithAoE.get(token.id)) || null;
+
+                // 1. AURA ESTERNA: AoE (se presente) - Subito dopo il token, raggio R + 4
+                if (aoeColors && aoeColors.length > 0) {
+                    let aoeColor = aoeColors[0];
+                    if (aoeColors.length > 1) {
+                        // Alternanza perfetta tra colori sincronizzata al punto minimo del respiro
+                        const cycleIndex = Math.floor((now / 200 - Math.PI * 1.5) / (2 * Math.PI));
+                        const safeIndex = ((cycleIndex % aoeColors.length) + aoeColors.length) % aoeColors.length;
+                        aoeColor = aoeColors[safeIndex];
+                    }
+                    const r_aoe = R + 4;
+                    ctx.save();
+
+                    // Livello 1: Sottile contorno scuro per contrasto su qualsiasi sfondo/mappa
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+                    ctx.lineWidth = 6;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    // Livello 2: Bagliore neon vibrante del colore dell'area
+                    const aoeAlpha = 0.75 + pulse * 0.25;
+                    ctx.strokeStyle = this.hexToRgba(aoeColor, aoeAlpha);
+                    ctx.lineWidth = 4.5;
+                    ctx.shadowColor = aoeColor;
+                    ctx.shadowBlur = 10 + pulse * 6;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    // Livello 3: Bagliore chiaro bianco ad alta visibilità lungo il bordo
+                    ctx.shadowColor = '#ffffff';
+                    ctx.shadowBlur = 4;
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${0.75 + pulse * 0.25})`;
+                    ctx.lineWidth = 1.6;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.restore();
+                }
+
+                // 2. AURA INTERNA: Turno Iniziativa (se è il suo turno) - Leggermente interno al bordo, raggio R - 3
+                if (isCurrentTurn) {
+                    const r_turn = Math.max(1, R - 3);
+                    ctx.save();
+
+                    // Livello 1: Bordo scuro di stacco
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+                    ctx.lineWidth = 5;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    // Livello 2: Verde vivo con bagliore
+                    const turnAlpha = 0.75 + pulse * 0.25;
+                    ctx.strokeStyle = `rgba(0, 255, 0, ${turnAlpha})`;
+                    ctx.lineWidth = 3.5;
+                    ctx.shadowColor = '#00ff00';
+                    ctx.shadowBlur = 8 + pulse * 4;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    // Livello 3: Anima bianca brillante per risaltare sempre
+                    ctx.shadowColor = '#ffffff';
+                    ctx.shadowBlur = 3;
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${0.7 + pulse * 0.3})`;
+                    ctx.lineWidth = 1.3;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.restore();
+                }
+
+                // 3. OVERLAYS IN PRIMO PIANO: Nome, Barra PV, Condizioni
+                // Disegnati sopra gli anelli così le scritte, barre e icone restano sempre nitide in primo piano
+                this.drawTokenOverlays(ctx, token);
+            });
+
+            ctx.restore();
+        }
+
         if (this.lasso) {
             ctx.strokeStyle = 'rgba(0, 153, 255, 0.8)';
             ctx.fillStyle = 'rgba(0, 153, 255, 0.2)';
@@ -1027,7 +1344,7 @@ class VTTEngine {
             ctx.strokeRect(x, y, w, h);
         }
         
-        if (hasActivePings || hasActiveInitiative || hasActiveLasers) {
+        if (hasActivePings || hasActiveInitiative || hasActiveLasers || hasAoEHighlights) {
             if (!this._uiAnimFrameId) {
                 this._uiAnimFrameId = requestAnimationFrame(() => {
                     this._uiAnimFrameId = null;
