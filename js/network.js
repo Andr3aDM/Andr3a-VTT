@@ -225,6 +225,7 @@ class NetworkManager {
             t === 'PLAYER_MOVE_TOKEN' ||
             t === 'PLAYER_MOVE_SHAPE' ||
             (t === 'REMOTE_TOKEN_MOVE' && !data.final) ||
+            (t === 'REMOTE_TOKENS_MOVE_BATCH' && !data.final) ||
             (t === 'REMOTE_SHAPE_MOVE' && !data.final)
         );
     }

@@ -20,7 +20,8 @@ class VTTEngine {
             drawPublic: this.createCanvas('draw-public-layer', 2),
             drawPrivate: this.createCanvas('draw-private-layer', 3),
             tokens: this.createCanvas('tokens-layer', 4),
-            fog: this.createCanvas('fog-layer', 5)
+            tokenEffects: this.createCanvas('token-effects-layer', 5),
+            fog: this.createCanvas('fog-layer', 6)
         };
 
         if (this.isDM) {
@@ -30,7 +31,7 @@ class VTTEngine {
         this.layers.ui = document.createElement('canvas');
         this.layers.ui.id = 'ui-layer';
         this.layers.ui.style.position = 'absolute';
-        this.layers.ui.style.zIndex = 6;
+        this.layers.ui.style.zIndex = 7;
         this.layers.ui.style.top = '0';
         this.layers.ui.style.left = '0';
         this.container.appendChild(this.layers.ui);
@@ -41,6 +42,7 @@ class VTTEngine {
             drawPublic: this.layers.drawPublic.getContext('2d'),
             drawPrivate: this.layers.drawPrivate.getContext('2d'),
             tokens: this.layers.tokens.getContext('2d'),
+            tokenEffects: this.layers.tokenEffects.getContext('2d'),
             fog: this.layers.fog.getContext('2d'),
             ui: this.layers.ui.getContext('2d')
         };
@@ -64,6 +66,7 @@ class VTTEngine {
         this.selectedTokens = new Set();
         this.lasso = null;
         this.selectedShapeId = null;
+        this._tokenLayerRenderPending = false;
 
         window.addEventListener('resize', () => this.resizeUI());
         this.resizeUI();
@@ -76,7 +79,7 @@ class VTTEngine {
         canvas.style.zIndex = zIndex;
         canvas.style.top = '0';
         canvas.style.left = '0';
-        if (zIndex < 6) canvas.style.pointerEvents = 'none';
+        canvas.style.pointerEvents = 'none';
         this.workspace.appendChild(canvas);
         return canvas;
     }
@@ -142,6 +145,7 @@ class VTTEngine {
     }
 
     renderTokensLayer() {
+        this._tokenLayerRenderPending = false;
         if (!this.mapImage) return;
         const w = this.mapImage.width;
         const h = this.mapImage.height;
@@ -149,9 +153,19 @@ class VTTEngine {
             this.ctx.tokens.clearRect(0, 0, w, h);
             this.renderShapes();
             this.renderTokens();
+            this.renderShapeHandles();
             this.updateTokensInShapes();
         }
         this.renderUI();
+    }
+
+    requestTokenLayerRender() {
+        if (this._tokenLayerRenderPending) return;
+        this._tokenLayerRenderPending = true;
+        requestAnimationFrame(() => {
+            this._tokenLayerRenderPending = false;
+            this.renderTokensLayer();
+        });
     }
 
     renderAll() {
@@ -183,6 +197,7 @@ class VTTEngine {
         this.renderDrawings();
         this.renderShapes(); // Draw AoE before tokens
         this.renderTokens();
+        this.renderShapeHandles(); // Draw handles/badges in foreground over tokens
         this.updateTokensInShapes();
         this.renderUI();
     }
@@ -194,6 +209,7 @@ class VTTEngine {
 
         this.ctx.grid.clearRect(0, 0, w, h);
         this.ctx.tokens.clearRect(0, 0, w, h);
+        if (this.ctx.tokenEffects) this.ctx.tokenEffects.clearRect(0, 0, w, h);
         this.ctx.drawPublic.clearRect(0, 0, w, h);
         this.ctx.drawPrivate.clearRect(0, 0, w, h);
     }
@@ -268,24 +284,104 @@ class VTTEngine {
             }
             ctx.fill();
             ctx.stroke();
-            ctx.restore();            // Maniglione centrale solo per DM o se il giocatore è l'owner della magia
+            ctx.restore();
+        });
+    }
+
+    renderShapeHandles() {
+        const ctx = this.ctx.tokens;
+        if (!this.shapes || this.shapes.length === 0) return;
+
+        this.shapes.forEach(shape => {
+            if (!this.isDM && !shape.visible) return;
+
             const isMyShape = shape.owner && shape.owner === this.localPlayerName;
-            if (this.isDM || isMyShape) {
+            const canControl = this.isDM || isMyShape;
+            const isSelected = this.isDM ? (this.selectedShapeId === shape.id) : (window.editingPlayerShape && window.editingPlayerShape.id === shape.id);
+            const hasTimer = shape.durationRounds !== undefined && shape.durationRounds !== null && Number(shape.durationRounds) > 0;
+            const roundsLeft = shape.roundsLeft !== undefined ? shape.roundsLeft : shape.durationRounds;
+
+            // Se ha il timer: visibile a tutti (DM e Players)!
+            // Se permanente: visibile solo se canControl (DM o proprietario) per mantenere la mappa pulita per gli altri player
+            if (!hasTimer && !canControl) return;
+
+            ctx.save();
+            ctx.translate(shape.x, shape.y);
+
+            if (hasTimer) {
+                // Pillola compatta tipo badge condizioni: ⏳ 3
+                const text = `⏳ ${roundsLeft}`;
+                ctx.font = 'bold 11px sans-serif';
+                const textMetrics = ctx.measureText(text);
+                const padX = 6;
+                const pillH = 18;
+                const pillW = Math.max(30, Math.round(textMetrics.width + padX * 2));
+                const rx = -pillW / 2;
+                const ry = -pillH / 2;
+                const pillRadius = Math.round(pillH / 2);
+
+                // 1. Ombra esterna per stacco netto sopra qualsiasi token
                 ctx.save();
-                ctx.translate(shape.x, shape.y);
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+                ctx.shadowBlur = 5;
+                ctx.shadowOffsetY = 1;
+
+                // 2. Sfondo scuro compatto
                 ctx.beginPath();
-                ctx.arc(0, 0, 10, 0, Math.PI*2);
-                
-                const isSelected = this.isDM ? (this.selectedShapeId === shape.id) : (window.editingPlayerShape && window.editingPlayerShape.id === shape.id);
+                if (ctx.roundRect) {
+                    ctx.roundRect(rx, ry, pillW, pillH, pillRadius);
+                } else {
+                    ctx.rect(rx, ry, pillW, pillH);
+                }
+                ctx.fillStyle = isSelected ? '#003747' : '#141414';
+                ctx.fill();
+                ctx.restore();
+
+                // 3. Bordo vivo con colore sagoma (o ciano evidenziato se selezionata)
+                ctx.beginPath();
+                if (ctx.roundRect) {
+                    ctx.roundRect(rx, ry, pillW, pillH, pillRadius);
+                } else {
+                    ctx.rect(rx, ry, pillW, pillH);
+                }
+                ctx.strokeStyle = isSelected ? '#00ffff' : (shape.color || '#ff5722');
+                ctx.lineWidth = isSelected ? 2 : 1.5;
+                ctx.stroke();
+
+                // 4. Testo centrato nitido
+                ctx.fillStyle = '#ffffff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(text, 0, 1);
+
+                // 5. Se controllabile, piccolo indicatore di rotazione
+                if (canControl) {
+                    ctx.rotate(shape.angle * Math.PI / 180);
+                    ctx.fillStyle = isSelected ? '#00ffff' : '#ffffff';
+                    ctx.fillRect(pillW / 2 + 1, -1.5, 6, 3);
+                }
+            } else if (canControl) {
+                // Sagoma PERMANENTE: classico bottone circolare con tacca di rotazione
+                // Disegnato in primo piano sopra i token!
+                ctx.save();
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                ctx.shadowBlur = 4;
+                ctx.beginPath();
+                ctx.arc(0, 0, 10, 0, Math.PI * 2);
                 ctx.fillStyle = isSelected ? '#00ffff' : '#ffffff';
                 ctx.fill();
-                ctx.stroke();
-                
-                ctx.rotate(shape.angle * Math.PI / 180);
-                ctx.fillStyle = '#000';
-                ctx.fillRect(0, -2, 15, 4);
                 ctx.restore();
+
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                ctx.rotate(shape.angle * Math.PI / 180);
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(0, -2, 14, 4);
             }
+
+            ctx.restore();
         });
     }
 
@@ -469,6 +565,19 @@ class VTTEngine {
         
         if (activeShapes.length === 0 && activeTokenAuras.length === 0) return;
         
+        const precomputedAuras = [];
+        for (let i = 0; i < activeTokenAuras.length; i++) {
+            const st = activeTokenAuras[i];
+            const size = st.width || (this.grid ? this.grid.size : 50);
+            precomputedAuras.push({
+                id: st.id,
+                cx: st.x + size / 2,
+                cy: st.y + size / 2,
+                radiusSq: st.aura.sizePx * st.aura.sizePx,
+                color: st.aura.color || '#ffff00'
+            });
+        }
+        
         this.tokens.forEach(token => {
             if (!this.isDM && !token.visible) return;
             const colors = [];
@@ -481,55 +590,22 @@ class VTTEngine {
             });
 
             // 2. Aure mobili emanate da altri token
-            activeTokenAuras.forEach(sourceToken => {
-                if (sourceToken.id === token.id) return;
-                const acx = sourceToken.x + sourceToken.width / 2;
-                const acy = sourceToken.y + sourceToken.height / 2;
-                const ar = sourceToken.aura.sizePx;
-                
-                const cx = Math.max(token.x, Math.min(acx, token.x + token.width));
-                const cy = Math.max(token.y, Math.min(acy, token.y + token.height));
-                const distSq = (acx - cx) ** 2 + (acy - cy) ** 2;
-                if (distSq <= ar * ar) {
-                    colors.push(sourceToken.aura.color || '#ffff00');
+            for (let i = 0; i < precomputedAuras.length; i++) {
+                const pa = precomputedAuras[i];
+                if (pa.id === token.id) continue;
+                const cx = Math.max(token.x, Math.min(pa.cx, token.x + token.width));
+                const cy = Math.max(token.y, Math.min(pa.cy, token.y + token.height));
+                const dx = pa.cx - cx;
+                const dy = pa.cy - cy;
+                if ((dx * dx + dy * dy) <= pa.radiusSq) {
+                    colors.push(pa.color);
                 }
-            });
+            }
 
             if (colors.length > 0) {
                 this._tokensWithAoE.set(token.id, colors);
             }
         });
-    }
-
-    getConditionIcon(text) {
-        if (!text) return '⭐';
-        const str = text.toLowerCase();
-        if (str.includes('accec') || str.includes('blind')) return '🙈';
-        if (str.includes('affasc') || str.includes('charm')) return '💖';
-        if (str.includes('afferr') || str.includes('grapp')) return '✊';
-        if (str.includes('assord') || str.includes('deaf')) return '🔇';
-        if (str.includes('avvel') || str.includes('poison')) return '🤢';
-        if (str.includes('inab') || str.includes('incapac')) return '💫';
-        if (str.includes('invis')) return '👻';
-        if (str.includes('paral')) return '⚡';
-        if (str.includes('pietr') || str.includes('petrif')) return '🗿';
-        if (str.includes('privo') || str.includes('sensi') || str.includes('unconsc') || str.includes('sonno') || str.includes('sleep')) return '💤';
-        if (str.includes('pron') || str.includes('terra') || str.includes('prone')) return '🧎';
-        if (str.includes('spav') || str.includes('fright') || str.includes('fear')) return '😱';
-        if (str.includes('stord') || str.includes('stun')) return '😵';
-        if (str.includes('tratt') || str.includes('restrain') || str.includes('intra')) return '🕸️';
-        if (str.includes('sfin') || str.includes('exhaust')) return '📉';
-        if (str.includes('fuoc') || str.includes('fire') || str.includes('burn')) return '🔥';
-        if (str.includes('ghiac') || str.includes('cold') || str.includes('ice') || str.includes('gelo')) return '❄️';
-        if (str.includes('acido') || str.includes('acid')) return '🧪';
-        if (str.includes('sangu') || str.includes('bleed')) return '🩸';
-        if (str.includes('scudo') || str.includes('shield')) return '🛡️';
-        if (str.includes('rigener') || str.includes('heal') || str.includes('cura')) return '💚';
-        if (str.includes('concentr')) return '🧘';
-        if (str.includes('ispir')) return '🎲';
-        if (str.includes('benediz') || str.includes('bless')) return '✨';
-        if (str.includes('malediz') || str.includes('curse')) return '💀';
-        return '⭐';
     }
 
     renderTokens() {
@@ -617,6 +693,173 @@ class VTTEngine {
 
         // Draw Overlays: Nome, Barra PV, e Condizioni in PRIMO PIANO
         this.tokens.forEach(token => {
+            this.drawTokenOverlays(ctx, token);
+        });
+    }
+
+    isPointInFog(worldX, worldY) {
+        if (!this.mapImage || !this.layers.fog) return false;
+        const x = Math.floor(worldX);
+        const y = Math.floor(worldY);
+        if (x < 0 || y < 0 || x >= this.layers.fog.width || y >= this.layers.fog.height) return false;
+        try {
+            const pixel = this.ctx.fog.getImageData(x, y, 1, 1).data;
+            return pixel[3] > 25; // alpha > 10% coperto da nebbia
+        } catch (e) {
+            return false;
+        }
+    }
+
+    renderTokenEffects() {
+        if (!this.mapImage || !this.ctx.tokenEffects) return;
+        const ctx = this.ctx.tokenEffects;
+        ctx.clearRect(0, 0, this.layers.tokenEffects.width, this.layers.tokenEffects.height);
+
+        let hasActiveInitiative = (this.initiative && this.initiative.active && this.initiative.participants.length > 0);
+        let turnToken = null;
+        if (hasActiveInitiative) {
+            const currentParticipant = this.initiative.participants[this.initiative.currentTurnIndex];
+            if (currentParticipant && currentParticipant.isToken && currentParticipant.tokenId) {
+                const t = this.tokens.find(tok => tok.id === currentParticipant.tokenId);
+                if (t && (this.isDM || t.visible)) {
+                    turnToken = t;
+                }
+            }
+        }
+
+        const hasAoEHighlights = this._tokensWithAoE && this._tokensWithAoE.size > 0;
+        if (!turnToken && !hasAoEHighlights) return;
+
+        const now = Date.now();
+        const pulse = (Math.sin(now / 200) + 1) / 2; // 0 to 1
+
+        // Raccogli tutti i token che necessitano di anelli
+        const tokensWithRings = new Set();
+        if (turnToken) tokensWithRings.add(turnToken);
+        if (hasAoEHighlights) {
+            const tokenMap = new Map();
+            for (let i = 0; i < this.tokens.length; i++) {
+                tokenMap.set(this.tokens[i].id, this.tokens[i]);
+            }
+            this._tokensWithAoE.forEach((colors, tokenId) => {
+                const tok = tokenMap.get(tokenId);
+                if (tok && (this.isDM || tok.visible)) {
+                    tokensWithRings.add(tok);
+                }
+            });
+        }
+
+        const useFastNeon = tokensWithRings.size > 8;
+
+        tokensWithRings.forEach(token => {
+            const cx = token.x + token.width / 2;
+            const cy = token.y + token.height / 2;
+            const R = token.width / 2;
+            const isCurrentTurn = (turnToken && turnToken.id === token.id);
+            const aoeColors = (this._tokensWithAoE && this._tokensWithAoE.get(token.id)) || null;
+
+            // 1. AURA ESTERNA: AoE (se presente) - Subito dopo il token, raggio R + 4
+            if (aoeColors && aoeColors.length > 0) {
+                let aoeColor = aoeColors[0];
+                if (aoeColors.length > 1) {
+                    const cycleIndex = Math.floor((now / 200 - Math.PI * 1.5) / (2 * Math.PI));
+                    const safeIndex = ((cycleIndex % aoeColors.length) + aoeColors.length) % aoeColors.length;
+                    aoeColor = aoeColors[safeIndex];
+                }
+                const r_aoe = R + 4;
+                ctx.save();
+
+                // Livello 1: Sottile contorno scuro per contrasto su qualsiasi sfondo/mappa
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
+                ctx.stroke();
+
+                if (useFastNeon) {
+                    ctx.strokeStyle = this.hexToRgba(aoeColor, 0.35 * (0.75 + pulse * 0.25));
+                    ctx.lineWidth = 9;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.strokeStyle = this.hexToRgba(aoeColor, 0.85);
+                    ctx.lineWidth = 4.5;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
+                    ctx.stroke();
+                } else {
+                    const aoeAlpha = 0.75 + pulse * 0.25;
+                    ctx.strokeStyle = this.hexToRgba(aoeColor, aoeAlpha);
+                    ctx.lineWidth = 4.5;
+                    ctx.shadowColor = aoeColor;
+                    ctx.shadowBlur = 10 + pulse * 6;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                if (!useFastNeon) {
+                    ctx.shadowColor = '#ffffff';
+                    ctx.shadowBlur = 4;
+                }
+                ctx.strokeStyle = `rgba(255, 255, 255, ${0.75 + pulse * 0.25})`;
+                ctx.lineWidth = 1.6;
+                ctx.beginPath();
+                ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            // 2. AURA INTERNA: Turno Iniziativa (se è il suo turno) - Leggermente interno al bordo, raggio R - 3
+            if (isCurrentTurn) {
+                const r_turn = Math.max(1, R - 3);
+                ctx.save();
+
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
+                ctx.stroke();
+
+                if (useFastNeon) {
+                    ctx.strokeStyle = `rgba(0, 255, 0, ${0.35 * (0.75 + pulse * 0.25)})`;
+                    ctx.lineWidth = 7.5;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.strokeStyle = `rgba(0, 255, 0, 0.85)`;
+                    ctx.lineWidth = 3.5;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
+                    ctx.stroke();
+                } else {
+                    const turnAlpha = 0.75 + pulse * 0.25;
+                    ctx.strokeStyle = `rgba(0, 255, 0, ${turnAlpha})`;
+                    ctx.lineWidth = 3.5;
+                    ctx.shadowColor = '#00ff00';
+                    ctx.shadowBlur = 8 + pulse * 4;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                if (!useFastNeon) {
+                    ctx.shadowColor = '#ffffff';
+                    ctx.shadowBlur = 3;
+                }
+                ctx.strokeStyle = `rgba(255, 255, 255, ${0.7 + pulse * 0.3})`;
+                ctx.lineWidth = 1.3;
+                ctx.beginPath();
+                ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            // 3. OVERLAYS IN PRIMO PIANO: Nome, Barra PV, Condizioni
             this.drawTokenOverlays(ctx, token);
         });
     }
@@ -778,25 +1021,39 @@ class VTTEngine {
             }
 
             // 3. Draw Conditions IN PRIMO PIANO (sopra a nome e barra PV!)
-            let activeConditions = [];
+            let rawConditions = [];
             if (token.conditions && token.conditions.length > 0) {
-                activeConditions = token.conditions;
+                rawConditions = token.conditions.slice();
             } else if (token.condition && token.condition.active) {
-                activeConditions = [token.condition];
+                rawConditions = [token.condition];
+            }
+
+            // Se il token ha un'Aura a tempo attiva, aggiungi il badge dell'Aura
+            const hasAuraTimer = token.aura && token.aura.active && token.aura.durationRounds > 0;
+            const auraRoundsLeft = hasAuraTimer ? (token.aura.roundsLeft !== undefined ? token.aura.roundsLeft : token.aura.durationRounds) : null;
+
+            let activeConditions = rawConditions.slice();
+            if (hasAuraTimer) {
+                activeConditions.unshift({
+                    text: `⏳ ${auraRoundsLeft}`,
+                    color: token.aura.color || '#ffee58',
+                    isAuraTimer: true
+                });
             }
             
             if (activeConditions.length > 0) {
                 const cx = px + sizePx/2;
                 const cy = py + sizePx/2;
                 const style = this.conditionDisplayStyle || 'concentric';
+                const ringConditions = activeConditions.filter(c => !c.isAuraTimer);
                 
                 // A) Anelli Concentrici / Spicchi
-                if (style === 'concentric' || style === 'segmented' || style === 'both') {
+                if ((style === 'concentric' || style === 'segmented') && ringConditions.length > 0) {
                     ctx.save();
                     ctx.translate(cx, cy);
                     
-                    if (style === 'concentric' || style === 'both') {
-                        activeConditions.forEach((cond, index) => {
+                    if (style === 'concentric') {
+                        ringConditions.forEach((cond, index) => {
                             const condRadius = sizePx/2 + 10 + (index * 20); // Ogni anello è più largo di 20px
                             
                             // Anello
@@ -844,20 +1101,20 @@ class VTTEngine {
                         });
                     } else if (style === 'segmented') {
                         const condRadius = sizePx/2 + 10;
-                        const numConds = activeConditions.length;
+                        const numConds = ringConditions.length;
                         const arcLen = (2 * Math.PI) / numConds;
                         
                         // Disegna gli spicchi colorati
                         for (let i = 0; i < numConds; i++) {
                             ctx.beginPath();
                             ctx.arc(0, 0, condRadius, i * arcLen, (i + 1) * arcLen);
-                            ctx.strokeStyle = activeConditions[i].color;
+                            ctx.strokeStyle = ringConditions[i].color;
                             ctx.lineWidth = 4;
                             ctx.stroke();
                         }
                         
                         // Testo curvo unito
-                        let text = activeConditions.map(c => (c.text || "").toUpperCase()).join(" • ") + " • ";
+                        let text = ringConditions.map(c => (c.text || "").toUpperCase()).join(" • ") + " • ";
                         ctx.font = `bold 16px Arial`;
                         ctx.fillStyle = "white";
                         ctx.strokeStyle = "black";
@@ -913,6 +1170,7 @@ class VTTEngine {
 
                     const formatTitleCase = (str) => {
                         if (!str) return 'Condizione';
+                        if (String(str).startsWith('⏳')) return String(str);
                         return str.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
                     };
 
@@ -1011,66 +1269,51 @@ class VTTEngine {
 
                     drawPillRow(bottomRow, bottomRowY);
                     drawPillRow(topRow, topRowY);
-                }
-
-                // C) Badge Icone Grandi ad Alto Contrasto (Sfondo Bianco Luminoso + Emoji Grande)
-                if (style === 'badges' || style === 'both') {
-                    // Dimensione generosa: raggio min 16px (diametro 32px), fino a 24px (diametro 48px)
-                    const badgeRadius = Math.max(16, Math.min(24, Math.round(sizePx * 0.22)));
-                    const badgeDiameter = badgeRadius * 2;
-                    const gap = 4;
-                    const numBadges = activeConditions.length;
-                    const totalW = (numBadges * badgeDiameter) + ((numBadges - 1) * gap);
-                    
-                    // Posiziona i badge fluttuanti sopra il token
-                    let badgeCenterY = py - badgeRadius - 4;
-                    if (badgeCenterY < badgeRadius + 2) {
-                        badgeCenterY = py + sizePx + badgeRadius + 4;
-                    }
-                    
-                    const startX = px + (sizePx / 2) - (totalW / 2) + badgeRadius;
+                } else if (hasAuraTimer) {
+                    // Se lo stile condizioni è concentric o segmented, mostra comunque la pillola dell'Aura sopra la barra PV
+                    const hasHpBar = (this.isDM || hpStyle === 'bar' || hpStyle === 'both') && 
+                                     token.hpMax && token.hpMax > 0 && 
+                                     (this.isDM || token.hpVisibleToPlayers !== false);
+                    const barHeight = this.isDM ? 16 : 10;
+                    const barTopY = hasHpBar ? (py + sizePx - barHeight - 3) : (py + sizePx - 2);
+                    const pillH = Math.max(16, Math.min(22, Math.round(sizePx * 0.20)));
+                    const fontSize = Math.max(9, Math.min(12, Math.round(pillH * 0.58)));
+                    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+                    const labelText = `⏳ ${auraRoundsLeft}`;
+                    const textW = ctx.measureText(labelText).width;
+                    const padX = Math.max(6, Math.round(pillH * 0.35));
+                    const pillW = Math.round(textW + (padX * 2));
+                    const pillX = Math.round(px + (sizePx / 2) - (pillW / 2));
+                    const pillY = barTopY - pillH - 1;
+                    const pillRadius = Math.round(pillH / 2);
 
                     ctx.save();
-                    activeConditions.forEach((cond, i) => {
-                        const bx = startX + i * (badgeDiameter + gap);
-                        const by = badgeCenterY;
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+                    ctx.shadowBlur = 4;
+                    ctx.shadowOffsetY = 1;
 
-                        // Ombra profonda per staccare nettamente da qualsiasi mappa
-                        ctx.save();
-                        ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
-                        ctx.shadowBlur = 6;
-                        ctx.shadowOffsetY = 2;
-
-                        // Sfondo BIANCO PURO: garantisce contrasto e visibilità a tutte le emoji
-                        ctx.beginPath();
-                        ctx.arc(bx, by, badgeRadius, 0, Math.PI * 2);
-                        ctx.fillStyle = '#ffffff';
-                        ctx.fill();
-                        ctx.restore();
-
-                        // Bordo spesso colorato della condizione
-                        ctx.beginPath();
-                        ctx.arc(bx, by, badgeRadius, 0, Math.PI * 2);
-                        ctx.strokeStyle = cond.color || '#ff9800';
-                        ctx.lineWidth = 3;
-                        ctx.stroke();
-
-                        // Anellino interno per rifinitura grafica
-                        ctx.beginPath();
-                        ctx.arc(bx, by, badgeRadius - 2, 0, Math.PI * 2);
-                        ctx.strokeStyle = 'rgba(0, 0, 0, 0.12)';
-                        ctx.lineWidth = 1;
-                        ctx.stroke();
-
-                        // Icona Emoji grande e nitida
-                        const icon = this.getConditionIcon(cond.text || cond.type);
-                        const fontSize = Math.round(badgeDiameter * 0.65);
-                        ctx.font = `${fontSize}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
-                        ctx.fillText(icon, bx, by + 1);
-                    });
+                    ctx.beginPath();
+                    if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillW, pillH, pillRadius);
+                    else ctx.rect(pillX, pillY, pillW, pillH);
+                    ctx.fillStyle = '#141414';
+                    ctx.fill();
                     ctx.restore();
+
+                    ctx.beginPath();
+                    if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillW, pillH, pillRadius);
+                    else ctx.rect(pillX, pillY, pillW, pillH);
+                    ctx.strokeStyle = token.aura.color || '#ffee58';
+                    ctx.lineWidth = 2.2;
+                    ctx.stroke();
+
+                    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 2.5;
+                    ctx.strokeText(labelText, pillX + (pillW / 2), pillY + (pillH / 2) + 0.5);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(labelText, pillX + (pillW / 2), pillY + (pillH / 2) + 0.5);
                 }
             }
 
@@ -1191,146 +1434,40 @@ class VTTEngine {
             
             // Animazione cerchio che si espande
             const progress = age / 1500; // da 0 a 1
-            const maxRadius = 100 * this.scale;
+            const maxRadius = Math.max(35, 100 * this.scale);
             const radius = maxRadius * Math.easeOutQuad(progress);
             
-            const rgb = (p.color && p.color.startsWith('#')) ? 
-                `${parseInt(p.color.slice(1,3),16)}, ${parseInt(p.color.slice(3,5),16)}, ${parseInt(p.color.slice(5,7),16)}` : '255, 0, 0';
+            let rgb = '255, 0, 0';
+            if (p.color && typeof p.color === 'string' && p.color.startsWith('#')) {
+                let hex = p.color.slice(1);
+                if (hex.length === 3) {
+                    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+                }
+                if (hex.length >= 6) {
+                    const r = parseInt(hex.slice(0, 2), 16) || 0;
+                    const g = parseInt(hex.slice(2, 4), 16) || 0;
+                    const b = parseInt(hex.slice(4, 6), 16) || 0;
+                    rgb = `${r}, ${g}, ${b}`;
+                }
+            }
             ctx.beginPath();
             ctx.arc(px, py, radius, 0, Math.PI * 2);
             ctx.strokeStyle = `rgba(${rgb}, ${1 - progress})`;
-            ctx.lineWidth = 5;
+            ctx.lineWidth = Math.max(3, 5 * Math.min(this.scale, 1.5));
             ctx.stroke();
             
             // Cerchio fisso al centro
             ctx.beginPath();
-            ctx.arc(px, py, 10 * this.scale, 0, Math.PI * 2);
+            ctx.arc(px, py, Math.max(5, 10 * this.scale), 0, Math.PI * 2);
             ctx.fillStyle = `rgba(${rgb}, ${1 - progress})`;
             ctx.fill();
         }
         
         let hasActiveInitiative = (this.initiative && this.initiative.active && this.initiative.participants.length > 0);
-        let turnToken = null;
-        if (hasActiveInitiative) {
-            const currentParticipant = this.initiative.participants[this.initiative.currentTurnIndex];
-            if (currentParticipant && currentParticipant.isToken && currentParticipant.tokenId) {
-                const t = this.tokens.find(tok => tok.id === currentParticipant.tokenId);
-                if (t && (this.isDM || t.visible)) {
-                    turnToken = t;
-                }
-            }
-        }
-
-        const pulse = (Math.sin(now / 200) + 1) / 2; // 0 to 1
         const hasAoEHighlights = this._tokensWithAoE && this._tokensWithAoE.size > 0;
 
-        // Disegna anelli Turno (verde, interno) e AoE (colorato/alternato, esterno)
-        if (turnToken || hasAoEHighlights) {
-            ctx.save();
-            ctx.translate(this.offsetX, this.offsetY);
-            ctx.scale(this.scale, this.scale);
-
-            // Raccogli tutti i token che necessitano di anelli
-            const tokensWithRings = new Set();
-            if (turnToken) tokensWithRings.add(turnToken);
-            if (hasAoEHighlights) {
-                this._tokensWithAoE.forEach((colors, tokenId) => {
-                    const tok = this.tokens.find(t => t.id === tokenId);
-                    if (tok && (this.isDM || tok.visible)) {
-                        tokensWithRings.add(tok);
-                    }
-                });
-            }
-
-            tokensWithRings.forEach(token => {
-                const cx = token.x + token.width / 2;
-                const cy = token.y + token.height / 2;
-                const R = token.width / 2;
-                const isCurrentTurn = (turnToken && turnToken.id === token.id);
-                const aoeColors = (this._tokensWithAoE && this._tokensWithAoE.get(token.id)) || null;
-
-                // 1. AURA ESTERNA: AoE (se presente) - Subito dopo il token, raggio R + 4
-                if (aoeColors && aoeColors.length > 0) {
-                    let aoeColor = aoeColors[0];
-                    if (aoeColors.length > 1) {
-                        // Alternanza perfetta tra colori sincronizzata al punto minimo del respiro
-                        const cycleIndex = Math.floor((now / 200 - Math.PI * 1.5) / (2 * Math.PI));
-                        const safeIndex = ((cycleIndex % aoeColors.length) + aoeColors.length) % aoeColors.length;
-                        aoeColor = aoeColors[safeIndex];
-                    }
-                    const r_aoe = R + 4;
-                    ctx.save();
-
-                    // Livello 1: Sottile contorno scuro per contrasto su qualsiasi sfondo/mappa
-                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
-                    ctx.lineWidth = 6;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
-                    ctx.stroke();
-
-                    // Livello 2: Bagliore neon vibrante del colore dell'area
-                    const aoeAlpha = 0.75 + pulse * 0.25;
-                    ctx.strokeStyle = this.hexToRgba(aoeColor, aoeAlpha);
-                    ctx.lineWidth = 4.5;
-                    ctx.shadowColor = aoeColor;
-                    ctx.shadowBlur = 10 + pulse * 6;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
-                    ctx.stroke();
-
-                    // Livello 3: Bagliore chiaro bianco ad alta visibilità lungo il bordo
-                    ctx.shadowColor = '#ffffff';
-                    ctx.shadowBlur = 4;
-                    ctx.strokeStyle = `rgba(255, 255, 255, ${0.75 + pulse * 0.25})`;
-                    ctx.lineWidth = 1.6;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
-                    ctx.stroke();
-
-                    ctx.restore();
-                }
-
-                // 2. AURA INTERNA: Turno Iniziativa (se è il suo turno) - Leggermente interno al bordo, raggio R - 3
-                if (isCurrentTurn) {
-                    const r_turn = Math.max(1, R - 3);
-                    ctx.save();
-
-                    // Livello 1: Bordo scuro di stacco
-                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
-                    ctx.lineWidth = 5;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
-                    ctx.stroke();
-
-                    // Livello 2: Verde vivo con bagliore
-                    const turnAlpha = 0.75 + pulse * 0.25;
-                    ctx.strokeStyle = `rgba(0, 255, 0, ${turnAlpha})`;
-                    ctx.lineWidth = 3.5;
-                    ctx.shadowColor = '#00ff00';
-                    ctx.shadowBlur = 8 + pulse * 4;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
-                    ctx.stroke();
-
-                    // Livello 3: Anima bianca brillante per risaltare sempre
-                    ctx.shadowColor = '#ffffff';
-                    ctx.shadowBlur = 3;
-                    ctx.strokeStyle = `rgba(255, 255, 255, ${0.7 + pulse * 0.3})`;
-                    ctx.lineWidth = 1.3;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
-                    ctx.stroke();
-
-                    ctx.restore();
-                }
-
-                // 3. OVERLAYS IN PRIMO PIANO: Nome, Barra PV, Condizioni
-                // Disegnati sopra gli anelli così le scritte, barre e icone restano sempre nitide in primo piano
-                this.drawTokenOverlays(ctx, token);
-            });
-
-            ctx.restore();
-        }
+        // Disegna anelli Turno (verde, interno), AoE e Overlays su layer tokenEffects (sotto la nebbia!)
+        this.renderTokenEffects();
 
         if (this.lasso) {
             ctx.strokeStyle = 'rgba(0, 153, 255, 0.8)';

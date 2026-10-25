@@ -685,7 +685,8 @@
             features,
             currencies,
             inventory,
-            notes: (prevSheet && prevSheet.notes) ? prevSheet.notes : ''
+            notes: (prevSheet && prevSheet.notes) ? prevSheet.notes : '',
+            adventureJournal: (prevSheet && prevSheet.adventureJournal) ? prevSheet.adventureJournal : ''
         };
     }
 
@@ -836,9 +837,40 @@
                     payload: {
                         tokenId: token.id,
                         pcSheet: token.pcSheet,
+                        adventureJournal: token.adventureJournal || '',
                         hpCurrent: token.hpCurrent,
                         hpMax: token.hpMax,
                         ac: token.ac
+                    }
+                });
+            }
+        }
+    }
+
+    function commitJournalChanges(token) {
+        if (!token) return;
+        token.adventureJournalUpdatedAt = Date.now();
+        if (token.pcSheet) token.pcSheet.adventureJournal = token.adventureJournal;
+
+        if (isDMView()) {
+            if (typeof window.upsertTokenInCampaign === 'function') {
+                window.upsertTokenInCampaign(token);
+            }
+            if (typeof window.broadcastPcSheetSync === 'function') {
+                window.broadcastPcSheetSync(token);
+            }
+            if (typeof window.syncState === 'function') {
+                window.syncState(true, false);
+            }
+        } else {
+            const net = getNetworkRef();
+            if (net && typeof net.send === 'function') {
+                net.send({
+                    type: 'PLAYER_UPDATE_TOKEN_JOURNAL',
+                    payload: {
+                        tokenId: token.id,
+                        adventureJournal: token.adventureJournal || '',
+                        player: net.playerName || ''
                     }
                 });
             }
@@ -877,6 +909,13 @@
             const prevSheet = token.pcSheet || null;
             const finalUrl = sourceUrlInput || (prevSheet ? prevSheet.sourceUrl : '');
             const parsed = parseCharacterSheetJSON(rawText, finalUrl, prevSheet);
+
+            // Preserva sempre il Giornale dell'Avventura se presente sul token o nella scheda precedente
+            const prevJournal = token.adventureJournal || (prevSheet ? prevSheet.adventureJournal : '') || '';
+            if (prevJournal) {
+                token.adventureJournal = prevJournal;
+                parsed.adventureJournal = prevJournal;
+            }
 
             token.pcSheet = parsed;
             token.hpMax = parsed.hpMax;
@@ -1108,12 +1147,13 @@
                 </div>
             </div>
 
-            <!-- Barra Navigazione a 4 Tavole (Tab) -->
+            <!-- Barra Navigazione a 5 Tavole (Tab) -->
             <div id="pcs-tabs-bar" style="display: flex; background: #1f2229; border-bottom: 1px solid #333; user-select: none;">
                 <button type="button" class="pcs-tab-btn active" data-tab="combat">⚔️ Combattimento & Abilità</button>
                 <button type="button" class="pcs-tab-btn" data-tab="spells">✨ Incantesimi</button>
                 <button type="button" class="pcs-tab-btn" data-tab="features">📜 Privilegi & Tratti</button>
                 <button type="button" class="pcs-tab-btn" data-tab="inventory">🎒 Inventario</button>
+                <button type="button" class="pcs-tab-btn" data-tab="journal">📖 Giornale</button>
             </div>
 
             <!-- Contenuto Scheda (Scrollabile) -->
@@ -1236,6 +1276,20 @@
                 win.querySelectorAll('.pcs-tab-btn').forEach(b => b.classList.toggle('active', b === tabBtn));
                 const tok = getActiveToken();
                 if (tok) renderSheetBody(tok);
+                return;
+            }
+
+            // Esporta singolo PG (.json)
+            if (target.closest('#pcs-btn-export-single-json')) {
+                const tok = getActiveToken();
+                if (tok) exportSingleCharacterJson(tok);
+                return;
+            }
+
+            // Ripristina singolo PG (.json)
+            if (target.closest('#pcs-btn-import-single-json')) {
+                const tok = getActiveToken();
+                if (tok) importSingleCharacterJson(tok);
                 return;
             }
 
@@ -1411,10 +1465,41 @@
                 }, 40);
             }
         });
+        // Auto-salvataggio del Giornale dell'Avventura (Debounced, 350ms)
+        let journalDebounceTimer = null;
+        win.addEventListener('input', (e) => {
+            if (e.target && e.target.id === 'pcs-journal-textarea') {
+                const tok = getActiveToken();
+                if (!tok) return;
+                const text = e.target.value;
+                const statusEl = document.getElementById('pcs-journal-status');
+                const counterEl = document.getElementById('pcs-journal-counter');
+                if (statusEl) {
+                    statusEl.textContent = '✍️ ' + tr('Salvataggio...', 'Saving...');
+                    statusEl.style.color = '#ffd54f';
+                }
+                if (counterEl) {
+                    const chars = text.length;
+                    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+                    counterEl.textContent = `${chars} ${tr('caratteri', 'characters')} | ${words} ${tr('parole', 'words')}`;
+                }
+                if (journalDebounceTimer) clearTimeout(journalDebounceTimer);
+                journalDebounceTimer = setTimeout(() => {
+                    tok.adventureJournal = text;
+                    tok.adventureJournalUpdatedAt = Date.now();
+                    if (tok.pcSheet) tok.pcSheet.adventureJournal = text;
+                    commitJournalChanges(tok);
+                    if (statusEl) {
+                        statusEl.textContent = '● ' + tr('Salvato', 'Saved');
+                        statusEl.style.color = '#81c784';
+                    }
+                }, 350);
+            }
+        });
     }
 
     // =========================================================================
-    // RENDERING DELLE 4 TAVOLE (TAB)
+    // RENDERING DELLE TAVOLE (TAB)
     // =========================================================================
     function renderSheetModal(token) {
         const win = ensureModalDOM();
@@ -1464,6 +1549,12 @@
     function renderSheetBody(token) {
         const body = document.getElementById('pcs-body');
         if (!body) return;
+
+        if (currentTab === 'journal') {
+            body.innerHTML = renderJournalTab(token);
+            return;
+        }
+
         const s = token ? token.pcSheet : null;
 
         if (!s) {
@@ -1855,13 +1946,123 @@
         `;
     }
 
+    function renderJournalTab(token) {
+        if (!token) return '';
+        const journalText = token.adventureJournal || (token.pcSheet && token.pcSheet.adventureJournal) || '';
+        const chars = journalText.length;
+        const words = journalText.trim() ? journalText.trim().split(/\s+/).length : 0;
+        const charName = token.name || (token.pcSheet ? token.pcSheet.name : 'Personaggio');
+
+        return `
+            <div class="pcs-journal-container" style="display:flex; flex-direction:column; height: 100%; min-height: 420px; gap: 8px;">
+                <!-- Header Journal -->
+                <div style="display: flex; justify-content: space-between; align-items: center; background: #1a1d24; border: 1px solid #333946; border-radius: 6px; padding: 7px 10px; flex-wrap: wrap; gap: 6px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 20px;">📖</span>
+                        <div>
+                            <strong style="color: #ffd54f; font-size: 13.5px;">${tr("Giornale dell'Avventura", "Adventure Journal")}</strong>
+                            <span id="pcs-journal-status" style="font-size: 11px; color: #81c784; margin-left: 8px;">● ${tr('Salvato', 'Saved')}</span>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <button type="button" id="pcs-btn-export-single-json" style="background:#263238; color:#80deea; border:1px solid #00838f; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;" title="${tr('Scarica Scheda e Giornale di questo personaggio in file .json', 'Download Sheet and Journal for this character as .json file')}">💾 ${tr('Esporta PG (.json)', 'Export PC (.json)')}</button>
+                        <button type="button" id="pcs-btn-import-single-json" style="background:#263238; color:#ffd54f; border:1px solid #fbc02d; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;" title="${tr('Ripristina backup Scheda e Giornale da file .json', 'Restore Sheet and Journal backup from .json file')}">📂 ${tr('Ripristina PG', 'Restore PC')}</button>
+                    </div>
+                </div>
+
+                <!-- Textarea Journal -->
+                <div style="flex: 1; display:flex; flex-direction:column; position: relative;">
+                    <textarea id="pcs-journal-textarea" placeholder="${tr('Scrivi qui le note di sessione, indizi, nomi di PNG, missioni, promemoria e avventure personali di ' + charName + '...\n\nLe modifiche si salvano automaticamente e NON verranno MAI cancellate né modificate dagli aggiornamenti della scheda!', 'Write session notes, clues, NPC names, quests, reminders and personal adventures for ' + charName + ' here...\n\nChanges save automatically and will NEVER be erased or modified by character sheet updates!')}" style="flex: 1; width: 100%; min-height: 330px; background: #12141a; color: #e0e0e0; border: 1px solid #2d3340; border-radius: 6px; padding: 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.6; resize: vertical; box-sizing: border-box; outline: none;">${esc(journalText)}</textarea>
+                </div>
+
+                <!-- Footer Journal -->
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #78909c; padding: 2px 4px; flex-wrap: wrap; gap: 6px;">
+                    <span id="pcs-journal-counter">${chars} ${tr('caratteri', 'characters')} | ${words} ${tr('parole', 'words')}</span>
+                    <span style="color: #4db6ac;">🛡️ ${tr('Scollegato da D&D Beyond: i tuoi appunti sono protetti e persistenti', 'Decoupled from D&D Beyond: your notes are protected and persistent')}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    function exportSingleCharacterJson(token) {
+        if (!token) return;
+        const exportObj = {
+            format: 'TABLETOP_CHARACTER_BACKUP',
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            id: token.id,
+            name: token.name || 'Personaggio',
+            category: token.category || 'personaggi',
+            src: token.src || '',
+            hpMax: token.hpMax || 0,
+            hpCurrent: token.hpCurrent !== undefined ? token.hpCurrent : (token.hpMax || 0),
+            ac: token.ac || 10,
+            owners: token.owners || (token.owner ? [token.owner] : []),
+            owner: token.owner || '',
+            pcSheet: token.pcSheet || null,
+            adventureJournal: token.adventureJournal || ''
+        };
+        const jsonStr = JSON.stringify(exportObj, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const safeName = (token.name || 'Personaggio').replace(/[^a-zA-Z0-9_\-]/g, '_');
+        a.download = `${safeName}_Scheda_e_Giornale.json`;
+        a.href = url;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        if (typeof window.showToast === 'function') {
+            window.showToast(`💾 Backup salvato per "${token.name || 'Personaggio'}"!`);
+        }
+    }
+
+    function importSingleCharacterJson(token) {
+        if (!token) return;
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.json,application/json';
+        fileInput.style.display = 'none';
+        fileInput.onchange = (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (re) => {
+                try {
+                    const data = JSON.parse(re.target.result);
+                    if (data.pcSheet) token.pcSheet = data.pcSheet;
+                    if (data.adventureJournal !== undefined) token.adventureJournal = data.adventureJournal;
+                    if (data.hpMax !== undefined) token.hpMax = data.hpMax;
+                    if (data.hpCurrent !== undefined) token.hpCurrent = data.hpCurrent;
+                    if (data.ac !== undefined) token.ac = data.ac;
+                    if (data.name) token.name = data.name;
+                    if (data.owners) token.owners = data.owners;
+                    if (data.owner) token.owner = data.owner;
+
+                    commitSheetChanges(token, true);
+                    renderSheetModal(token);
+                    if (typeof window.showToast === 'function') {
+                        window.showToast(`✅ Backup ripristinato con successo per "${token.name}"!`);
+                    }
+                } catch (err) {
+                    alert('File di backup non valido o danneggiato: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        };
+        document.body.appendChild(fileInput);
+        fileInput.click();
+        document.body.removeChild(fileInput);
+    }
+
     // Incolla istantaneo con Ctrl+V ovunque nella finestra Scheda PG (ZERO popup di autorizzazione del browser!)
     if (typeof document !== 'undefined') {
         document.addEventListener('paste', (e) => {
             const win = document.getElementById('pc-sheet-window');
             if (!win || win.style.display === 'none') return;
             const activeEl = document.activeElement;
-            if (activeEl && activeEl.id === 'pcs-inventory-notes') return;
+            if (activeEl && (activeEl.id === 'pcs-inventory-notes' || activeEl.id === 'pcs-journal-textarea')) return;
             const clipData = e.clipboardData || window.clipboardData;
             if (!clipData) return;
             const pastedText = (clipData.getData('text/plain') || '').trim();
@@ -1905,7 +2106,9 @@
             }
         },
         parseCharacterSheetJSON,
-        extractCharacterId
+        extractCharacterId,
+        exportSingleCharacterJson,
+        importSingleCharacterJson
     };
 
     if (typeof window !== 'undefined') {

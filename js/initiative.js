@@ -91,23 +91,28 @@ function clampTrackerToViewport() {
 
 window.addEventListener('resize', clampTrackerToViewport);
 
-// Dragging for Tracker
+// Dragging for Tracker (PC mouse + Tablet touch)
 let isDraggingTracker = false;
 let trackerOffsetX = 0;
 let trackerOffsetY = 0;
 
+header.style.touchAction = 'none';
+
 header.addEventListener('mousedown', (e) => {
-    if (e.target.tagName.toLowerCase() === 'button') return;
+    if (e.button !== 0) return;
+    if (e.target.tagName.toLowerCase() === 'button' || e.target.closest('button')) return;
     isDraggingTracker = true;
     trackerOffsetX = e.clientX - trackerDiv.getBoundingClientRect().left;
     trackerOffsetY = e.clientY - trackerDiv.getBoundingClientRect().top;
 });
 header.addEventListener('touchstart', (e) => {
-    if (e.target.tagName.toLowerCase() === 'button') return;
+    if (e.target.tagName.toLowerCase() === 'button' || e.target.closest('button')) return;
+    if (!e.touches || e.touches.length !== 1) return;
+    if (e.cancelable) e.preventDefault();
     isDraggingTracker = true;
     trackerOffsetX = e.touches[0].clientX - trackerDiv.getBoundingClientRect().left;
     trackerOffsetY = e.touches[0].clientY - trackerDiv.getBoundingClientRect().top;
-});
+}, { passive: false });
 
 document.addEventListener('mousemove', (e) => {
     if (!isDraggingTracker) return;
@@ -120,7 +125,8 @@ document.addEventListener('mousemove', (e) => {
     trackerDiv.style.right = 'auto'; // override default right:20px
 });
 document.addEventListener('touchmove', (e) => {
-    if (!isDraggingTracker) return;
+    if (!isDraggingTracker || !e.touches || e.touches.length !== 1) return;
+    if (e.cancelable) e.preventDefault();
     const vw = window.innerWidth || 1000;
     const vh = window.innerHeight || 700;
     const nextX = Math.max(0, Math.min(vw - 80, e.touches[0].clientX - trackerOffsetX));
@@ -128,16 +134,17 @@ document.addEventListener('touchmove', (e) => {
     trackerDiv.style.left = nextX + 'px';
     trackerDiv.style.top = nextY + 'px';
     trackerDiv.style.right = 'auto';
-});
+}, { passive: false });
 
 document.addEventListener('mouseup', () => isDraggingTracker = false);
 document.addEventListener('touchend', () => isDraggingTracker = false);
+document.addEventListener('touchcancel', () => isDraggingTracker = false);
 
 document.getElementById('btn-toggle-tracker').addEventListener('click', () => {
     if (trackerDiv.style.display === 'none') {
         trackerDiv.style.display = 'flex';
         clampTrackerToViewport();
-        if (!engine.initiative.active && engine.initiative.participants.length === 0) {
+        if (!engine.initiative.active) {
             setupInitiative();
         } else {
             renderTrackerList();
@@ -146,6 +153,15 @@ document.getElementById('btn-toggle-tracker').addEventListener('click', () => {
         trackerDiv.style.display = 'none';
     }
 });
+
+const btnReloadTracker = document.getElementById('btn-tracker-reload-selection');
+if (btnReloadTracker) {
+    btnReloadTracker.addEventListener('click', () => {
+        setupInitiative();
+        if (typeof showToast === 'function') showToast('Selezione ricaricata nel tracker.');
+        if (typeof syncState === 'function') syncState();
+    });
+}
 
 document.getElementById('btn-close-tracker').addEventListener('click', () => {
     trackerDiv.style.display = 'none';
@@ -412,6 +428,9 @@ document.getElementById('btn-add-custom-entity').addEventListener('click', () =>
 
 document.getElementById('btn-tracker-state').addEventListener('click', (e) => {
     if (!engine.initiative.active) {
+        if (!engine.initiative.participants || engine.initiative.participants.length === 0) {
+            setupInitiative();
+        }
         engine.initiative.active = true;
         engine.initiative.participants.sort((a, b) => (b.init || 0) - (a.init || 0));
         engine.initiative.currentTurnIndex = 0;
@@ -424,20 +443,171 @@ document.getElementById('btn-tracker-state').addEventListener('click', (e) => {
         if (typeof showToast === 'function') showToast('Ordine aggiornato!');
     }
     renderTrackerList();
+    if (typeof syncState === 'function') syncState();
 });
 
 document.getElementById('btn-tracker-reset').addEventListener('click', () => {
+    // Se non in combattimento ed è già vuoto, ricarica la selezione attuale dei token
+    if (!engine.initiative.active && (!engine.initiative.participants || engine.initiative.participants.length === 0)) {
+        setupInitiative();
+        if (typeof showToast === 'function') showToast('Selezione caricata nel tracker.');
+        if (typeof syncState === 'function') syncState();
+        return;
+    }
+
     engine.initiative.active = false;
     engine.initiative.currentTurnIndex = 0;
-    engine.initiative.participants = []; // Svuota i vecchi partecipanti
-    setupInitiative(); // Ricarica in base alla nuova selezione
+    engine.initiative.participants = []; // Svuota e resetta l'ordine di iniziativa
     document.getElementById('btn-tracker-state').innerText = 'Avvia Combattimento';
     document.getElementById('tracker-combat-controls').style.display = 'none';
+
+    // Rimuovi all'istante tutte le AoE temporizzate (a round)
+    if (engine.shapes && engine.shapes.length > 0) {
+        const initialCount = engine.shapes.length;
+        engine.shapes = engine.shapes.filter(s => {
+            const hasTimer = s.durationRounds !== undefined && s.durationRounds !== null && Number(s.durationRounds) > 0;
+            return !hasTimer; // mantieni solo quelle senza timer
+        });
+        if (engine.shapes.length !== initialCount) {
+            if (engine.selectedShapeId && !engine.shapes.some(s => s.id === engine.selectedShapeId)) {
+                engine.selectedShapeId = null;
+                const sc = document.getElementById('selected-shape-controls');
+                if (sc) sc.style.display = 'none';
+            }
+            engine.renderTokensLayer();
+            if (typeof syncState === 'function') syncState();
+            if (typeof showToast === 'function') showToast('Effetti AoE a tempo dissolti.');
+        }
+    }
+
+    // Rimuovi/disattiva all'istante tutte le aure a tempo dei token
+    if (engine.tokens && engine.tokens.length > 0) {
+        let auraResetCount = 0;
+        engine.tokens.forEach(tok => {
+            if (tok.aura && tok.aura.active && tok.aura.durationRounds > 0) {
+                tok.aura.active = false;
+                delete tok.aura.roundsLeft;
+                delete tok.aura.durationRounds;
+                delete tok.aura.skipFirstDecrement;
+                auraResetCount++;
+            }
+        });
+        if (auraResetCount > 0) {
+            engine.renderTokensLayer();
+            if (typeof syncState === 'function') syncState();
+        }
+    }
+
     renderTrackerList();
+    if (typeof syncState === 'function') syncState();
 });
 
 document.getElementById('btn-next-turn').addEventListener('click', () => {
     if(engine.initiative.participants.length === 0) return;
+
+    // Gestione decremento turni per le AoE temporizzate
+    const finishingParticipant = engine.initiative.participants[engine.initiative.currentTurnIndex];
+    if (finishingParticipant && engine.shapes && engine.shapes.length > 0) {
+        let changed = false;
+        const expiredShapes = [];
+
+        engine.shapes = engine.shapes.filter(shape => {
+            const hasTimer = shape.durationRounds !== undefined && shape.durationRounds !== null && Number(shape.durationRounds) > 0;
+            if (!hasTimer) return true; // Le forme permanenti non scalano mai
+
+            // Verifica se la sagoma appartiene a questo partecipante
+            const pName = (finishingParticipant.name || '').trim().toLowerCase();
+            const pTokenId = finishingParticipant.tokenId;
+            const pId = finishingParticipant.id;
+
+            const matchToken = shape.casterTokenId && pTokenId && shape.casterTokenId === pTokenId;
+            const matchId = shape.casterId && pId && shape.casterId === pId;
+            const matchName = shape.casterName && pName && shape.casterName.trim().toLowerCase() === pName;
+            const matchOwner = shape.owner && pName && shape.owner.trim().toLowerCase() === pName;
+
+            if (matchToken || matchId || matchName || matchOwner) {
+                // Se è stata appena creata durante questo stesso turno, non scalare subito!
+                // Scalerà al prossimo giro quando ritocca a lui
+                if (shape.skipFirstDecrement) {
+                    shape.skipFirstDecrement = false;
+                    return true;
+                }
+
+                if (shape.roundsLeft === undefined || shape.roundsLeft === null) {
+                    shape.roundsLeft = Number(shape.durationRounds);
+                }
+
+                shape.roundsLeft--;
+                changed = true;
+
+                if (shape.roundsLeft <= 0) {
+                    expiredShapes.push(shape);
+                    return false; // Rimuovi la sagoma scaduta!
+                }
+            }
+            return true;
+        });
+
+        if (expiredShapes.length > 0) {
+            const cName = finishingParticipant.name || 'Incantatore';
+            if (typeof showToast === 'function') {
+                showToast(`⏳ L'effetto AoE di ${cName} è svanito!`);
+            }
+            expiredShapes.forEach(exp => {
+                if (engine.selectedShapeId === exp.id) {
+                    engine.selectedShapeId = null;
+                    const sc = document.getElementById('selected-shape-controls');
+                    if (sc) sc.style.display = 'none';
+                }
+            });
+        }
+
+        if (changed || expiredShapes.length > 0) {
+            engine.renderTokensLayer();
+            if (typeof syncState === 'function') syncState();
+        }
+    }
+
+    // Gestione decremento turni per le Aure a tempo dei Token
+    if (finishingParticipant && engine.tokens && engine.tokens.length > 0) {
+        let auraChanged = false;
+        const pName = (finishingParticipant.name || '').trim().toLowerCase();
+        const pTokenId = finishingParticipant.tokenId;
+
+        engine.tokens.forEach(tok => {
+            if (!tok.aura || !tok.aura.active || !tok.aura.durationRounds || Number(tok.aura.durationRounds) <= 0) return;
+            const matchToken = pTokenId && tok.id === pTokenId;
+            const matchName = tok.name && pName && tok.name.trim().toLowerCase() === pName;
+
+            if (matchToken || matchName) {
+                if (tok.aura.skipFirstDecrement) {
+                    tok.aura.skipFirstDecrement = false;
+                    return;
+                }
+                if (tok.aura.roundsLeft === undefined || tok.aura.roundsLeft === null) {
+                    tok.aura.roundsLeft = Number(tok.aura.durationRounds);
+                }
+                tok.aura.roundsLeft--;
+                auraChanged = true;
+
+                if (tok.aura.roundsLeft <= 0) {
+                    tok.aura.active = false;
+                    delete tok.aura.roundsLeft;
+                    delete tok.aura.durationRounds;
+                    delete tok.aura.skipFirstDecrement;
+                    if (typeof showToast === 'function') {
+                        showToast(`⏳ L'aura di ${tok.name || 'Token'} si è dissolta!`);
+                    }
+                }
+            }
+        });
+
+        if (auraChanged) {
+            engine.renderTokensLayer();
+            if (typeof syncState === 'function') syncState();
+        }
+    }
+
     engine.initiative.currentTurnIndex = (engine.initiative.currentTurnIndex + 1) % engine.initiative.participants.length;
     renderTrackerList();
 });

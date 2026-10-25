@@ -129,3 +129,35 @@ canvas {
     left: 0;
     transform-origin: 0 0;
 }
+
+/* Quando si trascina o seleziona sulla mappa, finestre e pannelli non intercettano il mouse */
+body.vtt-dragging {
+    user-select: none !important;
+}
+
+body.vtt-dragging #sidebar,
+body.vtt-dragging #dm-floating-tools,
+body.vtt-dragging #dm-tracker,
+body.vtt-dragging #campaign-panel,
+body.vtt-dragging #map-panel,
+body.vtt-dragging #aoe-panel,
+body.vtt-dragging #audio-panel,
+body.vtt-dragging #token-panel,
+body.vtt-dragging #chat-panel,
+body.vtt-dragging #dice-panel,
+body.vtt-dragging #dm-handout-window,
+body.vtt-dragging #dm-statblock-window,
+body.vtt-dragging #pc-sheet-window,
+body.vtt-dragging #player-tracker,
+body.vtt-dragging #player-toolbar,
+body.vtt-dragging #pbtn-toggle-toolbar,
+body.vtt-dragging #btn-toggle-tracker,
+body.vtt-dragging #player-shape-panel,
+body.vtt-dragging #player-token-panel,
+body.vtt-dragging #player-audio-panel,
+body.vtt-dragging #handout-window,
+body.vtt-dragging .floating-panel {
+    pointer-events: none !important;
+    user-select: none !important;
+}
+

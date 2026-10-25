@@ -12,50 +12,113 @@ function safeEscape(str) {
     }[tag] || tag));
 }
 
-// Funzione globale per rendere trascinabili i pannelli
+// Funzione globale per rendere trascinabili i pannelli (PC mouse + Tablet touch)
 window.makeDraggable = function(panel, handle = null) {
-    let startX = 0, startY = 0;
-    let initialTop = 0, initialLeft = 0;
+    if (!panel) return;
     const dragElement = handle || panel;
     
     dragElement.style.cursor = 'move';
+    dragElement.style.touchAction = 'none'; // Previene gesture di scroll/zoom del browser durante il trascinamento
     
+    function isInteractive(target) {
+        if (!target) return false;
+        return !!(
+            target.closest('button') ||
+            target.closest('input') ||
+            target.closest('select') ||
+            target.closest('textarea') ||
+            target.closest('label') ||
+            target.classList.contains('roll-btn') ||
+            target.closest('.no-drag')
+        );
+    }
+
+    // --- GESTIONE MOUSE (PC) ---
     dragElement.onmousedown = function(e) {
-        if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select') || e.target.closest('label') || e.target.classList.contains('roll-btn')) return;
+        if (e.button !== 0) return; // Solo tasto sinistro
+        if (isInteractive(e.target)) return;
         e.preventDefault();
         
         const rect = panel.getBoundingClientRect();
         panel.style.bottom = 'auto';
         panel.style.right = 'auto';
         
-        initialTop = rect.top;
-        initialLeft = rect.left;
+        let initialTop = rect.top;
+        let initialLeft = rect.left;
         
         panel.style.top = initialTop + "px";
         panel.style.left = initialLeft + "px";
         
-        startX = e.clientX;
-        startY = e.clientY;
+        const startX = e.clientX;
+        const startY = e.clientY;
         
-        document.onmouseup = closeDragElement;
+        function elementDrag(ev) {
+            ev.preventDefault();
+            const dx = ev.clientX - startX;
+            const dy = ev.clientY - startY;
+            
+            panel.style.top = (initialTop + dy) + "px";
+            panel.style.left = (initialLeft + dx) + "px";
+        }
+        
+        function closeDragElement() {
+            window.removeEventListener('mousemove', elementDrag);
+            window.removeEventListener('mouseup', closeDragElement);
+            document.onmousemove = null;
+            document.onmouseup = null;
+            initialTop = parseFloat(panel.style.top) || 0;
+            initialLeft = parseFloat(panel.style.left) || 0;
+        }
+        
+        window.addEventListener('mousemove', elementDrag);
+        window.addEventListener('mouseup', closeDragElement);
         document.onmousemove = elementDrag;
+        document.onmouseup = closeDragElement;
     };
 
-    function elementDrag(e) {
-        e.preventDefault();
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
+    // --- GESTIONE TOUCH (TABLET / SMARTPHONE) ---
+    dragElement.addEventListener('touchstart', function(e) {
+        if (isInteractive(e.target)) return;
+        if (!e.touches || e.touches.length !== 1) return; // Solo tocco singolo per il drag della finestra
         
-        panel.style.top = (initialTop + dy) + "px";
-        panel.style.left = (initialLeft + dx) + "px";
-    }
-
-    function closeDragElement() {
-        document.onmouseup = null;
-        document.onmousemove = null;
-        initialTop = parseFloat(panel.style.top) || 0;
-        initialLeft = parseFloat(panel.style.left) || 0;
-    }
+        if (e.cancelable) e.preventDefault();
+        
+        const touch = e.touches[0];
+        const rect = panel.getBoundingClientRect();
+        panel.style.bottom = 'auto';
+        panel.style.right = 'auto';
+        
+        const tInitialTop = rect.top;
+        const tInitialLeft = rect.left;
+        
+        panel.style.top = tInitialTop + "px";
+        panel.style.left = tInitialLeft + "px";
+        
+        const tStartX = touch.clientX;
+        const tStartY = touch.clientY;
+        
+        function onTouchMove(ev) {
+            if (!ev.touches || ev.touches.length !== 1) return;
+            if (ev.cancelable) ev.preventDefault();
+            
+            const curTouch = ev.touches[0];
+            const dx = curTouch.clientX - tStartX;
+            const dy = curTouch.clientY - tStartY;
+            
+            panel.style.top = (tInitialTop + dy) + "px";
+            panel.style.left = (tInitialLeft + dx) + "px";
+        }
+        
+        function onTouchEnd() {
+            window.removeEventListener('touchmove', onTouchMove);
+            window.removeEventListener('touchend', onTouchEnd);
+            window.removeEventListener('touchcancel', onTouchEnd);
+        }
+        
+        window.addEventListener('touchmove', onTouchMove, { passive: false });
+        window.addEventListener('touchend', onTouchEnd, { passive: true });
+        window.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    }, { passive: false });
 };
 
 window.appendRollToChat = function(playerOrData, dice, bonus, result) {

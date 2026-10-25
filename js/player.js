@@ -17,6 +17,74 @@ const tokenImageCache = new Map();
 const tokenPcSheetCache = new Map();
 let lastPlayerClickedTokenId = null;
 let lastPlayerClickedTokenTime = 0;
+let isHandoutControlledByDm = false;
+
+function setHandoutControlledByDm(controlled) {
+    isHandoutControlledByDm = !!controlled;
+    const hw = document.getElementById('handout-window');
+    const hwHeader = document.getElementById('handout-header');
+    if (!hw) return;
+    if (isHandoutControlledByDm) {
+        hw.style.resize = 'none';
+        if (hwHeader) hwHeader.style.cursor = 'default';
+    } else {
+        hw.style.resize = 'both';
+        if (hwHeader) hwHeader.style.cursor = 'move';
+    }
+}
+
+function applyHandoutRect(payload) {
+    const hw = document.getElementById('handout-window');
+    const mapEl = document.getElementById('main-canvas-container');
+    if (!hw || !payload) return;
+    window.lastHandoutRectPayload = payload;
+
+    // Imposta dimensioni (rispettando i limiti massimi della viewport)
+    let w = parseInt(payload.width) || 500;
+    let h = parseInt(payload.height) || 500;
+    const maxW = Math.max(200, window.innerWidth - 40);
+    const maxH = Math.max(200, window.innerHeight - 40);
+    w = Math.min(w, maxW);
+    h = Math.min(h, maxH);
+    hw.style.width = w + 'px';
+    hw.style.height = h + 'px';
+
+    const mapRect = mapEl ? mapEl.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+    const availW = mapRect.width - w;
+    const availH = mapRect.height - h;
+
+    let targetLeft, targetTop;
+
+    if (payload.ratioX !== undefined && availW > 0) {
+        // Posizionamento proporzionale perfetto sulla mappa del player (escludendo la sidebar del DM)
+        targetLeft = mapRect.left + (payload.ratioX * availW);
+    } else if (payload.offsetX !== undefined) {
+        targetLeft = mapRect.left + payload.offsetX;
+    } else if (payload.left) {
+        targetLeft = parseInt(payload.left) || 100;
+    } else {
+        targetLeft = (window.innerWidth - w) / 2;
+    }
+
+    if (payload.ratioY !== undefined && availH > 0) {
+        targetTop = mapRect.top + (payload.ratioY * availH);
+    } else if (payload.offsetY !== undefined) {
+        targetTop = mapRect.top + payload.offsetY;
+    } else if (payload.top) {
+        targetTop = parseInt(payload.top) || 100;
+    } else {
+        targetTop = 100;
+    }
+
+    // Assicura che la finestra rimanga sempre all'interno dello schermo del giocatore
+    targetLeft = Math.max(10, Math.min(window.innerWidth - w - 10, targetLeft));
+    targetTop = Math.max(10, Math.min(window.innerHeight - h - 10, targetTop));
+
+    hw.style.left = Math.round(targetLeft) + 'px';
+    hw.style.top = Math.round(targetTop) + 'px';
+    hw.style.right = 'auto';
+    hw.style.bottom = 'auto';
+}
 
 function isTokenOwnedByLocalPlayer(token) {
     if (!token || !network || !network.playerName) return false;
@@ -142,7 +210,7 @@ network.onMessage((data, peerId) => {
         const pingId = pData.id || (pData.x + '_' + pData.y + '_' + (pData.t || ''));
         if (window.lastReceivedPlayerPingId === pingId) return;
         window.lastReceivedPlayerPingId = pingId;
-        engine.pings.push({x: pData.x, y: pData.y, start: Date.now(), color: pData.color || '#ff0000'});
+        engine.pings.push({id: pingId, x: pData.x, y: pData.y, start: Date.now(), color: pData.color || '#ff0000'});
         engine.renderUI();
     } else if (data.type === 'REMOTE_TOKEN_MOVE') {
         if (activeToken && activeToken.type === 'token' && activeToken.ref && activeToken.ref.id === data.payload.id) return;
@@ -150,7 +218,27 @@ network.onMessage((data, peerId) => {
         if (tok) {
             tok.x = data.payload.x;
             tok.y = data.payload.y;
-            engine.renderTokensLayer();
+            if (data.final) {
+                engine.renderTokensLayer();
+            } else {
+                engine.requestTokenLayerRender();
+            }
+        }
+    } else if (data.type === 'REMOTE_TOKENS_MOVE_BATCH') {
+        if (Array.isArray(data.payload)) {
+            data.payload.forEach(item => {
+                if (activeToken && activeToken.type === 'token' && activeToken.ref && activeToken.ref.id === item.id) return;
+                const tok = engine.tokens.find(t => t.id === item.id);
+                if (tok) {
+                    tok.x = item.x;
+                    tok.y = item.y;
+                }
+            });
+            if (data.final) {
+                engine.renderTokensLayer();
+            } else {
+                engine.requestTokenLayerRender();
+            }
         }
     } else if (data.type === 'REMOTE_SHAPE_MOVE') {
         if (activeToken && activeToken.type === 'shape' && activeToken.ref && activeToken.ref.id === data.payload.id) return;
@@ -158,7 +246,11 @@ network.onMessage((data, peerId) => {
         if (s) {
             s.x = data.payload.x;
             s.y = data.payload.y;
-            engine.renderTokensLayer();
+            if (data.final) {
+                engine.renderTokensLayer();
+            } else {
+                engine.requestTokenLayerRender();
+            }
         }
     } else if (data.type === 'VIEW_SYNC') {
         wasViewSyncActive = true;
@@ -173,6 +265,22 @@ network.onMessage((data, peerId) => {
         if (!engine.grid) engine.grid = {};
         engine.grid.offsetX = data.payload.offsetX;
         engine.grid.offsetY = data.payload.offsetY;
+        if (data.payload.anchor && data.payload.dx !== undefined && data.payload.dy !== undefined) {
+            if (!window._playerLiveGridStart) {
+                window._playerLiveGridStart = {
+                    tokens: engine.tokens.map(t => ({ token: t, startX: t.x, startY: t.y })),
+                    shapes: (engine.shapes || []).map(s => ({ shape: s, startX: s.x, startY: s.y }))
+                };
+            }
+            window._playerLiveGridStart.tokens.forEach(item => {
+                item.token.x = item.startX + data.payload.dx;
+                item.token.y = item.startY + data.payload.dy;
+            });
+            window._playerLiveGridStart.shapes.forEach(item => {
+                item.shape.x = item.startX + data.payload.dx;
+                item.shape.y = item.startY + data.payload.dy;
+            });
+        }
         engine.renderAll();
     } else if (data.type === 'LIVE_DRAW_POINT') {
         const p = data.payload;
@@ -186,10 +294,12 @@ network.onMessage((data, peerId) => {
     } else if (data.type === 'HANDOUT_RECT_LIVE') {
         const hw = document.getElementById('handout-window');
         if (hw && data.payload) {
-            if (data.payload.left) hw.style.left = data.payload.left;
-            if (data.payload.top) hw.style.top = data.payload.top;
-            if (data.payload.width) hw.style.width = data.payload.width;
-            if (data.payload.height) hw.style.height = data.payload.height;
+            if (data.payload.syncHandout !== undefined) {
+                setHandoutControlledByDm(data.payload.syncHandout);
+            }
+            if (isHandoutControlledByDm) {
+                applyHandoutRect(data.payload);
+            }
         }
     } else if (data.type === 'MAP_UPDATE') {
         if (!data.payload) return;
@@ -237,8 +347,22 @@ network.onMessage((data, peerId) => {
                 tok.pcSheet = p.pcSheet;
                 tok.hasPcSheet = true;
                 tok.pcSheetVer = p.pcSheet.updatedAt || 1;
+                if (p.adventureJournal !== undefined) {
+                    tok.adventureJournal = p.adventureJournal;
+                }
             }
             if (window.pcSheetManager) {
+                window.pcSheetManager.refreshIfOpen(p.tokenId);
+            }
+        }
+    } else if (data.type === 'TOKEN_JOURNAL_SYNC') {
+        const p = data.payload;
+        if (p && p.tokenId) {
+            const tok = engine.tokens.find(t => t.id === p.tokenId);
+            if (tok) {
+                tok.adventureJournal = p.adventureJournal || '';
+            }
+            if (window.pcSheetManager && window.pcSheetManager.refreshIfOpen) {
                 window.pcSheetManager.refreshIfOpen(p.tokenId);
             }
         }
@@ -247,6 +371,7 @@ network.onMessage((data, peerId) => {
             document.getElementById('handout-image').src = data.data;
         }
     } else if (data.type === 'STATE_SYNC') {
+        window._playerLiveGridStart = null;
         const state = data.payload;
         if (state.audioState && window.syncPlayerAudio) {
             window.syncPlayerAudio(state.audioState);
@@ -254,21 +379,42 @@ network.onMessage((data, peerId) => {
         
         if (state.sharedImageId !== currentSharedImageId) {
             currentSharedImageId = state.sharedImageId;
+            const hw = document.getElementById('handout-window');
             if (currentSharedImageId) {
-                document.getElementById('handout-window').style.display = 'flex';
+                if (hw) {
+                    hw.style.display = 'flex';
+                    setHandoutControlledByDm(!!state.syncHandout);
+                    // Se il Master comanda la posizione oppure se il player non l'ha ancora posizionata:
+                    if (state.sharedImageRect && (state.syncHandout || !hw.dataset.userPositioned)) {
+                        applyHandoutRect(state.sharedImageRect);
+                    }
+                }
                 document.getElementById('handout-image').src = ''; // Clear old
                 network.send({ type: 'REQUEST_IMAGE', imageId: currentSharedImageId });
             } else {
-                document.getElementById('handout-window').style.display = 'none';
+                // CHIUSURA FORZATA DAL MASTER (SEMPRE):
+                if (hw) {
+                    hw.style.display = 'none';
+                    delete hw.dataset.userPositioned;
+                }
+                const img = document.getElementById('handout-image');
+                if (img) img.src = '';
             }
-        }
-        
-        if (state.sharedImageRect) {
+        } else {
+            // L'immagine è già la stessa
             const hw = document.getElementById('handout-window');
-            hw.style.left = state.sharedImageRect.left;
-            hw.style.top = state.sharedImageRect.top;
-            hw.style.width = state.sharedImageRect.width;
-            hw.style.height = state.sharedImageRect.height;
+            if (state.sharedImageId) {
+                setHandoutControlledByDm(!!state.syncHandout);
+                if (state.syncHandout && state.sharedImageRect && hw) {
+                    applyHandoutRect(state.sharedImageRect);
+                }
+            } else if (hw) {
+                // Se non c'è sharedImageId, assicurati che sia chiusa SEMPRE
+                hw.style.display = 'none';
+                delete hw.dataset.userPositioned;
+                const img = document.getElementById('handout-image');
+                if (img) img.src = '';
+            }
         }
         
         // Sync HP Display Style
@@ -428,8 +574,18 @@ network.onMessage((data, peerId) => {
         engine.publicStrokes = state.publicStrokes || [];
         engine.shapes = state.shapes || [];
 
+        // --- Toolbar Visibility (Modalità TV Master) ---
+        if (typeof state.hideToolbar !== 'undefined') {
+            isToolbarHiddenByDm = !!state.hideToolbar;
+            if (isToolbarHiddenByDm) {
+                togglePlayerToolbar(false);
+                if (btnToggleToolbar) btnToggleToolbar.style.display = 'none';
+            } else {
+                if (btnToggleToolbar) btnToggleToolbar.style.display = 'flex';
+            }
+        }
+        
         // --- View Sync Logic ---
-        // Nota: la visibilità della barra strumenti è gestita localmente dal giocatore / schermo TV tramite togglePlayerToolbar
         
         if (typeof state.lockMap !== 'undefined') {
             const wasLocked = isMapLocked;
@@ -471,6 +627,9 @@ network.onMessage((data, peerId) => {
             } else if (existing && existing.pcSheet) {
                 t.pcSheet = existing.pcSheet;
                 tokenPcSheetCache.set(t.id, existing.pcSheet);
+            }
+            if (t.adventureJournal === undefined && existing && existing.adventureJournal !== undefined) {
+                t.adventureJournal = existing.adventureJournal;
             }
             if (t.hasPcSheet && (!t.pcSheet || (t.pcSheetVer && t.pcSheet.updatedAt !== t.pcSheetVer))) {
                 const lastSheetReq = window._requestedPcSheetsAt.get(t.id) || 0;
@@ -575,6 +734,9 @@ window.addEventListener('resize', () => {
     if (!wasViewSyncActive) {
         engine.fitToScreen();
     }
+    if (isHandoutControlledByDm && window.lastHandoutRectPayload) {
+        applyHandoutRect(window.lastHandoutRectPayload);
+    }
     engine.renderAll();
 });
 
@@ -597,6 +759,11 @@ document.querySelectorAll('.ptool-btn').forEach(b => b.style.opacity = b.classLi
 function spawnShape(type) {
     const centerPos = engine.screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
     const highlight = document.getElementById('pshape-highlight') ? document.getElementById('pshape-highlight').checked : true;
+    let casterTokenId = null;
+    if (engine.tokens) {
+        const myTok = engine.tokens.find(t => isTokenOwnedByLocalPlayer(t));
+        if (myTok) casterTokenId = myTok.id;
+    }
     const shape = {
         id: 'aoe_' + Date.now() + Math.floor(Math.random()*1000),
         type: type === 'sphere' ? 'circle' : type,
@@ -607,6 +774,8 @@ function spawnShape(type) {
         visible: true,
         highlightTokens: highlight,
         owner: network.playerName,
+        casterName: network.playerName,
+        casterTokenId: casterTokenId,
         color: document.getElementById('player-color').value
     };
     network.send({ type: 'PLAYER_ADD_SHAPE', payload: shape });
@@ -633,6 +802,7 @@ document.getElementById('pbtn-clear-my-drawings')?.addEventListener('click', () 
 });
 
 // --- GESTIONE BARRA STRUMENTI PLAYER & TV (DEFAULT NASCOSTA) ---
+let isToolbarHiddenByDm = false;
 const btnToggleToolbar = document.getElementById('btn-toggle-toolbar');
 const ptb = document.getElementById('player-toolbar');
 const btnCloseToolbar = document.getElementById('pbtn-close-toolbar');
@@ -675,6 +845,7 @@ if (btnCloseToolbar) {
 window.addEventListener('keydown', (e) => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT')) return;
     if (e.key === 'h' || e.key === 'H') {
+        if (isToolbarHiddenByDm) return; // Disabilitato se il Master ha forzato la modalità TV
         togglePlayerToolbar();
     }
 });
@@ -684,13 +855,52 @@ window.addEventListener('keydown', (e) => {
 const uiLayer = document.getElementById('main-canvas-container');
 
 function getEventPos(e) {
-    if (e.touches && e.touches.length > 0) {
-        return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    const rect = uiLayer.getBoundingClientRect();
+    if (e && e.touches && e.touches.length > 0) {
+        return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
     }
-    return { x: e.clientX, y: e.clientY };
+    if (e && e.changedTouches && e.changedTouches.length > 0) {
+        return { x: e.changedTouches[0].clientX - rect.left, y: e.changedTouches[0].clientY - rect.top };
+    }
+    if (e && e.clientX !== undefined) {
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+    return { x: typeof startMouseX !== 'undefined' ? startMouseX : 0, y: typeof startMouseY !== 'undefined' ? startMouseY : 0 };
 }
 
+let pIsPinching = false;
+let pPinchStartDist = 0;
+let pPinchStartScale = 1;
+let pPinchStartWorldPos = null;
+let pPinchMidX = 0;
+let pPinchMidY = 0;
+
 function pHandleStart(e) {
+    if (!isMapLocked && e.touches && e.touches.length >= 2) {
+        e.preventDefault();
+        if (pingTimeout) {
+            clearTimeout(pingTimeout);
+            pingTimeout = null;
+        }
+        pIsPinching = true;
+        isDragging = false;
+        isPanning = false;
+        activeToken = null;
+        activeLaser = null;
+        activeStroke = null;
+
+        const rect = uiLayer.getBoundingClientRect();
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        pPinchStartDist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+        pPinchStartScale = engine.scale;
+
+        pPinchMidX = (t0.clientX + t1.clientX) / 2 - rect.left;
+        pPinchMidY = (t0.clientY + t1.clientY) / 2 - rect.top;
+        pPinchStartWorldPos = engine.screenToWorld(pPinchMidX, pPinchMidY);
+        return;
+    }
+
     // Rimosso blocco offline no-name per permettere il panning
     e.preventDefault();
     const pos = getEventPos(e);
@@ -708,6 +918,7 @@ function pHandleStart(e) {
         isPanning = true;
         startPanX = pos.x - engine.offsetX;
         startPanY = pos.y - engine.offsetY;
+        document.body.classList.add('vtt-dragging');
         return;
     }
     
@@ -715,6 +926,7 @@ function pHandleStart(e) {
     
     if (currentTool === 'laser') {
         isDragging = true;
+        document.body.classList.add('vtt-dragging');
         activeLaser = {
             id: Date.now() + '_' + Math.random(),
             color: '#00ffcc',
@@ -733,6 +945,7 @@ function pHandleStart(e) {
     
     if (currentTool === 'draw') {
         isDragging = true;
+        document.body.classList.add('vtt-dragging');
         activeStroke = {
             id: 'stroke_' + Date.now() + Math.floor(Math.random()*1000),
             owner: network.playerName || 'local',
@@ -745,40 +958,72 @@ function pHandleStart(e) {
     
     if (currentTool === 'ruler') {
         isDragging = true;
+        document.body.classList.add('vtt-dragging');
         engine.ruler = { startX: worldPos.x, startY: worldPos.y, endX: worldPos.x, endY: worldPos.y };
         engine.renderUI();
         return;
     }
     
     if (currentTool === 'move') {
+        document.body.classList.add('vtt-dragging');
         let hitEntity = false;
+        let clickedTok = null;
         
-        // Cerca token di proprietà (supporta assegnazione singola o multi-giocatore)
-        for (let i = engine.tokens.length - 1; i >= 0; i--) {
-            const t = engine.tokens[i];
-            if (isTokenOwnedByLocalPlayer(t) && 
-                worldPos.x >= t.x && worldPos.x <= t.x + t.width &&
-                worldPos.y >= t.y && worldPos.y <= t.y + t.height) {
-                
-                activeToken = { type: 'token', ref: t };
-                isDragging = true;
-                hitEntity = true;
-                return;
+        // 1. Cerca prima se ha cliccato la maniglia o il badge di una forma AoE in primo piano (priorità assoluta)
+        if (engine.shapes && engine.shapes.length > 0) {
+            for (let i = engine.shapes.length - 1; i >= 0; i--) {
+                const s = engine.shapes[i];
+                if (!s.visible) continue;
+                if (s.owner !== network.playerName) continue;
+                // Se la sagoma è coperta da nebbia di guerra, il giocatore non può vederla né cliccarla!
+                if (engine.isPointInFog && engine.isPointInFog(s.x, s.y)) continue;
+
+                const hasTimer = s.durationRounds !== undefined && s.durationRounds !== null && Number(s.durationRounds) > 0;
+                const hitDist = (hasTimer ? 22 : 16) / Math.min(1, engine.scale);
+                const dist = Math.hypot(worldPos.x - s.x, worldPos.y - s.y);
+                if (dist <= hitDist) {
+                    activeToken = { type: 'shape', ref: s };
+                    isDragging = true;
+                    hitEntity = true;
+                    break;
+                }
+            }
+        }
+
+        // 2. Se non ha colpito la maniglia AoE, cerca token di proprietà
+        if (!hitEntity) {
+            const isTouch = e && e.touches && e.touches.length > 0;
+            const pad = isTouch ? (10 / Math.min(1, engine.scale)) : 0;
+            for (let i = engine.tokens.length - 1; i >= 0; i--) {
+                const t = engine.tokens[i];
+                if (isTokenOwnedByLocalPlayer(t) && 
+                    worldPos.x >= t.x - pad && worldPos.x <= t.x + t.width + pad &&
+                    worldPos.y >= t.y - pad && worldPos.y <= t.y + t.height + pad) {
+                    
+                    activeToken = { type: 'token', ref: t };
+                    isDragging = true;
+                    hitEntity = true;
+                    clickedTok = t;
+                    break;
+                }
             }
         }
         
-        // Cerca shape
-        for (let i = engine.shapes.length - 1; i >= 0; i--) {
-            const s = engine.shapes[i];
-            if (!s.visible) continue;
-            if (s.owner !== network.playerName) continue;
+        // 3. Fallback ricerca forma (fino a 24px)
+        if (!hitEntity && engine.shapes && engine.shapes.length > 0) {
+            for (let i = engine.shapes.length - 1; i >= 0; i--) {
+                const s = engine.shapes[i];
+                if (!s.visible) continue;
+                if (s.owner !== network.playerName) continue;
+                if (engine.isPointInFog && engine.isPointInFog(s.x, s.y)) continue;
 
-            const dist = Math.hypot(worldPos.x - s.x, worldPos.y - s.y);
-            if (dist <= 20 / engine.scale) {
-                activeToken = { type: 'shape', ref: s };
-                isDragging = true;
-                hitEntity = true;
-                return;
+                const dist = Math.hypot(worldPos.x - s.x, worldPos.y - s.y);
+                if (dist <= 24 / Math.min(1, engine.scale)) {
+                    activeToken = { type: 'shape', ref: s };
+                    isDragging = true;
+                    hitEntity = true;
+                    break;
+                }
             }
         }
         
@@ -788,28 +1033,97 @@ function pHandleStart(e) {
             startPanX = pos.x - engine.offsetX;
             startPanY = pos.y - engine.offsetY;
         }
-    }
-    
-    // Ping Timer (solo se non sta draggando qualcosa)
-    if (currentTool === 'move' && !isDragging) {
+
+        // Cerca se ha cliccato su qualsiasi creatura visibile (anche non di sua proprietà!)
+        let targetCreature = clickedTok;
+        if (!targetCreature) {
+            for (let i = engine.tokens.length - 1; i >= 0; i--) {
+                const t = engine.tokens[i];
+                if (t.visible !== false &&
+                    worldPos.x >= t.x && worldPos.x <= t.x + t.width &&
+                    worldPos.y >= t.y && worldPos.y <= t.y + t.height) {
+                    if (engine.isPointInFog && engine.isPointInFog(worldPos.x, worldPos.y)) {
+                        continue;
+                    }
+                    targetCreature = t;
+                    break;
+                }
+            }
+        }
+
+        // Ping Timer (su creatura o mappa vuota)
+        if (pingTimeout) { clearTimeout(pingTimeout); pingTimeout = null; }
+        const pColor = (document.getElementById('player-color') && document.getElementById('player-color').value) ? document.getElementById('player-color').value : '#00ffff';
+        const pingTargetX = targetCreature ? (targetCreature.x + targetCreature.width / 2) : worldPos.x;
+        const pingTargetY = targetCreature ? (targetCreature.y + targetCreature.height / 2) : worldPos.y;
+
         pingTimeout = setTimeout(() => {
             pingTimeout = null;
+            isPanning = false;
+            if (activeToken) {
+                isDragging = false;
+                activeToken = null;
+            }
             const pId = 'p_ping_' + Date.now();
-            engine.pings.push({id: pId, x: worldPos.x, y: worldPos.y, start: Date.now(), color: pColor});
+            window.lastReceivedPlayerPingId = pId;
+            engine.pings.push({id: pId, x: pingTargetX, y: pingTargetY, start: Date.now(), color: pColor});
             engine.renderUI();
-            network.send({type: 'PING', payload: {id: pId, x: worldPos.x, y: worldPos.y, color: pColor, t: Date.now()}});
-        }, 500);
+            network.send({type: 'PING', payload: {id: pId, x: pingTargetX, y: pingTargetY, color: pColor, t: Date.now()}});
+        }, 600);
     }
 }
 
 function pHandleMove(e) {
-    const pos = getEventPos(e);
-    const moveRawX = e.touches ? e.touches[0].clientX : e.clientX;
-    const moveRawY = e.touches ? e.touches[0].clientY : e.clientY;
-    
-    if (pingTimeout && (Math.abs(moveRawX - startMouseX) > 5 || Math.abs(moveRawY - startMouseY) > 5)) {
+    if (pIsPinching && e.touches && e.touches.length >= 2) {
+        e.preventDefault();
+        if (pingTimeout) {
+            clearTimeout(pingTimeout);
+            pingTimeout = null;
+        }
+        const rect = uiLayer.getBoundingClientRect();
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        const curDist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+        const curMidX = (t0.clientX + t1.clientX) / 2 - rect.left;
+        const curMidY = (t0.clientY + t1.clientY) / 2 - rect.top;
+
+        if (pPinchStartDist > 5 && pPinchStartWorldPos) {
+            const factor = curDist / pPinchStartDist;
+            let newScale = pPinchStartScale * factor;
+            newScale = Math.max(0.1, Math.min(newScale, 10));
+            engine.scale = newScale;
+
+            engine.offsetX = curMidX - pPinchStartWorldPos.x * engine.scale;
+            engine.offsetY = curMidY - pPinchStartWorldPos.y * engine.scale;
+
+            engine.renderViewport();
+        }
+        return;
+    }
+
+    if (e.touches && e.touches.length >= 2 && pingTimeout) {
         clearTimeout(pingTimeout);
         pingTimeout = null;
+    }
+
+    if ((isDragging || isPanning || activeLaser || activeStroke) && e.buttons === 0) {
+        pHandleEnd(e);
+        return;
+    }
+
+    if (!isDragging && !isPanning && !pingTimeout && !activeLaser && !activeStroke) return;
+
+    const pos = getEventPos(e);
+    const moveRawX = (e.touches && e.touches.length > 0) ? e.touches[0].clientX : ((e.clientX !== undefined) ? e.clientX : startMouseX);
+    const moveRawY = (e.touches && e.touches.length > 0) ? e.touches[0].clientY : ((e.clientY !== undefined) ? e.clientY : startMouseY);
+    
+    if (pingTimeout) {
+        if (Math.hypot(moveRawX - startMouseX, moveRawY - startMouseY) > 10) {
+            clearTimeout(pingTimeout);
+            pingTimeout = null;
+        } else {
+            return;
+        }
     }
     
     if (!isDragging && !isPanning) return;
@@ -829,7 +1143,7 @@ function pHandleMove(e) {
             activeToken.ref.x = worldPos.x - activeToken.ref.width / 2;
             activeToken.ref.y = worldPos.y - activeToken.ref.height / 2;
             activeToken.ref._lastLocalEdit = Date.now();
-            engine.renderTokensLayer();
+            engine.requestTokenLayerRender();
             
             if (Date.now() - (window.lastMoveSend || 0) > 40) {
                 network.send({
@@ -842,7 +1156,7 @@ function pHandleMove(e) {
             activeToken.ref.x = worldPos.x;
             activeToken.ref.y = worldPos.y;
             activeToken.ref._lastLocalEdit = Date.now();
-            engine.renderTokensLayer();
+            engine.requestTokenLayerRender();
             
             if (Date.now() - (window.lastMoveSend || 0) > 40) {
                 network.send({
@@ -885,6 +1199,23 @@ function pHandleMove(e) {
 }
 
 function pHandleEnd(e) {
+    if (pIsPinching) {
+        if (e && e.touches && e.touches.length >= 2) {
+            return;
+        }
+        pIsPinching = false;
+        pPinchStartDist = 0;
+        pPinchStartWorldPos = null;
+        if (pingTimeout) {
+            clearTimeout(pingTimeout);
+            pingTimeout = null;
+        }
+        document.body.classList.remove('vtt-dragging');
+        engine.renderViewport();
+        return;
+    }
+
+    document.body.classList.remove('vtt-dragging');
     if (pingTimeout) {
         clearTimeout(pingTimeout);
         pingTimeout = null;
@@ -919,18 +1250,22 @@ function pHandleEnd(e) {
             });
             
             // Controlla se è stato solo un click (senza drag)
-            let endX = e.clientX; let endY = e.clientY;
-            if (e.changedTouches && e.changedTouches.length > 0) {
+            let endX = (e && e.clientX !== undefined) ? e.clientX : startMouseX;
+            let endY = (e && e.clientY !== undefined) ? e.clientY : startMouseY;
+            if (e && e.changedTouches && e.changedTouches.length > 0) {
                 endX = e.changedTouches[0].clientX;
                 endY = e.changedTouches[0].clientY;
             }
-            if (Math.abs(endX - startMouseX) < 10 && Math.abs(endY - startMouseY) < 10) {
+            const isTouch = e && ((e.touches && e.touches.length > 0) || (e.changedTouches && e.changedTouches.length > 0));
+            const maxMove = isTouch ? 25 : 10;
+            const maxInterval = isTouch ? 500 : 380;
+            if (Math.abs(endX - startMouseX) < maxMove && Math.abs(endY - startMouseY) < maxMove) {
                 const clickedTok = activeToken.ref;
                 window.editingPlayerToken = clickedTok;
                 engine.selectedTokenId = clickedTok.id;
 
                 const nowClick = Date.now();
-                if (lastPlayerClickedTokenId === clickedTok.id && (nowClick - lastPlayerClickedTokenTime) < 380) {
+                if (lastPlayerClickedTokenId === clickedTok.id && (nowClick - lastPlayerClickedTokenTime) < maxInterval) {
                     lastPlayerClickedTokenId = null;
                     lastPlayerClickedTokenTime = 0;
                     if (window.pcSheetManager) {
@@ -946,6 +1281,10 @@ function pHandleEnd(e) {
                     document.getElementById('ptoken-aura-color').value = aura.color || '#ffff00';
                     const auraHl = document.getElementById('ptoken-aura-highlight');
                     if (auraHl) auraHl.checked = aura.highlightTokens !== false;
+                    const pAuraDur = document.getElementById('ptoken-aura-duration');
+                    if (pAuraDur) {
+                        pAuraDur.value = (aura.roundsLeft !== undefined) ? aura.roundsLeft : (aura.durationRounds || '');
+                    }
                 }
             }        } else if (activeToken.type === 'shape') {
             activeToken.ref._lastLocalEdit = Date.now();
@@ -962,12 +1301,15 @@ function pHandleEnd(e) {
                 payload: { id: activeToken.ref.id, x: activeToken.ref.x, y: activeToken.ref.y }
             });
             
-            let endX = e.clientX; let endY = e.clientY;
-            if (e.changedTouches && e.changedTouches.length > 0) {
+            let endX = (e && e.clientX !== undefined) ? e.clientX : startMouseX;
+            let endY = (e && e.clientY !== undefined) ? e.clientY : startMouseY;
+            if (e && e.changedTouches && e.changedTouches.length > 0) {
                 endX = e.changedTouches[0].clientX;
                 endY = e.changedTouches[0].clientY;
             }
-            if (Math.abs(endX - startMouseX) < 10 && Math.abs(endY - startMouseY) < 10) {
+            const isTouch = e && ((e.touches && e.touches.length > 0) || (e.changedTouches && e.changedTouches.length > 0));
+            const maxMove = isTouch ? 25 : 10;
+            if (Math.abs(endX - startMouseX) < maxMove && Math.abs(endY - startMouseY) < maxMove) {
                 document.getElementById('player-shape-panel').style.display = 'block';
                 document.getElementById('pshape-width').style.display = activeToken.ref.type === 'line' ? 'block' : 'none';
                 let sVal = activeToken.ref.sizeFt || 15;
@@ -982,6 +1324,10 @@ function pHandleEnd(e) {
                 document.getElementById('pshape-color').value = activeToken.ref.color || '#00ffff';
                 const hlEl = document.getElementById('pshape-highlight');
                 if (hlEl) hlEl.checked = activeToken.ref.highlightTokens !== false;
+                const pDurEl = document.getElementById('pshape-duration');
+                if (pDurEl) {
+                    pDurEl.value = (activeToken.ref.roundsLeft !== undefined) ? activeToken.ref.roundsLeft : (activeToken.ref.durationRounds || '');
+                }
                 window.editingPlayerShape = activeToken.ref;
             }
         }
@@ -1027,11 +1373,17 @@ uiLayer.addEventListener('wheel', (e) => {
 
 uiLayer.addEventListener('mousedown', pHandleStart);
 uiLayer.addEventListener('touchstart', pHandleStart, {passive: false});
-uiLayer.addEventListener('mousemove', pHandleMove);
-uiLayer.addEventListener('touchmove', pHandleMove, {passive: false});
-uiLayer.addEventListener('mouseup', pHandleEnd);
-uiLayer.addEventListener('touchend', pHandleEnd);
-uiLayer.addEventListener('mouseleave', pHandleEnd);
+
+window.addEventListener('mousemove', pHandleMove);
+window.addEventListener('touchmove', pHandleMove, {passive: false});
+
+window.addEventListener('mouseup', pHandleEnd);
+window.addEventListener('touchend', pHandleEnd);
+window.addEventListener('blur', () => {
+    if (isDragging || isPanning || activeLaser || activeStroke) {
+        pHandleEnd({});
+    }
+});
 
 // Gestione Pannello Shape Giocatore
 function updatePlayerShape() {
@@ -1047,6 +1399,19 @@ function updatePlayerShape() {
     window.editingPlayerShape.color = document.getElementById('pshape-color').value;
     const hlEl = document.getElementById('pshape-highlight');
     if (hlEl) window.editingPlayerShape.highlightTokens = hlEl.checked;
+    const durEl = document.getElementById('pshape-duration');
+    if (durEl) {
+        const dVal = parseInt(durEl.value);
+        if (!isNaN(dVal) && dVal > 0) {
+            window.editingPlayerShape.durationRounds = dVal;
+            window.editingPlayerShape.roundsLeft = dVal;
+            delete window.editingPlayerShape.skipFirstDecrement;
+        } else {
+            window.editingPlayerShape.durationRounds = 0;
+            delete window.editingPlayerShape.roundsLeft;
+            delete window.editingPlayerShape.skipFirstDecrement;
+        }
+    }
     window.editingPlayerShape._lastLocalEdit = Date.now();
     engine.renderAll();
     
@@ -1060,6 +1425,7 @@ document.getElementById('pshape-width').addEventListener('input', updatePlayerSh
 document.getElementById('pshape-angle').addEventListener('input', updatePlayerShape);
 document.getElementById('pshape-color').addEventListener('input', updatePlayerShape);
 document.getElementById('pshape-highlight')?.addEventListener('change', updatePlayerShape);
+document.getElementById('pshape-duration')?.addEventListener('input', updatePlayerShape);
 document.getElementById('pshape-unit').addEventListener('change', (e) => {
     const input = document.getElementById('pshape-size');
     const inputW = document.getElementById('pshape-width');
@@ -1105,6 +1471,18 @@ function updatePlayerTokenAura() {
     const unit = document.getElementById('ptoken-aura-unit').value;
     const squares = unit === 'ft' ? sizeRaw / 5 : sizeRaw / 1.5;
     
+    const durEl = document.getElementById('ptoken-aura-duration');
+    let durVal = durEl ? parseInt(durEl.value) : 0;
+    if (isNaN(durVal) || durVal <= 0) durVal = 0;
+
+    let skipFirst = false;
+    if (engine.initiative && engine.initiative.active && engine.initiative.participants) {
+        const curP = engine.initiative.participants[engine.initiative.currentTurnIndex];
+        if (curP && (curP.tokenId === window.editingPlayerToken.id || (curP.name && window.editingPlayerToken.name && curP.name.trim().toLowerCase() === window.editingPlayerToken.name.trim().toLowerCase()))) {
+            skipFirst = true;
+        }
+    }
+
     const auraHl = document.getElementById('ptoken-aura-highlight');
     window.editingPlayerToken.aura = {
         active: document.getElementById('ptoken-aura-active').checked,
@@ -1112,7 +1490,10 @@ function updatePlayerTokenAura() {
         unit: unit,
         sizePx: squares * engine.grid.size,
         color: document.getElementById('ptoken-aura-color').value,
-        highlightTokens: auraHl ? auraHl.checked : true
+        highlightTokens: auraHl ? auraHl.checked : true,
+        durationRounds: durVal > 0 ? durVal : undefined,
+        roundsLeft: durVal > 0 ? durVal : undefined,
+        skipFirstDecrement: skipFirst
     };
     
     engine.renderAll();
@@ -1135,6 +1516,7 @@ function updatePlayerTokenAura() {
 document.getElementById('ptoken-aura-active').addEventListener('change', updatePlayerTokenAura);
 document.getElementById('ptoken-aura-highlight')?.addEventListener('change', updatePlayerTokenAura);
 document.getElementById('ptoken-aura-size').addEventListener('input', updatePlayerTokenAura);
+document.getElementById('ptoken-aura-duration')?.addEventListener('input', updatePlayerTokenAura);
 document.getElementById('ptoken-aura-unit').addEventListener('change', (e) => {
     const input = document.getElementById('ptoken-aura-size');
     let oldVal = parseFloat(input.value); if(isNaN(oldVal)) oldVal = 0;
@@ -1179,9 +1561,90 @@ document.getElementById('pbtn-toolbar-pcsheet')?.addEventListener('click', openL
 
 
 // Player self close
-document.getElementById('btn-handout-close-self').addEventListener('click', () => {
+document.getElementById('btn-handout-close-self')?.addEventListener('click', () => {
     document.getElementById('handout-window').style.display = 'none';
 });
+
+// Player Handout Window: Trascinamento (Mouse & Touch) e Ridimensionamento
+const playerHw = document.getElementById('handout-window');
+const playerHwHeader = document.getElementById('handout-header');
+if (playerHw && playerHwHeader) {
+    let isDraggingHw = false;
+    let hwOffsetX = 0, hwOffsetY = 0;
+
+    playerHwHeader.addEventListener('mousedown', (e) => {
+        if (isHandoutControlledByDm) return; // Bloccato se il DM comanda la posizione!
+        if (e.target.tagName.toLowerCase() === 'button') return;
+        e.preventDefault();
+        isDraggingHw = true;
+        playerHw.dataset.userPositioned = 'true';
+        const rect = playerHw.getBoundingClientRect();
+        playerHw.style.bottom = 'auto';
+        playerHw.style.right = 'auto';
+        playerHw.style.left = rect.left + 'px';
+        playerHw.style.top = rect.top + 'px';
+        hwOffsetX = e.clientX - rect.left;
+        hwOffsetY = e.clientY - rect.top;
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDraggingHw || isHandoutControlledByDm) return;
+        playerHw.style.left = (e.clientX - hwOffsetX) + 'px';
+        playerHw.style.top = (e.clientY - hwOffsetY) + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isDraggingHw) {
+            isDraggingHw = false;
+        }
+    });
+
+    // Supporto Touch per schermi e tablet
+    playerHwHeader.style.touchAction = 'none';
+    let isTouchDraggingPlayerHw = false;
+    let touchStartX = 0, touchStartY = 0, touchInitLeft = 0, touchInitTop = 0;
+    playerHwHeader.addEventListener('touchstart', (e) => {
+        if (isHandoutControlledByDm) return; // Bloccato se il DM comanda la posizione!
+        if (e.target.tagName.toLowerCase() === 'button' || e.target.closest('button')) return;
+        if (e.touches && e.touches.length === 1) {
+            if (e.cancelable) e.preventDefault();
+            isTouchDraggingPlayerHw = true;
+            playerHw.dataset.userPositioned = 'true';
+            const rect = playerHw.getBoundingClientRect();
+            touchInitLeft = rect.left;
+            touchInitTop = rect.top;
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            playerHw.style.left = touchInitLeft + 'px';
+            playerHw.style.top = touchInitTop + 'px';
+            playerHw.style.right = 'auto';
+            playerHw.style.bottom = 'auto';
+        }
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+        if (!isTouchDraggingPlayerHw || isHandoutControlledByDm) return;
+        if (e.touches && e.touches.length === 1) {
+            if (e.cancelable) e.preventDefault();
+            const dx = e.touches[0].clientX - touchStartX;
+            const dy = e.touches[0].clientY - touchStartY;
+            playerHw.style.left = (touchInitLeft + dx) + 'px';
+            playerHw.style.top = (touchInitTop + dy) + 'px';
+        }
+    }, { passive: false });
+
+    window.addEventListener('touchend', () => { isTouchDraggingPlayerHw = false; });
+    window.addEventListener('touchcancel', () => { isTouchDraggingPlayerHw = false; });
+
+    // Monitora il ridimensionamento manuale da parte del giocatore
+    if (window.ResizeObserver) {
+        new ResizeObserver(() => {
+            if (!isHandoutControlledByDm && playerHw.style.display !== 'none') {
+                playerHw.dataset.userPositioned = 'true';
+            }
+        }).observe(playerHw);
+    }
+}
 
 // Inizializza Sistema Dadi
 if (window.setupDiceSystem) {
