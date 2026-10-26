@@ -271,14 +271,25 @@ network.onMessage((data, peerId) => {
     
     } else if (data.type === 'DICE_ROLL') {
         if (window.appendRollToChat) {
-            if (window.lastRollId === data.payload.id) return;
-            window.lastRollId = data.payload.id;
+            if (window.lastRollId === data.payload?.id) return;
+            window.lastRollId = data.payload?.id;
             window.appendRollToChat(data.payload);
             const cp = document.getElementById('chat-panel');
             if (cp) cp.style.display = 'flex';
         }
-        // Rimbalza il tiro del giocatore a tutti gli altri giocatori!
-        network.send(data);
+        // Rimbalza il tiro del giocatore a tutti gli altri giocatori (tranne a chi l'ha inviato)
+        if (network.mode === 'host') {
+            for (let k in network.connections) {
+                if (k !== peerId && network.connections[k].conn) {
+                    network.connections[k].conn.send(data);
+                }
+            }
+            if (network.bc && peerId !== 'local') {
+                network.bc.postMessage(data);
+            }
+        } else {
+            network.send(data);
+        }
     } else if (data.type === 'LASER_SYNC') {
         if (!engine.lasers) engine.lasers = [];
         const existing = engine.lasers.find(l => l.id === data.payload.id);
@@ -378,14 +389,22 @@ network.onMessage((data, peerId) => {
                 if (curP) {
                     const curName = (curP.name || '').trim().toLowerCase();
                     const sCasterName = (data.payload.casterName || '').trim().toLowerCase();
-                    const curTok = curP.tokenId ? engine.tokens.find(t => String(t.id) === String(curP.tokenId)) : null;
+                    const curTok = curP.tokenId ? engine.tokens.find(t => String(t.id).replace(/^tok_/, '') === String(curP.tokenId).replace(/^tok_/, '')) : null;
                     const isCurOwned = curTok ? isTokenOwnedBy(curTok, senderName) : false;
+                    const sTokId = data.payload.casterTokenId ? String(data.payload.casterTokenId).replace(/^tok_/, '') : null;
+                    const pTokId = curP.tokenId ? String(curP.tokenId).replace(/^tok_/, '') : null;
                     
-                    if (isCurOwned || (data.payload.casterTokenId && String(curP.tokenId) === String(data.payload.casterTokenId)) ||
-                        curName === normSender || curName.startsWith(normSender + ' ') || curName.includes(normSender) ||
-                        curName === sCasterName || curName.startsWith(sCasterName + ' ') || curName.includes(sCasterName)) {
+                    if (isCurOwned || (sTokId && pTokId && sTokId === pTokId) ||
+                        (curName && (curName === normSender || curName.startsWith(normSender + ' ') || curName.includes(normSender) ||
+                                     curName === sCasterName || curName.startsWith(sCasterName + ' ') || curName.includes(sCasterName)))) {
                         data.payload.skipFirstDecrement = true;
                         data.payload.casterInitiativeId = curP.id;
+                        if (!data.payload.casterTokenId && curP.tokenId) {
+                            data.payload.casterTokenId = curP.tokenId;
+                        }
+                        if (!data.payload.casterName || data.payload.casterName === senderName || data.payload.casterName === 'Giocatore') {
+                            data.payload.casterName = curP.name;
+                        }
                     }
                 }
             }
@@ -462,15 +481,23 @@ network.onMessage((data, peerId) => {
                     const normSender = senderName ? senderName.trim().toLowerCase() : '';
                     const curName = (curP.name || '').trim().toLowerCase();
                     const sCasterName = (s.casterName || data.payload.casterName || '').trim().toLowerCase();
-                    const curTok = curP.tokenId ? engine.tokens.find(t => String(t.id) === String(curP.tokenId)) : null;
+                    const curTok = curP.tokenId ? engine.tokens.find(t => String(t.id).replace(/^tok_/, '') === String(curP.tokenId).replace(/^tok_/, '')) : null;
                     const isCurOwned = (curTok && senderName) ? isTokenOwnedBy(curTok, senderName) : false;
+                    const sTokId = s.casterTokenId ? String(s.casterTokenId).replace(/^tok_/, '') : null;
+                    const pTokId = curP.tokenId ? String(curP.tokenId).replace(/^tok_/, '') : null;
                     
-                    if (isCurOwned || (s.casterTokenId && String(curP.tokenId) === String(s.casterTokenId)) ||
+                    if (isCurOwned || (sTokId && pTokId && sTokId === pTokId) ||
                         (s.casterInitiativeId && String(s.casterInitiativeId) === String(curP.id)) ||
-                        curName === normSender || curName.startsWith(normSender + ' ') || curName.includes(normSender) ||
-                        curName === sCasterName || curName.startsWith(sCasterName + ' ') || curName.includes(sCasterName)) {
+                        (curName && (curName === normSender || curName.startsWith(normSender + ' ') || curName.includes(normSender) ||
+                                     curName === sCasterName || curName.startsWith(sCasterName + ' ') || curName.includes(sCasterName)))) {
                         s.skipFirstDecrement = true;
                         s.casterInitiativeId = curP.id;
+                        if (!s.casterTokenId && curP.tokenId) {
+                            s.casterTokenId = curP.tokenId;
+                        }
+                        if (!s.casterName || s.casterName === senderName || s.casterName === 'Giocatore') {
+                            s.casterName = curP.name;
+                        }
                     }
                 }
             } else if (s.durationRounds === 0) {

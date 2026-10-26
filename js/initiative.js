@@ -242,7 +242,7 @@ function createSingleParticipantRow(p, index, isIndented = false) {
             <input type="text" placeholder="${p.hpCurrent !== undefined ? p.hpCurrent : '-'} / ${p.hpMax || '-'}" onchange="updateParticipantHPMath(${index}, this.value); this.value='';" title="Digita + o - e premi Invio (es. -15)" style="width: 100%; text-align:center; background:transparent; color:white; border:none; border-bottom:1px solid #666; font-size:11px;">
         </div>
         <div style="flex: 0.9; text-align: center;">
-            <input type="text" inputmode="numeric" value="${p.init}" onchange="updateParticipantInit(${index}, this.value)" style="width: 100%; text-align:center; background:transparent; color:white; border:none; border-bottom:1px solid #666; font-size:11.5px;">
+            <input type="text" inputmode="numeric" value="${p.init !== undefined && p.init !== null ? p.init : ''}" onchange="updateParticipantInit(${index}, this.value)" style="width: 100%; text-align:center; background:transparent; color:white; border:none; border-bottom:1px solid #666; font-size:11.5px;">
         </div>
         <div style="flex: 0.6; text-align: center;">
             <button onclick="removeParticipant(${index})" style="background: transparent; color: #ff5252; border: none; cursor: pointer; font-weight: bold; font-size: 12px;">✕</button>
@@ -414,6 +414,135 @@ window.removeParticipant = function(index) {
     renderTrackerList();
 };
 
+window.handleRollForInitiative = function(data) {
+    if (!data || typeof data !== 'object') return;
+    if (typeof engine === 'undefined' || !engine || !engine.isDM) return;
+    if (!engine.initiative || !Array.isArray(engine.initiative.participants) || engine.initiative.participants.length === 0) return;
+
+    const rawPlayerStr = String(data.player || '');
+    const rawVal = (data.result !== undefined && data.result !== null) ? data.result : data.total;
+    const resultNum = (typeof rawVal === 'number') ? rawVal : parseInt(rawVal);
+    if (isNaN(resultNum)) return;
+
+    // 1. Identifica se è un tiro di Iniziativa da Scheda PG
+    const isInitiative = data.rollType === 'initiative' || /\[.*(iniziativa|initiative).*\]/i.test(rawPlayerStr);
+
+    // 2. Identifica se è un tiro DEX da Statblock Mostro
+    const isDex = data.rollType === 'dex' || /\[.*(\bdex\b|\bdestrezza\b|\bdexterity\b).*\]/i.test(rawPlayerStr);
+
+    if (!isInitiative && !isDex) return;
+
+    if (isInitiative) {
+        let charName = data.charName || '';
+        if (!charName) {
+            const parenMatch = rawPlayerStr.match(/\(([^)]+)\)/);
+            if (parenMatch && parenMatch[1] && !/🔒/i.test(parenMatch[1])) {
+                charName = parenMatch[1].trim();
+            } else {
+                charName = rawPlayerStr.replace(/\[.*\]/g, '').replace(/\(🔒.*?\)/g, '').trim();
+            }
+        }
+        const lowName = charName.toLowerCase();
+        const baseName = (typeof getParticipantBaseName === 'function') ? getParticipantBaseName(charName).toLowerCase() : lowName;
+
+        let matched = null;
+        if (data.tokenId) {
+            matched = engine.initiative.participants.find(p => p.tokenId === data.tokenId);
+        }
+        if (!matched) {
+            matched = engine.initiative.participants.find(p => {
+                const pName = (p.name || '').trim().toLowerCase();
+                const pBase = (typeof getParticipantBaseName === 'function') ? getParticipantBaseName(p.name).toLowerCase() : pName;
+                return pName === lowName || pBase === baseName || pName === baseName || pBase === lowName;
+            });
+        }
+        if (!matched) {
+            matched = engine.initiative.participants.find(p => {
+                const pName = (p.name || '').trim().toLowerCase();
+                return (pName.length >= 3 && lowName.includes(pName)) || (lowName.length >= 3 && pName.includes(lowName));
+            });
+        }
+
+        if (matched) {
+            matched.init = resultNum;
+            if (typeof renderTrackerList === 'function') renderTrackerList();
+            if (typeof syncState === 'function') syncState();
+            if (typeof showToast === 'function') {
+                showToast(`⚔️ Iniziativa per ${matched.name}: ${resultNum}`);
+            }
+        }
+        return;
+    }
+
+    if (isDex) {
+        let monsterName = data.creatureName || '';
+        if (!monsterName) {
+            const parenMatch = rawPlayerStr.match(/\(([^)]+)\)/);
+            if (parenMatch && parenMatch[1] && !/🔒/i.test(parenMatch[1])) {
+                monsterName = parenMatch[1].trim();
+            } else {
+                monsterName = rawPlayerStr.replace(/\[.*\]/g, '').replace(/\(🔒.*?\)/g, '').trim();
+            }
+        }
+        const lowMName = monsterName.toLowerCase();
+        const baseMName = (typeof getParticipantBaseName === 'function') ? getParticipantBaseName(monsterName).toLowerCase() : lowMName;
+
+        const rollModeEl = document.getElementById('tracker-monster-roll-mode');
+        const rollMode = rollModeEl ? rollModeEl.value : 'group'; // 'group' o 'individual'
+
+        if (rollMode === 'group') {
+            const matches = engine.initiative.participants.filter(p => {
+                const pName = (p.name || '').trim().toLowerCase();
+                const pBase = (typeof getParticipantBaseName === 'function') ? getParticipantBaseName(p.name).toLowerCase() : pName;
+                return pBase === baseMName || pName === lowMName || pBase === lowMName || pName === baseMName ||
+                       (pBase.length >= 3 && baseMName.includes(pBase)) || (baseMName.length >= 3 && pBase.includes(baseMName));
+            });
+
+            if (matches.length > 0) {
+                matches.forEach(p => {
+                    p.init = resultNum;
+                });
+                if (typeof renderTrackerList === 'function') renderTrackerList();
+                if (typeof syncState === 'function') syncState();
+                if (typeof showToast === 'function') {
+                    showToast(`⚔️ Iniziativa ${monsterName} (${matches.length}): ${resultNum}`);
+                }
+            }
+        } else {
+            // Singola / Individuale: assegna a uno specifico o al prossimo senza tiro
+            let targetP = null;
+            if (engine.selectedTokenId) {
+                targetP = engine.initiative.participants.find(p => p.tokenId === engine.selectedTokenId && (
+                    getParticipantBaseName(p.name).toLowerCase() === baseMName || p.name.toLowerCase().includes(baseMName)
+                ));
+            }
+            if (!targetP) {
+                targetP = engine.initiative.participants.find(p => {
+                    const pBase = (typeof getParticipantBaseName === 'function') ? getParticipantBaseName(p.name).toLowerCase() : (p.name || '').toLowerCase();
+                    const matches = (pBase === baseMName || pBase.includes(baseMName) || baseMName.includes(pBase));
+                    const hasInit = (p.init !== undefined && p.init !== null && p.init !== '' && Number(p.init) > 0);
+                    return matches && !hasInit;
+                });
+            }
+            if (!targetP) {
+                targetP = engine.initiative.participants.find(p => {
+                    const pBase = (typeof getParticipantBaseName === 'function') ? getParticipantBaseName(p.name).toLowerCase() : (p.name || '').toLowerCase();
+                    return (pBase === baseMName || pBase.includes(baseMName) || baseMName.includes(pBase));
+                });
+            }
+
+            if (targetP) {
+                targetP.init = resultNum;
+                if (typeof renderTrackerList === 'function') renderTrackerList();
+                if (typeof syncState === 'function') syncState();
+                if (typeof showToast === 'function') {
+                    showToast(`⚔️ Iniziativa per ${targetP.name}: ${resultNum}`);
+                }
+            }
+        }
+    }
+};
+
 document.getElementById('btn-add-custom-entity').addEventListener('click', () => {
     engine.initiative.participants.push({
         id: 'ext_' + Date.now(),
@@ -517,22 +646,39 @@ window.nextInitiativeTurn = function() {
         if (!p || !shape) return false;
         const pName = (p.name || '').trim().toLowerCase();
         const pBase = (typeof getParticipantBaseName === 'function') ? getParticipantBaseName(p.name).toLowerCase() : pName;
-        const pTokenId = p.tokenId ? String(p.tokenId) : null;
+        const pTokenId = p.tokenId ? String(p.tokenId).replace(/^tok_/, '') : null;
         const pId = p.id ? String(p.id) : null;
 
-        const sTokenId = shape.casterTokenId ? String(shape.casterTokenId) : null;
-        const sId = shape.casterId ? String(shape.casterId) : (shape.casterInitiativeId ? String(shape.casterInitiativeId) : null);
+        const sTokenId = shape.casterTokenId ? String(shape.casterTokenId).replace(/^tok_/, '') : null;
+        const sId = shape.casterId ? String(shape.casterId) : null;
+        const sInitId = shape.casterInitiativeId ? String(shape.casterInitiativeId) : null;
         const sName = shape.casterName ? shape.casterName.trim().toLowerCase() : '';
         const sBase = (typeof getParticipantBaseName === 'function') ? getParticipantBaseName(shape.casterName).toLowerCase() : sName;
         const sOwner = shape.owner ? shape.owner.trim().toLowerCase() : '';
 
-        // 1. Match per Token ID
-        if (sTokenId && pTokenId) {
-            return sTokenId === pTokenId;
+        // 1. Match per Token ID (con prefisso 'tok_' normalizzato)
+        if (sTokenId && pTokenId && sTokenId === pTokenId) {
+            return true;
         }
-        // 2. Match per ID partecipante tracker
+
+        // 2. Match per ID partecipante tracker di iniziativa
+        if (sInitId && pId && sInitId === pId) return true;
         if (sId && pId && sId === pId) return true;
-        if (shape.casterInitiativeId && pId && String(shape.casterInitiativeId) === pId) return true;
+        if (sId && pTokenId && sId.replace(/^tok_/, '') === pTokenId) return true;
+
+        // Se l'incantatore della sagoma fa riferimento a un token presente nella mappa:
+        if (sTokenId && engine.tokens && engine.tokens.length > 0) {
+            const casterTok = engine.tokens.find(t => String(t.id).replace(/^tok_/, '') === sTokenId);
+            if (casterTok && casterTok.name) {
+                const cTokName = casterTok.name.trim().toLowerCase();
+                const cTokBase = (typeof getParticipantBaseName === 'function') ? getParticipantBaseName(casterTok.name).toLowerCase() : cTokName;
+                if (cTokName === pName || cTokBase === pBase || cTokName === pBase || cTokBase === pName ||
+                    pName.startsWith(cTokName + ' ') || cTokName.startsWith(pName + ' ') ||
+                    pBase.startsWith(cTokBase + ' ') || cTokBase.startsWith(pBase + ' ')) {
+                    return true;
+                }
+            }
+        }
 
         // Se entrambi hanno un numero distintivo finale e non sono identici (es. "Orco 1" vs "Orco 2"), NON possono coincidere!
         const sHasNum = /\d+$/.test(shape.casterName || '');
@@ -541,11 +687,9 @@ window.nextInitiativeTurn = function() {
             return false;
         }
 
-        // 3. Match per Nome o Nome Base (es. "Mago 1" vs "Mago")
-        if (sName && (sName === pName || sBase === pBase || sName === pBase || sBase === pName)) return true;
-
-        // 4. Match flessibile prefisso / nome composto (es. "Jude" vs "Jude Morningstar")
-        if (sName) {
+        // 3. Match per Nome o Nome Base (es. "Jude Morningstar" vs "Jude", "Mago 1" vs "Mago")
+        if (sName && sName !== 'giocatore' && sName !== 'dm') {
+            if (sName === pName || sBase === pBase || sName === pBase || sBase === pName) return true;
             if (pName.startsWith(sName + ' ') || sName.startsWith(pName + ' ')) return true;
             if (pBase.startsWith(sName + ' ') || sBase.startsWith(pBase + ' ')) return true;
             if (pName.startsWith(sBase + ' ') || sBase.startsWith(pName + ' ')) return true;
@@ -554,16 +698,16 @@ window.nextInitiativeTurn = function() {
             if (pFirst && sFirst && pFirst.length >= 3 && pFirst === sFirst) return true;
         }
 
-        // 5. Match per Proprietario del Token
+        // 4. Match per Proprietario del Token
         const pTok = pTokenId
-            ? (engine.tokens && engine.tokens.find(t => String(t.id) === pTokenId))
+            ? (engine.tokens && engine.tokens.find(t => String(t.id).replace(/^tok_/, '') === pTokenId))
             : (engine.tokens && engine.tokens.find(t => (t.name || '').trim().toLowerCase() === pName));
 
-        if (sOwner) {
+        if (sOwner && sOwner !== 'giocatore' && sOwner !== 'dm') {
             if (pTok && typeof isTokenOwnedBy === 'function' && isTokenOwnedBy(pTok, sOwner)) return true;
             if (sOwner === pName || sOwner === pBase) return true;
             if (pName.startsWith(sOwner + ' ') || sOwner.startsWith(pName + ' ')) return true;
-            if (pBase.startsWith(sOwner + ' ') || sOwner.startsWith(pBase + ' ')) return true;
+            if (pBase.startsWith(sOwner + ' ') || sBase.startsWith(pBase + ' ')) return true;
             const pFirst = pBase.split(/\s+/)[0];
             const oFirst = sOwner.split(/\s+/)[0];
             if (pFirst && oFirst && pFirst.length >= 3 && pFirst === oFirst) return true;

@@ -122,6 +122,22 @@ window.makeDraggable = function(panel, handle = null) {
 };
 
 window.appendRollToChat = function(playerOrData, dice, bonus, result) {
+    if (!window._appendedRollIds) window._appendedRollIds = new Set();
+    if (typeof playerOrData === 'object' && playerOrData !== null && playerOrData.id) {
+        if (window._appendedRollIds.has(playerOrData.id)) {
+            return; // Previene qualsiasi duplicato nello storico tiri
+        }
+        window._appendedRollIds.add(playerOrData.id);
+        if (window._appendedRollIds.size > 200) {
+            const first = window._appendedRollIds.values().next().value;
+            window._appendedRollIds.delete(first);
+        }
+    }
+
+    if (typeof window.handleRollForInitiative === 'function' && typeof playerOrData === 'object' && playerOrData !== null) {
+        window.handleRollForInitiative(playerOrData);
+    }
+
     const chatLog = document.getElementById('chat-log');
     if (!chatLog) return;
     
@@ -420,12 +436,40 @@ window.setupDiceSystem = function(isDM, networkObj) {
 
         const totalResult = diceSum + bonus;
 
-        // Determina nome giocatore
+        // Determina nome giocatore o token assegnato
         let pName = "Giocatore";
+        let assignedToken = null;
         if (isDM) {
             pName = "Master";
-        } else if (networkObj && networkObj.playerName) {
-            pName = networkObj.playerName;
+        } else {
+            if (networkObj && networkObj.playerName) {
+                pName = networkObj.playerName;
+            }
+            // Se al giocatore è stato assegnato un token sulla mappa, usa il nome del token
+            if (typeof window.isTokenOwnedByLocalPlayer === 'function' && typeof engine !== 'undefined' && Array.isArray(engine.tokens)) {
+                if (window.editingPlayerToken && window.isTokenOwnedByLocalPlayer(window.editingPlayerToken)) {
+                    assignedToken = window.editingPlayerToken;
+                } else if (engine.selectedTokenId) {
+                    const sel = engine.tokens.find(t => t.id === engine.selectedTokenId);
+                    if (sel && window.isTokenOwnedByLocalPlayer(sel)) assignedToken = sel;
+                }
+                if (!assignedToken) {
+                    const ownedList = engine.tokens.filter(t => window.isTokenOwnedByLocalPlayer(t));
+                    assignedToken = ownedList.find(t => t.pcSheet || t.hasPcSheet) || ownedList[0] || null;
+                }
+            } else if (typeof engine !== 'undefined' && Array.isArray(engine.tokens) && networkObj && networkObj.playerName) {
+                const pNorm = String(networkObj.playerName).trim().toLowerCase();
+                assignedToken = engine.tokens.find(t => {
+                    if (Array.isArray(t.owners) && t.owners.some(o => String(o).trim().toLowerCase() === pNorm)) return true;
+                    if (t.owner && String(t.owner).trim().toLowerCase() === pNorm) return true;
+                    if (t.name && String(t.name).trim().toLowerCase() === pNorm) return true;
+                    return false;
+                });
+            }
+
+            if (assignedToken && assignedToken.name && assignedToken.name.trim()) {
+                pName = assignedToken.name.trim();
+            }
         }
 
         const rollId = Date.now() + '_' + Math.random().toString(36).substr(2, 6);
@@ -434,12 +478,15 @@ window.setupDiceSystem = function(isDM, networkObj) {
         const payload = {
             id: rollId,
             player: pName,
+            sender: (networkObj && networkObj.playerName) ? networkObj.playerName : (isDM ? 'Master' : 'Giocatore'),
+            senderPeerId: (networkObj && networkObj.myPeerId) ? networkObj.myPeerId : null,
             expression: formulaBase,
             bonus: bonus,
             mode: mode,
             rolls: rolledItems,
             diceSum: diceSum,
-            result: totalResult
+            result: totalResult,
+            tokenId: assignedToken ? assignedToken.id : null
         };
 
         // Salva per "Ripeti ultimo tiro"

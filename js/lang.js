@@ -445,6 +445,10 @@ const dict = {
     "⚔️ Tracker Iniziativa": "⚔️ Initiative Tracker",
     "📂 Raggruppa Simili": "📂 Group Similar",
     "Raggruppa automaticamente i token con lo stesso nome (es. Goblin 1..5) per mantenere la lista compatta": "Automatically group tokens with the same base name (e.g. Goblin 1..5) to keep the list compact",
+    "Tiro Mostri (DEX):": "Monster Roll (DEX):",
+    "Condivisa (Gruppo)": "Shared (Group)",
+    "Singola (Uno per volta)": "Individual (One by one)",
+    "Scegli se un tiro DEX dal compendio assegna l'iniziativa a tutto il gruppo o a ciascuno singolarmente": "Choose whether a DEX roll sets initiative for the whole group or individually",
     "entità": "entities",
     "0 entità": "0 entities",
     "HP Gruppo": "Group HP",
@@ -510,7 +514,9 @@ const dynamicPatterns = [
     { re: /^Duplicati\s+(\d+)\s+token\s+\(Full PV\)!$/i, en: (m) => `Duplicated ${m[1]} tokens (Full HP)!` },
     { re: /^Aggiunti\s+(\d+)\s+token all'Iniziativa!$/i, en: (m) => `Added ${m[1]} tokens to Initiative!` },
     { re: /^Condizione applicata a\s+(\d+)\s+token!$/i, en: (m) => `Condition applied to ${m[1]} tokens!` },
-    { re: /^Condizione rimossa da\s+(\d+)\s+token!$/i, en: (m) => `Condition removed from ${m[1]} tokens!` }
+    { re: /^Condizione rimossa da\s+(\d+)\s+token!$/i, en: (m) => `Condition removed from ${m[1]} tokens!` },
+    { re: /^⚔️ Iniziativa per (.*):\s*(\d+)$/i, en: (m) => `⚔️ Initiative for ${m[1]}: ${m[2]}` },
+    { re: /^⚔️ Iniziativa (.*)\s*\((\d+)\):\s*(\d+)$/i, en: (m) => `⚔️ Initiative ${m[1]} (${m[2]}): ${m[3]}` }
 ];
 
 let currentLang = localStorage.getItem('vtt_lang') || 'it';

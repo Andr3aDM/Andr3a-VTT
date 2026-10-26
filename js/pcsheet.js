@@ -748,24 +748,37 @@
         const dmPublicCb = document.getElementById('dice-dm-public');
         const isPublic = !isDM || (statPublicCb ? statPublicCb.checked : (chatPublicCb ? chatPublicCb.checked : (dmPublicCb ? dmPublicCb.checked : true)));
         const secretTag = (!isPublic && isDM) ? ' (🔒 Segreto DM)' : '';
+        const isInitRoll = /iniziativa|initiative/i.test(labelStr);
+        const activeTok = (typeof getActiveToken === 'function') ? getActiveToken() : null;
+
+        const rollId = Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+        window.lastRollId = rollId;
+
+        const net = getNetworkRef();
+        const senderName = (net && net.playerName) ? net.playerName : (isDM ? 'Master' : 'Giocatore');
+        const senderPeerId = (net && net.myPeerId) ? net.myPeerId : null;
 
         const payload = {
-            id: Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+            id: rollId,
             player: `${charName} [${labelStr}]${secretTag}`,
+            sender: senderName,
+            senderPeerId: senderPeerId,
             expression: expr,
             bonus: bonus,
             mode: modePayload,
             rolls: rolledItems,
             diceSum: diceSum,
             result: finalResult,
-            isSecret: !isPublic
+            isSecret: !isPublic,
+            rollType: isInitRoll ? 'initiative' : null,
+            charName: charName,
+            tokenId: activeTok ? activeTok.id : null
         };
 
         if (typeof window.appendRollToChat === 'function') {
             window.appendRollToChat(payload);
         }
 
-        const net = getNetworkRef();
         if (isPublic && net && typeof net.send === 'function') {
             net.send({ type: 'DICE_ROLL', payload });
         }

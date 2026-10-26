@@ -744,6 +744,7 @@
             const isPublic = statPublicCb ? statPublicCb.checked : (chatPublicCb ? chatPublicCb.checked : (dmPublicCb ? dmPublicCb.checked : true));
 
             const secretTag = isPublic ? '' : ' (🔒 Segreto DM)';
+            const isDexRoll = /\bdex\b|\bdestrezza\b|\bdexterity\b/i.test(rollLabel);
 
             const payload = {
                 id: rollId,
@@ -754,7 +755,9 @@
                 rolls: rolledItems,
                 diceSum: diceSum,
                 result: totalResult,
-                isSecret: !isPublic
+                isSecret: !isPublic,
+                rollType: isDexRoll ? 'dex' : null,
+                creatureName: creatureName
             };
 
             // Appendi localmente alla chat

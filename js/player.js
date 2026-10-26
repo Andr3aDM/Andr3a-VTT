@@ -211,10 +211,16 @@ document.getElementById('btn-login-online').addEventListener('click', () => {
 network.onMessage((data, peerId) => {
 
     if (data.type === 'DICE_ROLL') {
-        if (data.payload.player !== network.playerName && window.appendRollToChat) {
-            if (window.lastRollId === data.payload.id) return;
-            window.lastRollId = data.payload.id;
-            window.appendRollToChat(data.payload);
+        const payload = data.payload || {};
+        const isFromMe = (payload.sender && payload.sender === network.playerName) ||
+                         (payload.senderPeerId && payload.senderPeerId === network.myPeerId) ||
+                         (payload.player === network.playerName);
+        if (isFromMe) return; // Non duplicare i propri tiri ricevuti indietro dal DM o BroadcastChannel
+
+        if (window.appendRollToChat) {
+            if (window.lastRollId === payload.id) return;
+            window.lastRollId = payload.id;
+            window.appendRollToChat(payload);
             const cp = document.getElementById('chat-panel');
             if (cp) cp.style.display = 'flex';
         }
@@ -793,8 +799,15 @@ function spawnShape(type) {
     const highlight = document.getElementById('pshape-highlight') ? document.getElementById('pshape-highlight').checked : true;
     let casterTokenId = null;
     let casterName = network.playerName || 'Giocatore';
-    if (engine.tokens && engine.tokens.length > 0) {
-        let myTok = engine.tokens.find(t => isTokenOwnedByLocalPlayer(t));
+    let myTok = null;
+
+    if (window.editingPlayerToken) {
+        myTok = window.editingPlayerToken;
+    } else if (engine.selectedTokenId && engine.tokens) {
+        myTok = engine.tokens.find(t => t.id === engine.selectedTokenId && isTokenOwnedByLocalPlayer(t));
+    }
+    if (!myTok && engine.tokens && engine.tokens.length > 0) {
+        myTok = engine.tokens.find(t => isTokenOwnedByLocalPlayer(t));
         if (!myTok && network.playerName) {
             const pNorm = network.playerName.trim().toLowerCase();
             myTok = engine.tokens.find(t => {
@@ -803,10 +816,11 @@ function spawnShape(type) {
                 return tNorm === pNorm || tNorm.startsWith(pNorm + ' ') || tNorm.includes(pNorm);
             });
         }
-        if (myTok) {
-            casterTokenId = myTok.id;
-            casterName = myTok.name || network.playerName;
-        }
+    }
+
+    if (myTok) {
+        casterTokenId = myTok.id;
+        casterName = myTok.name || network.playerName;
     }
 
     let skipFirst = false;
@@ -817,11 +831,18 @@ function spawnShape(type) {
             const pNorm = (network.playerName || '').trim().toLowerCase();
             const curName = (curP.name || '').trim().toLowerCase();
             const cName = casterName.trim().toLowerCase();
-            if ((casterTokenId && String(curP.tokenId) === String(casterTokenId)) ||
-                curName === pNorm || curName.startsWith(pNorm + ' ') || curName.includes(pNorm) ||
-                curName === cName || curName.startsWith(cName + ' ') || curName.includes(cName)) {
+            const sTokId = casterTokenId ? String(casterTokenId).replace(/^tok_/, '') : null;
+            const pTokId = curP.tokenId ? String(curP.tokenId).replace(/^tok_/, '') : null;
+            const curTok = curP.tokenId && engine.tokens ? engine.tokens.find(t => String(t.id).replace(/^tok_/, '') === pTokId) : null;
+            const isCurOwned = curTok ? isTokenOwnedByLocalPlayer(curTok) : false;
+
+            if (isCurOwned || (sTokId && pTokId && sTokId === pTokId) ||
+                (curName && (curName === pNorm || curName.startsWith(pNorm + ' ') || curName.includes(pNorm) ||
+                             curName === cName || curName.startsWith(cName + ' ') || curName.includes(cName)))) {
                 skipFirst = true;
                 casterInitiativeId = curP.id;
+                if (!casterTokenId && curP.tokenId) casterTokenId = curP.tokenId;
+                if (!casterName || casterName === 'Giocatore') casterName = curP.name;
             }
         }
     }
@@ -1477,7 +1498,8 @@ function updatePlayerShape() {
             window.editingPlayerShape.durationRounds = dVal;
             window.editingPlayerShape.roundsLeft = dVal;
             if (!window.editingPlayerShape.casterTokenId && engine.tokens) {
-                let myTok = engine.tokens.find(t => isTokenOwnedByLocalPlayer(t));
+                let myTok = window.editingPlayerToken || (engine.selectedTokenId ? engine.tokens.find(t => t.id === engine.selectedTokenId && isTokenOwnedByLocalPlayer(t)) : null);
+                if (!myTok) myTok = engine.tokens.find(t => isTokenOwnedByLocalPlayer(t));
                 if (!myTok && network.playerName) {
                     const pNorm = network.playerName.trim().toLowerCase();
                     myTok = engine.tokens.find(t => {
@@ -1499,15 +1521,23 @@ function updatePlayerShape() {
                     const pNorm = (network.playerName || '').trim().toLowerCase();
                     const curName = (curP.name || '').trim().toLowerCase();
                     const sCasterName = (window.editingPlayerShape.casterName || '').trim().toLowerCase();
-                    const sTokId = window.editingPlayerShape.casterTokenId ? String(window.editingPlayerShape.casterTokenId) : null;
-                    const pTokId = curP.tokenId ? String(curP.tokenId) : null;
+                    const sTokId = window.editingPlayerShape.casterTokenId ? String(window.editingPlayerShape.casterTokenId).replace(/^tok_/, '') : null;
+                    const pTokId = curP.tokenId ? String(curP.tokenId).replace(/^tok_/, '') : null;
+                    const curTok = curP.tokenId && engine.tokens ? engine.tokens.find(t => String(t.id).replace(/^tok_/, '') === pTokId) : null;
+                    const isCurOwned = curTok ? isTokenOwnedByLocalPlayer(curTok) : false;
 
-                    if ((sTokId && pTokId && sTokId === pTokId) ||
+                    if (isCurOwned || (sTokId && pTokId && sTokId === pTokId) ||
                         (window.editingPlayerShape.casterInitiativeId && String(window.editingPlayerShape.casterInitiativeId) === String(curP.id)) ||
-                        curName === pNorm || curName.startsWith(pNorm + ' ') || curName.includes(pNorm) ||
-                        curName === sCasterName || curName.startsWith(sCasterName + ' ') || curName.includes(sCasterName)) {
+                        (curName && (curName === pNorm || curName.startsWith(pNorm + ' ') || curName.includes(pNorm) ||
+                                     curName === sCasterName || curName.startsWith(sCasterName + ' ') || curName.includes(sCasterName)))) {
                         window.editingPlayerShape.skipFirstDecrement = true;
                         window.editingPlayerShape.casterInitiativeId = curP.id;
+                        if (!window.editingPlayerShape.casterTokenId && curP.tokenId) {
+                            window.editingPlayerShape.casterTokenId = curP.tokenId;
+                        }
+                        if (!window.editingPlayerShape.casterName || window.editingPlayerShape.casterName === 'Giocatore') {
+                            window.editingPlayerShape.casterName = curP.name;
+                        }
                     }
                 }
             }
