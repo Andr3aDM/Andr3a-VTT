@@ -391,10 +391,119 @@
             }
         },
 
+        tryParseJson(text) {
+            if (!text || typeof text !== 'string') return null;
+            let s = text.trim();
+            s = s.replace(/^[\uFEFF\xA0\u200B-\u200D]+/, '').trim();
+            if (s.startsWith('```')) {
+                s = s.replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, '$1').trim();
+            }
+            try {
+                return JSON.parse(s);
+            } catch (_) {}
+
+            // Normalizzazione riga per riga e gestione traduzioni automatiche di Google Chrome (es. da 5e.tools in italiano)
+            s = s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            s = s.replace(/[\u201C\u201D\u201E\u201F\u00AB\u00BB]/g, '"')
+                 .replace(/[\u2018\u2019\u201A\u201B]/g, "'");
+
+            // Booleani italiani tradotti automaticamente
+            s = s.replace(/:\s*vero\b/gi, ': true')
+                 .replace(/:\s*falso\b/gi, ': false')
+                 .replace(/\bvero\b/gi, 'true')
+                 .replace(/\bfalso\b/gi, 'false');
+
+            const lines = s.split('\n');
+            const fixedLines = [];
+            const stack = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i];
+                const trimmed = line.trim();
+                if (!trimmed) {
+                    fixedLines.push(line);
+                    continue;
+                }
+
+                const currentContext = stack.length > 0 ? stack[stack.length - 1] : null;
+
+                // Caso 1: Chiave isolata senza due punti (es. "resistere" o "lingue" o "trait" a cui Google Translate ha mangiato i due punti/parentesi)
+                const isIsolatedKey = /^"[^"]+"\s*,?$/.test(trimmed);
+                if (isIsolatedKey && (currentContext === '{' || !currentContext)) {
+                    let nextTrimmed = '';
+                    for (let j = i + 1; j < lines.length; j++) {
+                        if (lines[j].trim()) {
+                            nextTrimmed = lines[j].trim();
+                            break;
+                        }
+                    }
+                    if (nextTrimmed.startsWith('"') || nextTrimmed.startsWith('{')) {
+                        line = line.replace(/^(\s*"[^"]+")\s*,?$/, '$1: [');
+                    }
+                }
+
+                // Caso 2: Chiave con valore mancante di due punti (es. "camminata" 30,)
+                const mMissingColon = /^(\s*"[^"]+")\s+([0-9.\-]+|true|false|null|"[^"]*")(\s*,?)$/.exec(line);
+                if (mMissingColon) {
+                    line = `${mMissingColon[1]}: ${mMissingColon[2]}${mMissingColon[3]}`;
+                }
+
+                // Caso 3: Chiave con virgola al posto dei due punti (es. "tipo", "interno",)
+                if (currentContext === '{' || !currentContext) {
+                    const mCommaColon = /^(\s*"[^"]+")\s*,\s*("[^"]*"|[0-9.\-]+|true|false|null)(\s*,?)$/.exec(line);
+                    if (mCommaColon) {
+                        line = `${mCommaColon[1]}: ${mCommaColon[2]}${mCommaColon[3]}`;
+                    }
+                }
+
+                // Aggiorna lo stack delle parentesi tenendo conto delle stringhe
+                let inStr = false;
+                for (let c = 0; c < line.length; c++) {
+                    const ch = line[c];
+                    if (ch === '"' && (c === 0 || line[c - 1] !== '\\')) {
+                        inStr = !inStr;
+                    } else if (!inStr) {
+                        if (ch === '{' || ch === '[') {
+                            stack.push(ch);
+                        } else if (ch === '}' && stack.length && stack[stack.length - 1] === '{') {
+                            stack.pop();
+                        } else if (ch === ']' && stack.length && stack[stack.length - 1] === '[') {
+                            stack.pop();
+                        }
+                    }
+                }
+
+                fixedLines.push(line);
+            }
+
+            s = fixedLines.join('\n');
+
+            // Rimuovi commenti JS
+            s = s.replace(/\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*$/gm, '$1');
+            // Rimuovi virgole prima di chiusure } o ]
+            s = s.replace(/,\s*([\]\}])/g, '$1');
+
+            try {
+                return JSON.parse(s);
+            } catch (_) {}
+
+            return null;
+        },
+
         clean5eToolsText(val) {
             if (!val) return '';
-            if (Array.isArray(val)) return val.map(v => this.clean5eToolsText(v)).filter(Boolean).join(', ');
-            if (typeof val === 'object' && val.entries) return this.clean5eToolsText(val.entries);
+            if (Array.isArray(val)) return val.map(v => this.clean5eToolsText(v)).filter(Boolean).join(' ');
+            if (typeof val === 'object' && val !== null) {
+                if (val.entries) return this.clean5eToolsText(val.entries);
+                if (val.items) return this.clean5eToolsText(val.items);
+                if (val.entry) return (val.name ? `<b>${val.name}.</b> ` : '') + this.clean5eToolsText(val.entry);
+                if (val.rows) return val.rows.map(r => this.clean5eToolsText(r)).join('; ');
+                if (val.resist) return this.clean5eToolsText(val.resist) + (val.note ? ` (${val.note})` : '');
+                if (val.immune) return this.clean5eToolsText(val.immune) + (val.note ? ` (${val.note})` : '');
+                if (val.conditionImmune) return this.clean5eToolsText(val.conditionImmune) + (val.note ? ` (${val.note})` : '');
+                if (val.special) return String(val.special);
+                return '';
+            }
             if (typeof val !== 'string') return String(val);
 
             let text = val;
@@ -973,17 +1082,30 @@
                 const shouldAutoSpawn = !!window._autoSpawnNextJsonImport;
                 window._autoSpawnNextJsonImport = false;
                 const textarea = document.getElementById('json-import-textarea');
-                const raw = textarea ? textarea.value.trim() : '';
+                let raw = textarea ? textarea.value.trim() : '';
                 if (!raw) return alert("Incolla prima il JSON o il testo della scheda!");
+
+                // Pulizia BOM, caratteri invisibili e fence markdown ```json ... ```
+                raw = raw.replace(/^[\uFEFF\xA0\u200B-\u200D]+/, '').trim();
+                if (raw.startsWith('```')) {
+                    raw = raw.replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, '$1').trim();
+                }
+
                 try {
                     let normalized = null;
-                    if (raw.startsWith('{') || raw.startsWith('[')) {
-                        const parsed = JSON.parse(raw);
-                        normalized = this.normalize5eToolsMonster(parsed);
-                    } else {
+                    const looksLikeJson = raw.startsWith('{') || raw.startsWith('[') || ((raw.includes('"name"') || raw.includes('"nome"')) && raw.includes('{'));
+                    if (looksLikeJson) {
+                        const parsed = this.tryParseJson(raw);
+                        if (parsed) {
+                            normalized = this.normalize5eToolsMonster(parsed);
+                        }
+                    }
+
+                    if (!normalized && !raw.startsWith('{') && !raw.startsWith('[')) {
                         normalized = this.parsePlainTextStatblock(raw);
                     }
-                    if (normalized) {
+
+                    if (normalized && normalized.name && normalized.name !== '{' && normalized.name !== '[') {
                         if (pendingImportTokenSrc) {
                             normalized.tokenSrc = pendingImportTokenSrc;
                         }
@@ -1000,22 +1122,9 @@
                             showToast(`Scheda "${normalized.name}" importata con successo!`);
                         }
                     } else {
-                        alert("Formato scheda o JSON non riconosciuto o incompleto.");
+                        alert("Formato scheda o JSON non riconosciuto o incompleto. Verifica il testo o il JSON incollato.");
                     }
                 } catch (err) {
-                    // Se il testo iniziava con { ma non era JSON valido, prova comunque il parser testuale
-                    try {
-                        const fallbackNorm = this.parsePlainTextStatblock(raw);
-                        if (fallbackNorm) {
-                            if (pendingImportTokenSrc) fallbackNorm.tokenSrc = pendingImportTokenSrc;
-                            this.loadMonster(fallbackNorm);
-                            if (modal) modal.style.display = 'none';
-                            textarea.value = '';
-                            this.setImportTokenPreview(null);
-                            if (shouldAutoSpawn && currentMonster) this.spawnAsToken(currentMonster);
-                            return;
-                        }
-                    } catch (_) {}
                     alert("Errore nella lettura della scheda: " + err.message);
                 }
             });
@@ -1356,6 +1465,24 @@
                 speedStr = Object.entries(m.speed).map(([k, v]) => `${k} ${v} ft.`).join(', ');
             }
 
+            // Calcolo Iniziativa (modificatore di Destrezza secondo le regole D&D 5e)
+            const dexVal = m.dexterity || 10;
+            const dexModNum = Math.floor((dexVal - 10) / 2);
+            let initMod = dexModNum >= 0 ? `+${dexModNum}` : `${dexModNum}`;
+            let initPassive = 10 + dexModNum;
+            if (m.initiative) {
+                const mInit = String(m.initiative).match(/([+-]?\d+)(?:\s*\(([+-]?\d+)\))?/);
+                if (mInit) {
+                    initMod = mInit[1].startsWith('+') || mInit[1].startsWith('-') ? mInit[1] : `+${mInit[1]}`;
+                    if (mInit[2]) initPassive = mInit[2];
+                }
+            }
+            const lblInit = isItalianMode ? 'Iniziativa' : 'Initiative';
+            if (typeof m.speed === 'string') speedStr = m.speed;
+            else if (typeof m.speed === 'object' && m.speed !== null) {
+                speedStr = Object.entries(m.speed).map(([k, v]) => `${k} ${v} ft.`).join(', ');
+            }
+
             // Stats row interattiva per tiri su caratteristiche
             const statKeys = isItalianMode 
                 ? [ { k: 'FOR', val: m.strength || 10 },
@@ -1394,12 +1521,24 @@
                     saves.push(`<span class="statblock-roll-btn" data-formula="${sign}${num}" data-label="TS ${dispName}" style="background: rgba(239, 83, 80, 0.2); color: #ffb74d; border: 1px solid #ef5350; border-radius: 4px; padding: 1px 5px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Clicca per tirare il Tiro Salvezza ${dispName}">🎲 ${dispName} ${sign}${num}</span>`);
                 }
             };
-            addSave('Str', m.strength_save);
-            addSave('Dex', m.dexterity_save);
-            addSave('Con', m.constitution_save);
-            addSave('Int', m.intelligence_save);
-            addSave('Wis', m.wisdom_save);
-            addSave('Cha', m.charisma_save);
+            const hasExplicitSaves = m.strength_save !== null || m.dexterity_save !== null || m.constitution_save !== null || m.intelligence_save !== null || m.wisdom_save !== null || m.charisma_save !== null;
+
+            if (hasExplicitSaves) {
+                addSave('Str', m.strength_save);
+                addSave('Dex', m.dexterity_save);
+                addSave('Con', m.constitution_save);
+                addSave('Int', m.intelligence_save);
+                addSave('Wis', m.wisdom_save);
+                addSave('Cha', m.charisma_save);
+            } else {
+                // In D&D 5e, i mostri senza competenze specifiche usano il normale modificatore di caratteristica
+                addSave('Str', Math.floor(((m.strength || 10) - 10) / 2));
+                addSave('Dex', Math.floor(((m.dexterity || 10) - 10) / 2));
+                addSave('Con', Math.floor(((m.constitution || 10) - 10) / 2));
+                addSave('Int', Math.floor(((m.intelligence || 10) - 10) / 2));
+                addSave('Wis', Math.floor(((m.wisdom || 10) - 10) / 2));
+                addSave('Cha', Math.floor(((m.charisma || 10) - 10) / 2));
+            }
 
             let skillsStr = '';
             if (typeof m.skills === 'object' && m.skills !== null) {
@@ -1514,7 +1653,10 @@
                 </div>
 
                 <div style="color: #ef9a9a; line-height: 1.4; font-size: 11.5px;">
-                    <div><strong style="color: #ef5350;">${lblAc}:</strong> <span style="color: #fff; font-weight:bold;">${m.armor_class || 10}</span>${acDesc}</div>
+                    <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                        <div><strong style="color: #ef5350;">${lblAc}:</strong> <span style="color: #fff; font-weight:bold;">${m.armor_class || 10}</span>${acDesc}</div>
+                        <div><strong style="color: #ef5350;">${lblInit}:</strong> <span class="statblock-roll-btn" data-formula="${initMod}" data-label="${lblInit}" style="background: rgba(239, 83, 80, 0.2); color: #ffb74d; border: 1px solid #ef5350; border-radius: 4px; padding: 1px 6px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Clicca per tirare l'Iniziativa (${initMod})">🎲 ${initMod} <span style="font-size: 10px; color: #aaa;">(${initPassive})</span></span></div>
+                    </div>
                     <div><strong style="color: #ef5350;">${lblHp}:</strong> <span style="color: #fff; font-weight:bold;">${m.hit_points || 10}</span>${hpDice}</div>
                     <div><strong style="color: #ef5350;">${lblSpeed}:</strong> <span style="color: #fff;">${speedStr}</span></div>
                 </div>
@@ -1573,486 +1715,549 @@
 
         normalize5eToolsMonster(raw) {
             if (!raw || typeof raw !== 'object') return null;
-            const m = Array.isArray(raw.monster) ? raw.monster[0] : (raw.name ? raw : null);
-            if (!m || !m.name) return null;
-
-            let ac = 10;
-            if (Array.isArray(m.ac)) {
-                ac = typeof m.ac[0] === 'number' ? m.ac[0] : (m.ac[0]?.ac || 10);
-            } else if (typeof m.ac === 'number') {
-                ac = m.ac;
-            } else if (m.armor_class) {
-                ac = parseInt(m.armor_class) || 10;
+            let m = null;
+            if (Array.isArray(raw)) {
+                m = raw.find(item => item && (item.name || item.nome)) || raw[0];
+            } else if (Array.isArray(raw.monster)) {
+                m = raw.monster[0];
+            } else if (raw.monster && typeof raw.monster === 'object') {
+                m = raw.monster;
+            } else if (raw.name || raw.nome) {
+                m = raw;
+            } else if (Array.isArray(raw.creature)) {
+                m = raw.creature[0];
+            } else if (raw.creature && typeof raw.creature === 'object') {
+                m = raw.creature;
+            } else if (Array.isArray(raw.data)) {
+                m = raw.data[0];
+            } else if (raw.data && typeof raw.data === 'object' && (raw.data.name || raw.data.nome)) {
+                m = raw.data;
             }
 
+            if (!m || (!m.name && !m.nome)) return null;
+
+            const monsterName = this.clean5eToolsText(m.name || m.nome);
+            if (!monsterName) return null;
+
+            // Taglia (supporta anche 'misurare' o 'taglia')
+            const sizeMap = {
+                'T': 'Tiny', 'S': 'Small', 'M': 'Medium', 'L': 'Large', 'H': 'Huge', 'G': 'Gargantuan',
+                'P': 'Piccola', 'Piccola': 'Piccola', 'Media': 'Media', 'Grande': 'Grande', 'Enorme': 'Enorme', 'Gargantuesca': 'Gargantuesca'
+            };
+            const sizeRaw = m.size || m.misurare || m.taglia;
+            let size = 'Medium';
+            if (Array.isArray(sizeRaw) && sizeRaw.length > 0) {
+                const c = String(sizeRaw[0]).toUpperCase();
+                size = sizeMap[c] || sizeRaw[0];
+            } else if (typeof sizeRaw === 'string') {
+                const c = sizeRaw.toUpperCase();
+                size = sizeMap[c] || sizeRaw;
+            }
+
+            // Tipo e sottotipo (supporta anche 'tipo' e 'sottotipo')
+            const typeRaw = m.type || m.tipo;
+            let typeStr = 'creature';
+            let subtypeStr = '';
+            if (typeof typeRaw === 'string') {
+                typeStr = typeRaw;
+            } else if (typeof typeRaw === 'object' && typeRaw !== null) {
+                typeStr = typeRaw.type || typeRaw.tipo || 'creature';
+                if (Array.isArray(typeRaw.tags)) {
+                    subtypeStr = typeRaw.tags.map(t => typeof t === 'object' ? (t.tag || t.prefix || '') : String(t)).filter(Boolean).join(', ');
+                }
+            }
+            if (!subtypeStr && (m.subtype || m.sottotipo)) {
+                subtypeStr = Array.isArray(m.subtype || m.sottotipo) ? (m.subtype || m.sottotipo).join(', ') : String(m.subtype || m.sottotipo);
+            }
+
+            // Allineamento (supporta anche 'allineamento')
+            const alignMap = {
+                'L': 'Lawful', 'N': 'Neutral', 'C': 'Chaotic', 'G': 'Good', 'E': 'Evil', 'U': 'Unaligned', 'A': 'Any',
+                'LN': 'Lawful Neutral', 'LE': 'Lawful Evil', 'LG': 'Lawful Good',
+                'CN': 'Chaotic Neutral', 'CE': 'Chaotic Evil', 'CG': 'Chaotic Good',
+                'NE': 'Neutral Evil', 'NG': 'Neutral Good', 'NN': 'Neutral'
+            };
+            const alignRaw = m.alignment || m.allineamento;
+            let alignStr = 'any alignment';
+            if (Array.isArray(alignRaw)) {
+                alignStr = alignRaw.map(a => alignMap[a] || a).join(' ');
+            } else if (typeof alignRaw === 'string') {
+                alignStr = alignMap[alignRaw] || alignRaw;
+            }
+
+            // CA (supporta ac, ca, armor_class, classe_armatura, e anche 'E' tipico di Google Translate)
+            const acRaw = m.ac || m.ca || m.armor_class || m.classe_armatura || m.E;
+            let ac = 10;
+            let acDesc = '';
+            if (Array.isArray(acRaw) && acRaw.length > 0) {
+                const first = acRaw[0];
+                if (typeof first === 'number') {
+                    ac = first;
+                } else if (typeof first === 'object' && first !== null) {
+                    ac = parseInt(first.ac || first.ca) || 10;
+                    if (Array.isArray(first.from)) {
+                        acDesc = this.clean5eToolsText(first.from);
+                    }
+                }
+            } else if (typeof acRaw === 'number') {
+                ac = acRaw;
+            } else if (typeof acRaw === 'string') {
+                ac = parseInt(acRaw) || 10;
+            }
+
+            // Fallback intelligente per AC: scansione valori numerici tipici di CA
+            if (ac === 10) {
+                for (const [k, v] of Object.entries(m)) {
+                    if (Array.isArray(v) && v.length === 1 && typeof v[0] === 'number' && v[0] >= 5 && v[0] <= 30 && k !== 'cr' && k !== 'pagina' && k !== 'passivo') {
+                        ac = v[0];
+                        break;
+                    }
+                }
+            }
+
+            // Punti Ferita (supporta hp, pf, punti_ferita, media, formula)
+            const hpRaw = m.hp || m.pf || m.punti_ferita;
             let hp = 10;
             let hpDice = '';
-            if (m.hp && typeof m.hp === 'object') {
-                hp = m.hp.average || 10;
-                hpDice = m.hp.formula || '';
-            } else if (m.hit_points) {
-                hp = parseInt(m.hit_points) || 10;
+            if (typeof hpRaw === 'object' && hpRaw !== null) {
+                hp = parseInt(hpRaw.average || hpRaw.media || hpRaw.hp) || 10;
+                hpDice = hpRaw.formula || hpRaw.dadi_vita || '';
+            } else if (typeof hpRaw === 'number') {
+                hp = hpRaw;
+            } else if (typeof hpRaw === 'string') {
+                hp = parseInt(hpRaw) || 10;
             }
 
-            const actions = [];
-            const rawActions = m.action || m.actions || [];
-            rawActions.forEach(act => {
-                actions.push({
-                    name: this.clean5eToolsText(act.name) || 'Action',
-                    desc: this.clean5eToolsText(act.entries || act.desc)
-                });
-            });
+            // Velocità (supporta speed, velocità, velocita, camminata, volare, nuotare...)
+            const speedRaw = m.speed || m.velocità || m.velocita;
+            let speedStr = '30 ft.';
+            if (typeof speedRaw === 'string') {
+                speedStr = speedRaw;
+            } else if (typeof speedRaw === 'object' && speedRaw !== null) {
+                const parts = [];
+                const speedTrans = { 'camminata': 'walk', 'volare': 'fly', 'nuotare': 'swim', 'scalare': 'climb', 'scavare': 'burrow' };
+                for (const [k, v] of Object.entries(speedRaw)) {
+                    const label = speedTrans[k] || k;
+                    if (typeof v === 'object' && v !== null && v.number !== undefined) {
+                        parts.push(`${label} ${v.number} ft.`);
+                    } else if (typeof v === 'number' || typeof v === 'string') {
+                        parts.push(`${label} ${v} ft.`);
+                    }
+                }
+                if (parts.length > 0) speedStr = parts.join(', ');
+            }
 
-            const traits = [];
-            const rawTraits = m.trait || m.special_abilities || [];
-            rawTraits.forEach(tr => {
-                traits.push({
-                    name: this.clean5eToolsText(tr.name) || 'Trait',
-                    desc: this.clean5eToolsText(tr.entries || tr.desc)
-                });
-            });
+            // Statistiche (supporta abbreviazioni inglesi e traduzioni Google Translate es. 'già'=WIS, 'di'=CHA)
+            const strVal = m.str || m.for || m.forza || m.strength || 10;
+            const dexVal = m.dex || m.des || m.destrezza || m.dexterity || 10;
+            const conVal = m.con || m.cos || m.costituzione || m.constitution || 10;
+            const intVal = m.int || m.intelligenza || m.intelligence || 10;
+            const wisVal = m.wis || m.sag || m.saggezza || m['già'] || m['gia'] || m.wisdom || 10;
+            const chaVal = m.cha || m.car || m.carisma || m['di'] || m.charisma || 10;
 
-            const reactions = [];
-            const rawReactions = m.reaction || m.reactions || [];
-            rawReactions.forEach(re => {
-                reactions.push({
-                    name: this.clean5eToolsText(re.name) || 'Reaction',
-                    desc: this.clean5eToolsText(re.entries || re.desc)
-                });
-            });
+            // Tiri Salvezza
+            const saveRaw = m.save || m.tiri_salvezza || m.salvezza || {};
+            const parseSave = (val) => {
+                if (val === undefined || val === null) return null;
+                const n = parseInt(String(val).replace('+', ''));
+                return isNaN(n) ? null : n;
+            };
+            const strSave = parseSave(saveRaw.str || saveRaw.for || m.strength_save);
+            const dexSave = parseSave(saveRaw.dex || saveRaw.des || m.dexterity_save);
+            const conSave = parseSave(saveRaw.con || saveRaw.cos || m.constitution_save);
+            const intSave = parseSave(saveRaw.int || m.intelligence_save);
+            const wisSave = parseSave(saveRaw.wis || saveRaw.sag || saveRaw['già'] || saveRaw['gia'] || m.wisdom_save);
+            const chaSave = parseSave(saveRaw.cha || saveRaw.car || saveRaw['di'] || m.charisma_save);
 
-            const legendary = [];
-            const rawLeg = m.legendary || m.legendary_actions || [];
-            rawLeg.forEach(leg => {
-                legendary.push({
-                    name: this.clean5eToolsText(leg.name) || 'Legendary Action',
-                    desc: this.clean5eToolsText(leg.entries || leg.desc)
+            // Abilità (supporta skill, skills, abilità, abilita)
+            const skillRaw = m.skill || m.skills || m['abilità'] || m['abilita'] || {};
+            const skillsObj = {};
+            if (typeof skillRaw === 'object' && skillRaw !== null) {
+                for (const [k, v] of Object.entries(skillRaw)) {
+                    skillsObj[k] = String(v);
+                }
+            }
+
+            // Helper per estrarre liste di azioni/tratti (supporta 'voci', 'nome', 'voce')
+            const toEntriesArray = (rawArr) => {
+                if (!rawArr) return [];
+                if (!Array.isArray(rawArr)) {
+                    if (typeof rawArr === 'object') rawArr = [rawArr];
+                    else return [];
+                }
+                return rawArr.map(act => {
+                    if (!act) return null;
+                    if (typeof act === 'string') return { name: 'Nota', desc: this.clean5eToolsText(act) };
+                    return {
+                        name: this.clean5eToolsText(act.name || act.nome) || 'Azione',
+                        desc: this.clean5eToolsText(act.entries || act.voci || act.entry || act.voce || act.desc || act.text)
+                    };
+                }).filter(Boolean);
+            };
+
+            // CR (supporta cr, gs, grado_sfida)
+            let crStr = '-';
+            const crRaw = m.cr !== undefined ? m.cr : (m.gs !== undefined ? m.gs : m.grado_sfida);
+            if (crRaw !== undefined && crRaw !== null) {
+                crStr = typeof crRaw === 'object' ? (crRaw.cr || '-') : String(crRaw);
+            }
+
+            // Combina Azioni normali e Bonus actions
+            const actionsList = toEntriesArray(m.action || m.actions || m.azione || m.azioni);
+            const bonusList = toEntriesArray(m.bonus || m.bonus_actions || m['azioni_bonus']);
+            if (bonusList.length > 0) {
+                bonusList.forEach(b => {
+                    actionsList.push({ name: `[Bonus] ${b.name}`, desc: b.desc });
                 });
-            });
+            }
 
             return {
-                name: this.clean5eToolsText(m.name),
-                size: Array.isArray(m.size) ? m.size[0] : (m.size || 'Medium'),
-                type: typeof m.type === 'object' ? (m.type.type || 'creature') : (m.type || 'creature'),
-                alignment: Array.isArray(m.alignment) ? m.alignment.join(' ') : (m.alignment || 'unaligned'),
+                name: monsterName,
+                size: size,
+                type: typeStr,
+                subtype: subtypeStr,
+                alignment: alignStr,
                 armor_class: ac,
-                armor_desc: '',
+                ac: ac,
+                armor_desc: acDesc,
                 hit_points: hp,
+                hp: hp,
                 hit_dice: hpDice,
-                speed: m.speed || '30 ft.',
-                strength: m.str || m.strength || 10,
-                dexterity: m.dex || m.dexterity || 10,
-                constitution: m.con || m.constitution || 10,
-                intelligence: m.int || m.intelligence || 10,
-                wisdom: m.wis || m.wisdom || 10,
-                charisma: m.cha || m.charisma || 10,
-                challenge_rating: m.cr ? (typeof m.cr === 'object' ? m.cr.cr : m.cr) : (m.challenge_rating || '-'),
-                actions: actions,
-                special_abilities: traits,
-                reactions: reactions,
-                legendary_actions: legendary,
+                speed: speedStr,
+                strength: parseInt(strVal) || 10,
+                dexterity: parseInt(dexVal) || 10,
+                constitution: parseInt(conVal) || 10,
+                intelligence: parseInt(intVal) || 10,
+                wisdom: parseInt(wisVal) || 10,
+                charisma: parseInt(chaVal) || 10,
+                strength_save: strSave,
+                dexterity_save: dexSave,
+                constitution_save: conSave,
+                intelligence_save: intSave,
+                wisdom_save: wisSave,
+                charisma_save: chaSave,
+                skills: skillsObj,
+                challenge_rating: crStr,
+                actions: actionsList,
+                special_abilities: toEntriesArray(m.trait || m.traits || m.tratto || m.tratti || m.special_abilities),
+                reactions: toEntriesArray(m.reaction || m.reactions || m.reazione || m.reazioni),
+                legendary_actions: toEntriesArray(m.legendary || m.legendary_actions || m.leggendarie),
                 legendary_desc: m.legendaryHeader ? this.clean5eToolsText(m.legendaryHeader) : '',
-                languages: this.clean5eToolsText(m.languages),
-                senses: this.clean5eToolsText(m.senses),
-                damage_resistances: this.clean5eToolsText(m.resist || m.damage_resistances),
-                damage_immunities: this.clean5eToolsText(m.immune || m.damage_immunities),
-                condition_immunities: this.clean5eToolsText(m.conditionImmune || m.condition_immunities),
-                tokenSrc: m.tokenSrc || null
+                languages: this.clean5eToolsText(m.languages || m.lingue || m.linguaggi),
+                senses: this.clean5eToolsText(m.senses || m.sensi),
+                damage_resistances: this.clean5eToolsText(m.resist || m.resistere || m.resistenze),
+                damage_immunities: this.clean5eToolsText(m.immune || m.immunita || m['immunità']),
+                condition_immunities: this.clean5eToolsText(m.conditionImmune || m.condition_immune || m.immunita_condizioni)
             };
         },
-
-        /**
-         * Parser universale per Testo Statblock copiato da pagine web (es. D&D Beyond, Roll20, PDF, Homebrew)
-         * Supporta layout a riga singola o spezzata (2014 e 2024), sia in Inglese che in Italiano.
-         */
         parsePlainTextStatblock(rawText) {
-            if (!rawText || typeof rawText !== 'string') return null;
+    if (!rawText || typeof rawText !== 'string') return null;
 
-            // 1. Pulizia iniziale e normalizzazione caratteri speciali (trattini lunghi -> meno standard)
-            const cleanedText = rawText
-                .replace(/\r\n/g, '\n')
-                .replace(/\u2013|\u2014|\u2212/g, '-')
-                .replace(/\u00a0/g, ' ');
+    let text = rawText
+        .replace(/\r\n/g, '\n')
+        .replace(/\u2013|\u2014|\u2212/g, '-')
+        .replace(/\u00a0/g, ' ');
 
-            const rawLines = cleanedText.split('\n')
-                .map(l => l.trim())
-                .filter(l => l.length > 0 && !/^(Roll Initiative!?|View Details Page|Stat Block)$/i.test(l));
+    // Rileva eventuale Proficiency Bonus (PB +2) per ripulire le formule opzionali "Proficiency Die"
+    let pb = 2;
+    const mPb = text.match(/\bPB\s*([+-]?\d+)/i);
+    if (mPb) pb = parseInt(mPb[1], 10);
 
-            if (rawLines.length < 2) return null;
+    // Pulizia formule regole opzionali "Proficiency Die" di 5e.tools (+1d0, +1d4, +2d4, DC 1d4...)
+    text = text.replace(/\+1d0\s*([+-])\s*(\d+)/gi, (m, sign, n) => (sign === '-' ? `-${n}` : `+${n}`))
+               .replace(/\+1d4\s*\+\s*(\d+)/gi, (m, n) => `+${pb + parseInt(n, 10)}`)
+               .replace(/\+2d4\s*\+\s*(\d+)/gi, (m, n) => `+${2 * pb + parseInt(n, 10)}`)
+               .replace(/DC\s+1d4\s*\+\s*(\d+)/gi, (m, n) => `DC ${pb + parseInt(n, 10)}`)
+               .replace(/\b1d4\s*\+\s*(\d+)/gi, (m, n) => `${pb + parseInt(n, 10)}`);
 
-            // 2. Unisce etichette spezzate su più righe (tipico del copia-incolla da DOM flex/grid)
-            const standaloneLabelRe = /^(Armor Class|AC|Classe Armatura|CA|Hit Points|HP|Punti Ferita|Punti Vita|PF|PV|Speed|Velocit[àa]|Saving Throws|Save|Tiri Salvezza|TS|Skills|Abilit[àa]|Damage Vulnerabilities|Vulnerabilit[àa] ai Danni|Vulnerabilities|Damage Resistances|Resistenze ai Danni|Resistances|Damage Immunities|Immunit[àa] ai Danni|Immunities|Condition Immunities|Immunit[àa] alle Condizioni|Senses|Sensi|Languages|Linguaggi|Challenge|CR|Grado Sfida|Sfida|Proficiency Bonus|Bonus di Competenza)\s*:?\s*$/i;
-            const abilityTagOnlyRe = /^(STR|DEX|CON|INT|WIS|CHA|FOR|DES|COS|SAG|CAR)$/i;
+    // Rimuovi link markdown di 5e.tools [Citazione](url) o [Termine](url) -> Termine
+    text = text.replace(/\[(?:MM|PHB|DMG|XMM|XPHB|XDMG|p\d+)[^\]]*\]\([^\)]+\)/gi, '');
+    text = text.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
 
-            const lines = [];
-            for (let i = 0; i < rawLines.length; i++) {
-                const cur = rawLines[i];
+    const rawLines = text.split('\n')
+        .map(l => l.trim())
+        .filter(l => {
+            if (!l) return false;
+            if (/^(?:Roll Initiative!?|View Details Page|Stat Block|mod|save)$/i.test(l)) return false;
+            return true;
+        });
 
-                // Caso A: Etichetta di statistica su una riga e valore sulla riga successiva
-                if (standaloneLabelRe.test(cur) && i + 1 < rawLines.length) {
-                    const cleanLbl = cur.replace(/:$/, '').trim();
-                    lines.push(`${cleanLbl}: ${rawLines[i + 1]}`);
-                    i++;
-                    continue;
-                }
+    if (rawLines.length < 2) return null;
+    if (rawLines[0].startsWith('{') || rawLines[0].startsWith('[')) return null;
 
-                // Caso B: Caratteristica impilata su 2 o 3 righe: "STR" \n "18 (+4)" oppure "STR" \n "18" \n "(+4)"
-                if (abilityTagOnlyRe.test(cur) && i + 1 < rawLines.length) {
-                    const next1 = rawLines[i + 1];
-                    const next2 = i + 2 < rawLines.length ? rawLines[i + 2] : '';
-                    if (/^\d{1,2}\s*\([+-]?\d+\)$/.test(next1) || /^\d{1,2}\s+[+-]?\d+(?:\s+[+-]?\d+)?$/.test(next1)) {
-                        lines.push(`${cur.toUpperCase()} ${next1}`);
-                        i++;
-                        continue;
-                    } else if (/^\d{1,2}$/.test(next1) && /^\([+-]?\d+\)$/.test(next2)) {
-                        lines.push(`${cur.toUpperCase()} ${next1} ${next2}`);
-                        i += 2;
-                        continue;
-                    } else if (/^\d{1,2}$/.test(next1)) {
-                        lines.push(`${cur.toUpperCase()} ${next1}`);
-                        i++;
-                        continue;
-                    }
-                }
+    const standaloneLabelRe = /^(Armor Class|AC|Classe Armatura|CA|Initiative|Iniziativa|Hit Points|HP|Punti Ferita|Punti Vita|PF|PV|Speed|Velocit[àa]|Saving Throws|Save|Tiri Salvezza|TS|Skills|Abilit[àa]|Damage Vulnerabilities|Vulnerabilit[àa] ai Danni|Vulnerabilities|Damage Resistances|Resistenze ai Danni|Resistances|Damage Immunities|Immunit[àa] ai Danni|Immunities|Condition Immunities|Immunit[àa] alle Condizioni|Senses|Sensi|Languages|Linguaggi|Challenge|CR|Grado Sfida|Sfida|Proficiency Bonus|Bonus di Competenza)\s*:?\s*$/i;
+    const abilityTagOnlyRe = /^(STR|DEX|CON|INT|WIS|CHA|FOR|DES|COS|SAG|CAR)$/i;
 
-                lines.push(cur);
-            }
+    const lines = [];
+    for (let i = 0; i < rawLines.length; i++) {
+        const cur = rawLines[i];
 
-            const result = {
-                name: lines[0].replace(/\*+/g, '').trim(),
-                size: 'Medium',
-                type: 'humanoid',
-                subtype: '',
-                alignment: 'any alignment',
-                armor_class: 10,
-                armor_desc: '',
-                hit_points: 10,
-                hit_dice: '',
-                speed: '30 ft.',
-                strength: 10,
-                dexterity: 10,
-                constitution: 10,
-                intelligence: 10,
-                wisdom: 10,
-                charisma: 10,
-                strength_save: null,
-                dexterity_save: null,
-                constitution_save: null,
-                intelligence_save: null,
-                wisdom_save: null,
-                charisma_save: null,
-                skills: {},
-                damage_resistances: '',
-                damage_immunities: '',
-                condition_immunities: '',
-                senses: '',
-                languages: '',
-                challenge_rating: '-',
-                special_abilities: [],
-                actions: [],
-                reactions: [],
-                legendary_actions: [],
-                legendary_desc: '',
-                tokenSrc: null
-            };
+        if (standaloneLabelRe.test(cur) && i + 1 < rawLines.length) {
+            const cleanLbl = cur.replace(/:$/, '').trim();
+            lines.push(`${cleanLbl}: ${rawLines[i + 1]}`);
+            i++;
+            continue;
+        }
 
-            let startIdx = 1;
-            // Controlla se la seconda riga è il sottotitolo Taglia / Tipo / Allineamento
-            const sizeRe = /^(Tiny|Small|Medium|Large|Huge|Gargantuan|Minuscola|Piccola|Media|Grande|Enorme|Mastodontica)\b/i;
-            const typeKeywordsRe = /\b(humanoid|aberration|beast|celestial|construct|dragon|elemental|fey|fiend|giant|monstrosity|ooze|plant|undead|swarm|umanoide|aberrazione|bestia|celestiale|costrutto|drago|elementale|folletto|immondo|gigante|mostruosit[àa]|melma|vegetale|non\s*morto)\b/i;
-            if (lines.length > 1 && (sizeRe.test(lines[1]) || typeKeywordsRe.test(lines[1]))) {
-                const metaLine = lines[1];
-                const commaParts = metaLine.split(',');
-                const leftPart = commaParts[0].trim();
-                if (commaParts.length > 1) {
-                    result.alignment = commaParts.slice(1).join(',').trim();
-                }
-                const szMatch = leftPart.match(sizeRe);
-                if (szMatch) {
-                    result.size = szMatch[1];
-                    const restType = leftPart.slice(szMatch[0].length).trim();
-                    const subMatch = restType.match(/^([^\(]+?)(?:\s*\((.+)\))?$/);
-                    if (subMatch) {
-                        result.type = (subMatch[1] || 'creature').trim();
-                        result.subtype = (subMatch[2] || '').trim();
-                    } else if (restType) {
-                        result.type = restType;
-                    }
+        if (abilityTagOnlyRe.test(cur) && i + 1 < rawLines.length) {
+            const next1 = rawLines[i + 1];
+            const next2 = i + 2 < rawLines.length ? rawLines[i + 2] : '';
+            const next3 = i + 3 < rawLines.length ? rawLines[i + 3] : '';
+            if (/^\d{1,2}\s*\([+-]?\d+\)$/.test(next1) || /^\d{1,2}\s+[+-]?\d+(?:\s+[+-]?\d+)?$/.test(next1)) {
+                lines.push(`${cur.toUpperCase()} ${next1}`);
+                i++;
+                continue;
+            } else if (/^\d{1,2}$/.test(next1) && /^\([+-]?\d+\)$/.test(next2)) {
+                lines.push(`${cur.toUpperCase()} ${next1} ${next2}`);
+                i += 2;
+                continue;
+            } else if (/^\d{1,2}$/.test(next1) && /^[+-]?\d+$/.test(next2)) {
+                const modVal = next2.startsWith('+') || next2.startsWith('-') ? next2 : `+${next2}`;
+                lines.push(`${cur.toUpperCase()} ${next1} (${modVal})`);
+                if (/^[+-]?\d+$/.test(next3)) {
+                    i += 3;
                 } else {
-                    result.type = leftPart;
+                    i += 2;
                 }
-                startIdx = 2;
+                continue;
+            } else if (/^\d{1,2}$/.test(next1)) {
+                lines.push(`${cur.toUpperCase()} ${next1}`);
+                i++;
+                continue;
             }
+        }
 
-            // Mappa di conversione per caratteristiche e Tiri Salvezza (EN & IT)
-            const abilMap = {
-                str: 'strength', for: 'strength', forza: 'strength', strength: 'strength',
-                dex: 'dexterity', des: 'dexterity', destrezza: 'dexterity', dexterity: 'dexterity',
-                con: 'constitution', cos: 'constitution', costituzione: 'constitution', constitution: 'constitution',
-                int: 'intelligence', intelligenza: 'intelligence', intelligence: 'intelligence',
-                wis: 'wisdom', sag: 'wisdom', saggezza: 'wisdom', wisdom: 'wisdom',
-                cha: 'charisma', car: 'charisma', carisma: 'charisma', charisma: 'charisma'
-            };
+        lines.push(cur);
+    }
 
-            // Estrazione globale rapida delle 6 caratteristiche sull'intero blocco (gestisce righe singole, tabelle o griglie)
-            const fullJoined = lines.join('\n');
-            const singleAbilRegex = /\b(STR|DEX|CON|INT|WIS|CHA|FOR|DES|COS|SAG|CAR)\b[\s:]*(\d{1,2})(?:\s*\(([+-]?\d+)\)|\s+([+-]\d+)(?:\s+([+-]\d+))?)?/gi;
-            let abMatch;
-            while ((abMatch = singleAbilRegex.exec(fullJoined)) !== null) {
-                const key = abilMap[abMatch[1].toLowerCase()];
-                const scoreVal = parseInt(abMatch[2], 10);
-                if (key && !isNaN(scoreVal) && scoreVal >= 1 && scoreVal <= 30) {
-                    result[key] = scoreVal;
-                    // Se formato 2024 "STR 18 +4 +6" (dove il secondo modificatore è il Tiro Salvezza)
-                    if (abMatch[5] !== undefined) {
-                        const modVal = parseInt(abMatch[4], 10);
-                        const saveVal = parseInt(abMatch[5], 10);
-                        if (!isNaN(saveVal) && saveVal !== modVal) {
-                            result[key + '_save'] = saveVal;
-                        }
-                    }
-                }
+    const result = {
+        name: lines[0].replace(/\*+/g, '').trim(),
+        size: 'Medium',
+        type: 'humanoid',
+        subtype: '',
+        alignment: 'any alignment',
+        armor_class: 10,
+        armor_desc: '',
+        initiative: null,
+        hit_points: 10,
+        hit_dice: '',
+        speed: '30 ft.',
+        strength: 10,
+        dexterity: 10,
+        constitution: 10,
+        intelligence: 10,
+        wisdom: 10,
+        charisma: 10,
+        strength_save: null,
+        dexterity_save: null,
+        constitution_save: null,
+        intelligence_save: null,
+        wisdom_save: null,
+        charisma_save: null,
+        skills: {},
+        damage_resistances: '',
+        damage_immunities: '',
+        condition_immunities: '',
+        senses: '',
+        languages: '',
+        challenge_rating: '-',
+        special_abilities: [],
+        actions: [],
+        reactions: [],
+        legendary_actions: [],
+        legendary_desc: '',
+        tokenSrc: null
+    };
+
+    let startIdx = 1;
+    const sizeRe = /^(Tiny|Small|Medium|Large|Huge|Gargantuan|Minuscola|Piccola|Media|Grande|Enorme|Mastodontica)\b/i;
+    const typeKeywordsRe = /\b(humanoid|aberration|beast|celestial|construct|dragon|elemental|fey|fiend|giant|monstrosity|ooze|plant|undead|swarm|umanoide|aberrazione|bestia|celestiale|costrutto|drago|elementale|folletto|immondo|gigante|mostruosit[àa]|melma|vegetale|non\s*morto)\b/i;
+    if (lines.length > 1 && (sizeRe.test(lines[1]) || typeKeywordsRe.test(lines[1]))) {
+        const metaLine = lines[1];
+        const commaParts = metaLine.split(',');
+        const leftPart = commaParts[0].trim();
+        if (commaParts.length > 1) {
+            result.alignment = commaParts.slice(1).join(',').trim();
+        }
+        const sm = leftPart.match(sizeRe);
+        if (sm) {
+            result.size = sm[1];
+            const rest = leftPart.slice(sm[0].length).trim();
+            const parenM = rest.match(/^(.*?)(?:\s*\(([^)]+)\))?$/);
+            if (parenM) {
+                result.type = parenM[1].trim() || 'humanoid';
+                result.subtype = parenM[2] ? parenM[2].trim() : '';
             }
+        } else {
+            result.type = leftPart;
+        }
+        startIdx = 2;
+    }
 
-            // Gestisce anche il formato tabella a 2 righe: "STR DEX CON INT WIS CHA" seguito da "18 (+4) 11 (+0) ..."
-            for (let i = startIdx; i < lines.length - 1; i++) {
-                if (/^(?:STR|FOR)\s+(?:DEX|DES)\s+(?:CON|COS)\s+INT\s+(?:WIS|SAG)\s+(?:CHA|CAR)\b/i.test(lines[i])) {
-                    const nums = [...lines[i + 1].matchAll(/(\d{1,2})\s*(?:\([+-]?\d+\))?/g)].map(m => parseInt(m[1], 10));
-                    if (nums.length >= 6) {
-                        result.strength = nums[0];
-                        result.dexterity = nums[1];
-                        result.constitution = nums[2];
-                        result.intelligence = nums[3];
-                        result.wisdom = nums[4];
-                        result.charisma = nums[5];
-                    }
-                }
-            }
+    const abilMap = {
+        'str': 'strength', 'dex': 'dexterity', 'con': 'constitution',
+        'int': 'intelligence', 'wis': 'wisdom', 'cha': 'charisma',
+        'for': 'strength', 'des': 'dexterity', 'cos': 'constitution',
+        'sag': 'wisdom', 'car': 'charisma'
+    };
 
-            // 3. Scansione sequenziale per Statistiche Base e Sezioni (Tratti, Azioni, Reazioni, Azioni Leggendarie)
-            let currentSection = 'header'; // 'header' | 'traits' | 'actions' | 'bonus_actions' | 'reactions' | 'legendary'
-            let currentEntry = null;
+    let currentSection = 'special_abilities';
+    let currentEntry = null;
 
-            const flushEntry = () => {
-                if (!currentEntry || !currentEntry.name) return;
-                currentEntry.desc = (currentEntry.desc || '').trim();
-                if (!currentEntry.desc) return;
-                if (currentEntry.section === 'actions') {
-                    result.actions.push({ name: currentEntry.name, desc: currentEntry.desc });
-                } else if (currentEntry.section === 'bonus_actions') {
-                    result.actions.push({ name: `${currentEntry.name} (Bonus Action)`, desc: currentEntry.desc });
-                } else if (currentEntry.section === 'reactions') {
-                    result.reactions.push({ name: currentEntry.name, desc: currentEntry.desc });
-                } else if (currentEntry.section === 'legendary') {
-                    result.legendary_actions.push({ name: currentEntry.name, desc: currentEntry.desc });
-                } else {
-                    result.special_abilities.push({ name: currentEntry.name, desc: currentEntry.desc });
-                }
-                currentEntry = null;
-            };
+    const flushEntry = () => {
+        if (currentEntry) {
+            currentEntry.desc = currentEntry.desc.trim();
+            if (currentSection === 'actions') result.actions.push(currentEntry);
+            else if (currentSection === 'reactions') result.reactions.push(currentEntry);
+            else if (currentSection === 'legendary_actions') result.legendary_actions.push(currentEntry);
+            else result.special_abilities.push(currentEntry);
+            currentEntry = null;
+        }
+    };
 
-            for (let i = startIdx; i < lines.length; i++) {
-                const line = lines[i];
+    for (let i = startIdx; i < lines.length; i++) {
+        let line = lines[i];
 
-                // Riconoscimento intestazioni di sezione
-                if (/^(Traits|Special Traits|Tratti|Capacit[àa] Speciali)\s*:?$/i.test(line)) {
-                    flushEntry();
-                    currentSection = 'traits';
-                    continue;
-                }
-                if (/^(Actions|Azioni)\s*:?$/i.test(line)) {
-                    flushEntry();
-                    currentSection = 'actions';
-                    continue;
-                }
-                if (/^(Bonus Actions|Azioni Bonus)\s*:?$/i.test(line)) {
-                    flushEntry();
-                    currentSection = 'bonus_actions';
-                    continue;
-                }
-                if (/^(Reactions|Reazioni)\s*:?$/i.test(line)) {
-                    flushEntry();
-                    currentSection = 'reactions';
-                    continue;
-                }
-                if (/^(Legendary Actions|Azioni Leggendarie|Mythic Actions|Azioni Mitiche)\s*:?$/i.test(line)) {
-                    flushEntry();
-                    currentSection = 'legendary';
-                    continue;
-                }
-
-                // Se siamo ancora nell'header/statistiche, controlliamo i campi chiave
-                if (currentSection === 'header') {
-                    // Salta righe di sole caratteristiche già lette
-                    if (/^(?:STR|DEX|CON|INT|WIS|CHA|FOR|DES|COS|SAG|CAR)\b/i.test(line) && !/^(Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+Saving/i.test(line)) {
-                        continue;
-                    }
-                    if (/^MOD\s+SAVE$/i.test(line) || /^(?:\d{1,2}\s*\([+-]?\d+\)\s*){2,6}$/.test(line)) {
-                        continue;
-                    }
-
-                    // Armor Class / CA
-                    const acMatch = line.match(/^(?:Armor Class|AC|Classe Armatura|CA)\s*:?\s*(\d+)(?:\s*\(([^)]+)\)|\s+([^I\n]+))?/i);
-                    if (acMatch) {
-                        result.armor_class = parseInt(acMatch[1], 10) || 10;
-                        const descCandidate = (acMatch[2] || acMatch[3] || '').replace(/\bInitiative\b.*$/i, '').trim();
-                        if (descCandidate) result.armor_desc = descCandidate;
-                        continue;
-                    }
-
-                    // Hit Points / PV
-                    const hpMatch = line.match(/^(?:Hit Points|HP|Punti Ferita|Punti Vita|PF|PV)\s*:?\s*(\d+)(?:\s*\(([^)]+)\))?/i);
-                    if (hpMatch) {
-                        result.hit_points = parseInt(hpMatch[1], 10) || 10;
-                        if (hpMatch[2]) result.hit_dice = hpMatch[2].trim();
-                        continue;
-                    }
-
-                    // Speed / Velocità
-                    const spMatch = line.match(/^(?:Speed|Velocit[àa])\s*:?\s*(.+)$/i);
-                    if (spMatch) {
-                        result.speed = spMatch[1].trim();
-                        continue;
-                    }
-
-                    // Saving Throws / Tiri Salvezza
-                    const svMatch = line.match(/^(?:Saving Throws|Save|Tiri Salvezza|TS)\s*:?\s*(.+)$/i);
-                    if (svMatch) {
-                        const svRegex = /\b(Str|Dex|Con|Int|Wis|Cha|For|Des|Cos|Sag|Car)[a-z]*\s*([+-]\d+)/gi;
-                        let sm;
-                        while ((sm = svRegex.exec(svMatch[1])) !== null) {
-                            const k = abilMap[sm[1].toLowerCase().slice(0, 3)];
-                            if (k) result[k + '_save'] = parseInt(sm[2], 10);
-                        }
-                        continue;
-                    }
-
-                    // Skills / Abilità
-                    const skMatch = line.match(/^(?:Skills|Abilit[àa])\s*:?\s*(.+)$/i);
-                    if (skMatch) {
-                        const skRegex = /([A-Za-zÀ-ÿ\s]+?)\s*([+-]\d+)(?:,|;|$)/g;
-                        let skm;
-                        while ((skm = skRegex.exec(skMatch[1])) !== null) {
-                            const skName = skm[1].trim().toLowerCase();
-                            if (skName) result.skills[skName] = parseInt(skm[2], 10);
-                        }
-                        continue;
-                    }
-
-                    // Resistances / Immunities / Vulnerabilities
-                    const resMatch = line.match(/^(?:Damage Resistances|Resistenze ai Danni|Resistances)\s*:?\s*(.+)$/i);
-                    if (resMatch) {
-                        result.damage_resistances = resMatch[1].trim();
-                        continue;
-                    }
-                    const immMatch = line.match(/^(?:Damage Immunities|Immunit[àa] ai Danni|Immunities)\s*:?\s*(.+)$/i);
-                    if (immMatch) {
-                        const val = immMatch[1].trim();
-                        if (val.includes(';')) {
-                            const parts = val.split(';');
-                            result.damage_immunities = parts[0].trim();
-                            result.condition_immunities = parts.slice(1).join(';').trim();
-                        } else {
-                            result.damage_immunities = val;
-                        }
-                        continue;
-                    }
-                    const cimmMatch = line.match(/^(?:Condition Immunities|Immunit[àa] alle Condizioni)\s*:?\s*(.+)$/i);
-                    if (cimmMatch) {
-                        result.condition_immunities = cimmMatch[1].trim();
-                        continue;
-                    }
-
-                    // Senses / Sensi
-                    const senMatch = line.match(/^(?:Senses|Sensi)\s*:?\s*(.+)$/i);
-                    if (senMatch) {
-                        result.senses = senMatch[1].trim();
-                        continue;
-                    }
-
-                    // Languages / Linguaggi
-                    const langMatch = line.match(/^(?:Languages|Linguaggi)\s*:?\s*(.+)$/i);
-                    if (langMatch) {
-                        result.languages = langMatch[1].trim();
-                        continue;
-                    }
-
-                    // Challenge / Grado Sfida / CR
-                    const crMatch = line.match(/^(?:Challenge|CR|Grado Sfida|Sfida)\s*:?\s*([0-9\/]+(?:\s*\([^)]+\))?)/i);
-                    if (crMatch) {
-                        result.challenge_rating = crMatch[1].replace(/\s*XP.*?\)/i, ' XP)').trim();
-                        currentSection = 'traits';
-                        continue;
-                    }
-
-                    // Proficiency Bonus (spesso sulla stessa riga o subito dopo Challenge)
-                    if (/^(?:Proficiency Bonus|Bonus di Competenza)\s*:?\s*[+-]?\d+/i.test(line)) {
-                        currentSection = 'traits';
-                        continue;
-                    }
-
-                    // Se incontriamo una riga che inizia chiaramente come Tratto prima ancora di Challenge
-                    if (/^[A-ZÀ-Ý][A-Za-zÀ-ÿ0-9\s'’\-\(\)\/]{1,45}\.\s+.+/.test(line)) {
-                        currentSection = 'traits';
-                    } else {
-                        continue;
-                    }
-                }
-
-                // Ignora eventuale riga isolata di Proficiency Bonus subito dopo Challenge
-                if (/^(?:Proficiency Bonus|Bonus di Competenza)\s*:?\s*[+-]?\d+$/i.test(line)) {
-                    continue;
-                }
-
-                // Se siamo in Azioni Leggendarie e la riga è l'introduzione ("The paladin can take 3 legendary actions...")
-                if (currentSection === 'legendary' && !currentEntry && /legendary action|azioni leggendarie/i.test(line) && !/^[A-Z][^.]+\.\s+/.test(line)) {
-                    result.legendary_desc = line;
-                    continue;
-                }
-
-                // Riconoscimento di un nuovo Tratto / Azione / Reazione:
-                // Formato 1: "Greatsword. Melee Weapon Attack: +8 to hit..." oppure "Lay on Hands (50 HP/Day). The paladin..."
-                const inlineEntryMatch = line.match(/^([A-ZÀ-Ý][A-Za-zÀ-ÿ0-9\s'’\-\(\)\/,]{1,52}?)\.\s+(.+)$/);
-                // Evita di scambiare le righe di incantesimi ("1st level (4 slots): ...") o "Hit:" per nuovi blocchi
-                const isSpellSlotLine = /^(?:Cantrips|Trucchetti|\d+(?:st|nd|rd|th|°)\s+level|At will|A volont[àa]|\d+\/day|\d+\/giorno|•|-)\b/i.test(line);
-
-                if (inlineEntryMatch && !isSpellSlotLine && !/^(Hit|Miss|Colpito|Mancato|Failure|Success)$/i.test(inlineEntryMatch[1])) {
-                    flushEntry();
-                    currentEntry = {
-                        section: currentSection === 'header' ? 'traits' : currentSection,
-                        name: inlineEntryMatch[1].trim(),
-                        desc: inlineEntryMatch[2].trim()
-                    };
-                    continue;
-                }
-
-                // Formato 2: Titolo su una riga da solo ("Greatsword" o "Multiattack.") e descrizione sulla riga seguente
-                const isShortTitleLine = !isSpellSlotLine && line.length <= 48 && /^[A-ZÀ-Ý][A-Za-zÀ-ÿ0-9\s'’\-\(\)\/]+\.?$/.test(line) && !line.endsWith(':') && !line.endsWith(',');
-                if (isShortTitleLine && i + 1 < lines.length) {
-                    flushEntry();
-                    currentEntry = {
-                        section: currentSection === 'header' ? 'traits' : currentSection,
-                        name: line.replace(/\.$/, '').trim(),
-                        desc: lines[i + 1].trim()
-                    };
-                    i++;
-                    continue;
-                }
-
-                // Altrimenti è una riga di continuazione (es. lista incantesimi o paragrafo successivo dell'azione corrente)
-                if (currentEntry) {
-                    currentEntry.desc += '\n' + line;
-                } else {
-                    currentEntry = {
-                        section: currentSection === 'header' ? 'traits' : currentSection,
-                        name: isItalianMode ? 'Tratto' : 'Feature',
-                        desc: line
-                    };
-                }
-            }
-
+        // Sezioni
+        if (/^actions?\s*$/i.test(line) || /^azioni?\s*$/i.test(line)) {
             flushEntry();
-            return result;
+            currentSection = 'actions';
+            continue;
+        }
+        if (/^bonus\s+actions?\s*$/i.test(line) || /^azioni?\s+bonus\s*$/i.test(line)) {
+            flushEntry();
+            currentSection = 'actions';
+            continue;
+        }
+        if (/^reactions?\s*$/i.test(line) || /^reazioni?\s*$/i.test(line)) {
+            flushEntry();
+            currentSection = 'reactions';
+            continue;
+        }
+        if (/^legendary\s+actions?\s*$/i.test(line) || /^azioni?\s+leggendarie?\s*$/i.test(line)) {
+            flushEntry();
+            currentSection = 'legendary_actions';
+            continue;
+        }
+        if (/^traits?\s*$/i.test(line) || /^tratti?\s*$/i.test(line)) {
+            flushEntry();
+            currentSection = 'special_abilities';
+            continue;
+        }
+
+        // Armor Class
+        const acMatch = line.match(/^(?:Armor Class|AC|Classe Armatura|CA)\s*:?\s*(\d+)(?:\s*\((.*?)\))?/i);
+        if (acMatch) {
+            result.armor_class = parseInt(acMatch[1], 10) || 10;
+            if (acMatch[2]) result.armor_desc = acMatch[2].trim();
+            continue;
+        }
+
+        // Initiative
+        const initMatch = line.match(/^(?:Initiative|Iniziativa)\s*:?\s*([+-]?\d+)(?:\s*\(([+-]?\d+)\))?/i);
+        if (initMatch) {
+            result.initiative = initMatch[1] + (initMatch[2] ? ` (${initMatch[2]})` : '');
+            continue;
+        }
+
+        // Hit Points
+        const hpMatch = line.match(/^(?:Hit Points|HP|Punti Ferita|Punti Vita|PF|PV)\s*:?\s*(\d+)(?:\s*\((.*?)\))?/i);
+        if (hpMatch) {
+            result.hit_points = parseInt(hpMatch[1], 10) || 10;
+            if (hpMatch[2]) result.hit_dice = hpMatch[2].trim();
+            continue;
+        }
+
+        // Speed
+        const spMatch = line.match(/^(?:Speed|Velocit[àa])\s*:?\s*(.+)$/i);
+        if (spMatch) {
+            result.speed = spMatch[1].trim();
+            continue;
+        }
+
+        // Ability row (riga intera o singola caratteristica per riga)
+        const abRowRe = /\b(STR|DEX|CON|INT|WIS|CHA|FOR|DES|COS|SAG|CAR)\b\s*(\d{1,2})(?:\s*\(([+-]?\d+)\))?/gi;
+        let abM;
+        let matchedAb = false;
+        while ((abM = abRowRe.exec(line)) !== null) {
+            const k = abilMap[abM[1].toLowerCase().slice(0, 3)];
+            if (k) {
+                result[k] = parseInt(abM[2], 10);
+                matchedAb = true;
+            }
+        }
+        if (matchedAb) continue;
+
+        // Saving Throws
+        const svMatch = line.match(/^(?:Saving Throws|Save|Tiri Salvezza|TS)\s*:?\s*(.+)$/i);
+        if (svMatch) {
+            const svRegex = /\b(Str|Dex|Con|Int|Wis|Cha|For|Des|Cos|Sag|Car)[a-z]*\s*([+-]\d+)/gi;
+            let sm;
+            while ((sm = svRegex.exec(svMatch[1])) !== null) {
+                const k = abilMap[sm[1].toLowerCase().slice(0, 3)];
+                if (k) result[k + '_save'] = parseInt(sm[2], 10);
+            }
+            continue;
+        }
+
+        // Skills
+        const skMatch = line.match(/^(?:Skills|Abilit[àa])\s*:?\s*(.+)$/i);
+        if (skMatch) {
+            const skRegex = /([A-Za-z\s]+?)\s*([+-]\d+)(?:,|$)/g;
+            let skm;
+            while ((skm = skRegex.exec(skMatch[1])) !== null) {
+                const skName = skm[1].trim().toLowerCase();
+                if (skName) result.skills[skName] = parseInt(skm[2], 10);
+            }
+            continue;
+        }
+
+        // Damage resistances
+        const resMatch = line.match(/^(?:Damage Resistances|Resistenze ai Danni|Resistances)\s*:?\s*(.+)$/i);
+        if (resMatch) {
+            result.damage_resistances = resMatch[1].trim();
+            continue;
+        }
+
+        // Senses
+        const sensMatch = line.match(/^(?:Senses|Sensi)\s*:?\s*(.+)$/i);
+        if (sensMatch) {
+            result.senses = sensMatch[1].trim();
+            continue;
+        }
+
+        // Languages
+        const langMatch = line.match(/^(?:Languages|Linguaggi)\s*:?\s*(.+)$/i);
+        if (langMatch) {
+            result.languages = langMatch[1].trim();
+            continue;
+        }
+
+        // Challenge
+        const crMatch = line.match(/^(?:Challenge|CR|Grado Sfida|Sfida)\s*:?\s*([0-9\/\.]+)/i);
+        if (crMatch) {
+            result.challenge_rating = crMatch[1];
+            continue;
+        }
+
+        // Action / Trait item
+        const entryMatch = line.match(/^([A-Z0-9][A-Za-z0-9\s\(\)\/\-\'\’\:\,\.]+?)\.\s+(.*)$/);
+        if (entryMatch) {
+            flushEntry();
+            currentEntry = {
+                name: entryMatch[1].trim(),
+                desc: entryMatch[2].trim()
+            };
+            continue;
+        }
+
+        if (currentEntry) {
+            currentEntry.desc += ' ' + line;
+        }
+    }
+
+    flushEntry();
+    return result;
         },
 
         assignToSelectedToken(monster) {
