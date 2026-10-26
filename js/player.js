@@ -1,5 +1,6 @@
 let wasViewSyncActive = false;
 const engine = new VTTEngine('main-canvas-container', false); // isDM = false
+window.engine = engine;
 let activeToken = null;
 let isDragging = false;
 let activeStroke = null;
@@ -12,7 +13,7 @@ let startPanX = 0;
 let startPanY = 0;
 let isMapLocked = false;
 let startMouseY = 0;
-window.VTT_VERSION = 'Beta 1.3';
+window.VTT_VERSION = 'Beta 1.4';
 const tokenImageCache = new Map();
 const tokenPcSheetCache = new Map();
 let lastPlayerClickedTokenId = null;
@@ -132,7 +133,7 @@ document.getElementById('btn-login-offline').addEventListener('click', () => {
     network.send({ type: 'PLAYER_READY' });
 });
 
-// Auto-login per Modalità TV / Schermo Locale aperto da Regia Master (?mode=tv)
+// Auto-login per Modalità TV / Schermo Locale aperto da Regia Master (?mode=tv o ?mode=local)
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.get('mode') === 'tv') {
     const tvName = "Tavolo TV";
@@ -144,11 +145,32 @@ if (urlParams.get('mode') === 'tv') {
     network.send({ type: 'PLAYER_READY' });
 }
 
+const nameParam = urlParams.get('name');
+if (nameParam) {
+    const nameInput = document.getElementById('login-name');
+    if (nameInput) nameInput.value = nameParam;
+}
+if (urlParams.get('mode') === 'local' && nameParam) {
+    network.playerName = nameParam;
+    engine.localPlayerName = nameParam;
+    const loginOverlay = document.getElementById('login-overlay');
+    if (loginOverlay) loginOverlay.style.display = 'none';
+    network.startOffline();
+    network.send({ type: 'PLAYER_READY' });
+}
+
 // Prefill codice stanza se passato come parametro URL (?room=...)
 const roomParam = urlParams.get('room');
 if (roomParam) {
     const roomInput = document.getElementById('login-room');
     if (roomInput) roomInput.value = roomParam;
+}
+
+if (urlParams.get('autojoin') === 'true' && roomParam && nameParam) {
+    setTimeout(() => {
+        const btnJoin = document.getElementById('btn-login-online');
+        if (btnJoin) btnJoin.click();
+    }, 400);
 }
 
 document.getElementById('btn-login-online').addEventListener('click', () => {
@@ -176,9 +198,10 @@ document.getElementById('btn-login-online').addEventListener('click', () => {
             document.getElementById('login-overlay').style.display = 'none';
             network.send({ type: 'PLAYER_READY' });
         }).catch(err => {
-            status.innerText = "Errore di connessione. Verifica il codice stanza.";
+            const msg = (err && err.message) ? err.message : "Errore di connessione. Verifica il codice stanza.";
+            status.innerText = msg;
             console.error("Join Room Error:", err);
-            alert("Errore PeerJS: " + err);
+            alert(msg);
         });
     } catch(e) {
         alert("Errore javascript nel click: " + e.message);
@@ -569,6 +592,15 @@ network.onMessage((data, peerId) => {
                     incomingShape._lastLocalEdit = localShape._lastLocalEdit;
                 }
             });
+
+            if (window.editingPlayerShape && !state.shapes.some(s => s.id === window.editingPlayerShape.id)) {
+                window.editingPlayerShape = null;
+                const psp = document.getElementById('player-shape-panel');
+                if (psp) psp.style.display = 'none';
+            }
+            if (activeToken && activeToken.type === 'shape' && activeToken.ref && !state.shapes.some(s => s.id === activeToken.ref.id)) {
+                activeToken = null;
+            }
         }
 
         engine.publicStrokes = state.publicStrokes || [];
@@ -760,10 +792,40 @@ function spawnShape(type) {
     const centerPos = engine.screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
     const highlight = document.getElementById('pshape-highlight') ? document.getElementById('pshape-highlight').checked : true;
     let casterTokenId = null;
-    if (engine.tokens) {
-        const myTok = engine.tokens.find(t => isTokenOwnedByLocalPlayer(t));
-        if (myTok) casterTokenId = myTok.id;
+    let casterName = network.playerName || 'Giocatore';
+    if (engine.tokens && engine.tokens.length > 0) {
+        let myTok = engine.tokens.find(t => isTokenOwnedByLocalPlayer(t));
+        if (!myTok && network.playerName) {
+            const pNorm = network.playerName.trim().toLowerCase();
+            myTok = engine.tokens.find(t => {
+                if (!t.name) return false;
+                const tNorm = t.name.trim().toLowerCase();
+                return tNorm === pNorm || tNorm.startsWith(pNorm + ' ') || tNorm.includes(pNorm);
+            });
+        }
+        if (myTok) {
+            casterTokenId = myTok.id;
+            casterName = myTok.name || network.playerName;
+        }
     }
+
+    let skipFirst = false;
+    let casterInitiativeId = null;
+    if (engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0) {
+        const curP = engine.initiative.participants[engine.initiative.currentTurnIndex];
+        if (curP) {
+            const pNorm = (network.playerName || '').trim().toLowerCase();
+            const curName = (curP.name || '').trim().toLowerCase();
+            const cName = casterName.trim().toLowerCase();
+            if ((casterTokenId && String(curP.tokenId) === String(casterTokenId)) ||
+                curName === pNorm || curName.startsWith(pNorm + ' ') || curName.includes(pNorm) ||
+                curName === cName || curName.startsWith(cName + ' ') || curName.includes(cName)) {
+                skipFirst = true;
+                casterInitiativeId = curP.id;
+            }
+        }
+    }
+
     const shape = {
         id: 'aoe_' + Date.now() + Math.floor(Math.random()*1000),
         type: type === 'sphere' ? 'circle' : type,
@@ -774,8 +836,10 @@ function spawnShape(type) {
         visible: true,
         highlightTokens: highlight,
         owner: network.playerName,
-        casterName: network.playerName,
+        casterName: casterName,
         casterTokenId: casterTokenId,
+        casterInitiativeId: casterInitiativeId,
+        skipFirstDecrement: skipFirst,
         color: document.getElementById('player-color').value
     };
     network.send({ type: 'PLAYER_ADD_SHAPE', payload: shape });
@@ -979,9 +1043,16 @@ function pHandleStart(e) {
                 if (engine.isPointInFog && engine.isPointInFog(s.x, s.y)) continue;
 
                 const hasTimer = s.durationRounds !== undefined && s.durationRounds !== null && Number(s.durationRounds) > 0;
-                const hitDist = (hasTimer ? 22 : 16) / Math.min(1, engine.scale);
-                const dist = Math.hypot(worldPos.x - s.x, worldPos.y - s.y);
-                if (dist <= hitDist) {
+                let isHit = false;
+                const scaleFactor = Math.min(1, engine.scale);
+                const dx = Math.abs(worldPos.x - s.x);
+                const dy = Math.abs(worldPos.y - s.y);
+                if (hasTimer) {
+                    isHit = (dx <= 26 / scaleFactor && dy <= 16 / scaleFactor) || (Math.hypot(dx, dy) <= 25 / scaleFactor);
+                } else {
+                    isHit = (Math.hypot(dx, dy) <= 20 / scaleFactor);
+                }
+                if (isHit) {
                     activeToken = { type: 'shape', ref: s };
                     isDragging = true;
                     hitEntity = true;
@@ -1405,11 +1476,46 @@ function updatePlayerShape() {
         if (!isNaN(dVal) && dVal > 0) {
             window.editingPlayerShape.durationRounds = dVal;
             window.editingPlayerShape.roundsLeft = dVal;
-            delete window.editingPlayerShape.skipFirstDecrement;
+            if (!window.editingPlayerShape.casterTokenId && engine.tokens) {
+                let myTok = engine.tokens.find(t => isTokenOwnedByLocalPlayer(t));
+                if (!myTok && network.playerName) {
+                    const pNorm = network.playerName.trim().toLowerCase();
+                    myTok = engine.tokens.find(t => {
+                        if (!t.name) return false;
+                        const tNorm = t.name.trim().toLowerCase();
+                        return tNorm === pNorm || tNorm.startsWith(pNorm + ' ') || tNorm.includes(pNorm);
+                    });
+                }
+                if (myTok) {
+                    window.editingPlayerShape.casterTokenId = myTok.id;
+                    window.editingPlayerShape.casterName = myTok.name || network.playerName;
+                }
+            }
+
+            // Iniziativa: Se impostato o modificato durante il proprio turno in combattimento, salta il primo decremento
+            if (engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0) {
+                const curP = engine.initiative.participants[engine.initiative.currentTurnIndex];
+                if (curP) {
+                    const pNorm = (network.playerName || '').trim().toLowerCase();
+                    const curName = (curP.name || '').trim().toLowerCase();
+                    const sCasterName = (window.editingPlayerShape.casterName || '').trim().toLowerCase();
+                    const sTokId = window.editingPlayerShape.casterTokenId ? String(window.editingPlayerShape.casterTokenId) : null;
+                    const pTokId = curP.tokenId ? String(curP.tokenId) : null;
+
+                    if ((sTokId && pTokId && sTokId === pTokId) ||
+                        (window.editingPlayerShape.casterInitiativeId && String(window.editingPlayerShape.casterInitiativeId) === String(curP.id)) ||
+                        curName === pNorm || curName.startsWith(pNorm + ' ') || curName.includes(pNorm) ||
+                        curName === sCasterName || curName.startsWith(sCasterName + ' ') || curName.includes(sCasterName)) {
+                        window.editingPlayerShape.skipFirstDecrement = true;
+                        window.editingPlayerShape.casterInitiativeId = curP.id;
+                    }
+                }
+            }
         } else {
             window.editingPlayerShape.durationRounds = 0;
             delete window.editingPlayerShape.roundsLeft;
             delete window.editingPlayerShape.skipFirstDecrement;
+            delete window.editingPlayerShape.casterInitiativeId;
         }
     }
     window.editingPlayerShape._lastLocalEdit = Date.now();

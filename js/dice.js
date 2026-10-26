@@ -152,10 +152,10 @@ window.appendRollToChat = function(playerOrData, dice, bonus, result) {
                     const isNat1 = r.dice === 20 && r.raw === 1;
                     const borderColor = isNat20 ? '#4caf50' : (isNat1 ? '#f44336' : '#555');
                     const critBadge = isNat20 ? ' <b style="color:#4caf50;">★ Nat 20!</b>' : (isNat1 ? ' <b style="color:#f44336;">⚠ Nat 1</b>' : '');
-                    const calcStr = data.bonus !== 0 ? ` (${r.raw}${bSign})` : '';
+                    const calcStr = data.bonus !== 0 ? ` (${safeEscape(r.raw)}${bSign})` : '';
                     
                     badgesHtml += `<span style="background: rgba(0,0,0,0.5); padding: 3px 7px; border-radius: 4px; border: 1px solid ${borderColor}; font-size: 12px;">` +
-                        `d${r.dice} #${idx+1}: <strong style="font-size:14px; color:${isNat20 ? '#4caf50' : (isNat1 ? '#f44336' : '#ffcc00')};">${r.total}</strong>` +
+                        `d${safeEscape(r.dice)} #${idx+1}: <strong style="font-size:14px; color:${isNat20 ? '#4caf50' : (isNat1 ? '#f44336' : '#ffcc00')};">${safeEscape(r.total)}</strong>` +
                         `<span style="color:#aaa; font-size:11px;">${calcStr}</span>${critBadge}</span>`;
                 });
                 badgesHtml += '</div>';
@@ -165,7 +165,7 @@ window.appendRollToChat = function(playerOrData, dice, bonus, result) {
         } else {
             // Modalità: Al Totale (Danno / Somma)
             const bSign = data.bonus > 0 ? `+${data.bonus}` : (data.bonus < 0 ? `${data.bonus}` : '');
-            const rawDiceList = data.rolls ? data.rolls.map(r => r.raw) : [];
+            const rawDiceList = data.rolls ? data.rolls.map(r => safeEscape(r.raw)) : [];
             const isSingleD20 = data.rolls && data.rolls.length === 1 && data.rolls[0].dice === 20;
             const isNat20 = isSingleD20 && data.rolls[0].raw === 20;
             const isNat1 = isSingleD20 && data.rolls[0].raw === 1;
@@ -188,14 +188,14 @@ window.appendRollToChat = function(playerOrData, dice, bonus, result) {
             }
             
             li.innerHTML = `<div><strong style="color:#ffcc00;">${pName}</strong> tira <strong>${safeEscape(data.expression || '')}${bSign}</strong>: ` +
-                `<strong style="font-size:16px; color:${isNat20 ? '#4caf50' : (isNat1 ? '#f44336' : '#ffcc00')};">${data.result}</strong>${critBadge}</div>${detailStr}`;
+                `<strong style="font-size:16px; color:${isNat20 ? '#4caf50' : (isNat1 ? '#f44336' : '#ffcc00')};">${safeEscape(data.result)}</strong>${critBadge}</div>${detailStr}`;
         }
     } else {
         // Fallback classico: (playerName, dice, bonus, result)
         const pName = safeEscape(playerOrData || "Giocatore");
         const bStr = bonus > 0 ? `+${bonus}` : (bonus < 0 ? `${bonus}` : '');
         const expression = `1d${dice}${bStr}`;
-        li.innerHTML = `<strong style="color:#ffcc00;">${pName}</strong> tira ${expression}: <strong style="font-size:16px;">${result}</strong>`;
+        li.innerHTML = `<strong style="color:#ffcc00;">${pName}</strong> tira ${safeEscape(expression)}: <strong style="font-size:16px;">${safeEscape(result)}</strong>`;
     }
     
     chatLog.appendChild(li);

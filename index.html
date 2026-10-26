@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DM Dashboard - VTT (Beta 1.3)</title>
+    <title>DM Dashboard - VTT (Beta 1.4)</title>
     <link rel="stylesheet" href="css/style.css?v=3">
 <style>
         .section h3 { cursor: pointer; user-select: none; }
@@ -14,7 +14,7 @@
 </head>
 <body>
     <div id="sidebar">
-        <h2>Andr3a VTT <span style="font-size: 11px; background: #263238; color: #4dd0e1; border: 1px solid #00acc1; padding: 1px 6px; border-radius: 10px; vertical-align: middle; font-weight: bold;">Beta 1.3</span><br><span style="font-size: 14px; color: #ffcc00; font-weight: normal;">DM Console</span></h2>
+        <h2>Andr3a VTT <span style="font-size: 11px; background: #263238; color: #4dd0e1; border: 1px solid #00acc1; padding: 1px 6px; border-radius: 10px; vertical-align: middle; font-weight: bold;">Beta 1.4</span><br><span style="font-size: 14px; color: #ffcc00; font-weight: normal;">DM Console</span></h2>
         <div style="margin-top: 10px; margin-bottom: 10px;">
             <button id="btn-toggle-tracker" style="width: 100%; background: #ffcc00; color: black; font-weight: bold; padding: 7px; cursor: pointer; border-radius: 4px; border: none; font-size: 13px;">⚔️ Tracker Iniziativa</button>
         </div>
@@ -65,28 +65,10 @@
 
         <div class="section">
             <h3>Tokens</h3>
-            <button id="btn-open-tokens-sidebar" type="button" style="width: 100%; margin: 4px 0 10px 0; background: #00897b; color: white; font-weight: bold; padding: 7px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); transition: 0.15s;" title="Apri la Libreria Token per caricare cartelle e inserire pedine">
-                ♟️ Libreria & Nuovi Token
-            </button>
-            
-            
-            
-            <div class="control-group">
-                <label style="font-size:12px; font-weight:bold; color:#00bcd4;">Stile PV Token (Lato Giocatori):</label>
-                <select id="hp-display-style" style="width: 100%; background: #222; color: white; border: 1px solid #555; padding: 4px; margin-top: 5px; margin-bottom: 10px;">
-                    <option value="bar">Solo Barra (Classico)</option>
-                    <option value="aura">Solo Alone (Immersivo)</option>
-                    <option value="both">Barra + Alone</option>
-                </select>
-                
-                <label style="font-size:12px; font-weight:bold; color:#00bcd4;">Stile Condizioni Multiple:</label>
-                <select id="condition-display-style" style="width: 100%; background: #222; color: white; border: 1px solid #555; padding: 4px; margin-top: 5px;">
-                    <option value="concentric">Anelli Concentrici (Testo Curvo)</option>
-                    <option value="segmented">Anello Singolo (Spicchi)</option>
-                    <option value="pills">Pillole con Nome (es. Prono)</option>
-                </select>
+            <div id="no-token-selected-msg" style="color: #888; font-size: 11.5px; font-style: italic; padding: 4px 2px;">
+                Seleziona un token sulla mappa per modificarlo.
             </div>
-            <div id="selected-token-controls" style="display: none; margin-top:8px; padding: 8px 10px; background: #2a2a2a; border-radius: 6px; border: 1px solid #444;">
+            <div id="selected-token-controls" style="display: none; margin-top: 4px; padding: 8px 10px; background: #2a2a2a; border-radius: 6px; border: 1px solid #444;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
                     <h4 id="selected-token-title" style="margin: 0; font-size: 13px; color: #ffca28; display:flex; align-items:center; gap:5px;">🎯 Token Selezionato</h4>
                 </div>
@@ -710,7 +692,7 @@
                 <option value="square">Quadrato (Cubo)</option>
             </select>
             <div style="display: flex; width: 100%; gap: 5px; align-items: center;">
-                <input type="number" id="aoe-size" value="15" step="1.5" min="0" style="flex: 2; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;" title="Dimensione">
+                <input type="number" id="aoe-size" value="15" step="5" min="0" style="flex: 2; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;" title="Dimensione">
                 <input type="number" id="aoe-width" value="5" step="1" min="0" style="flex: 1.2; display: none; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;" title="Spessore (solo Linea)">
                 <select id="aoe-unit" style="flex: 1; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;" title="Unità">
                     <option value="ft">ft</option>
@@ -850,7 +832,7 @@
     <!-- Fine Dadi e Audio -->
 
     <!-- Pannello Libreria Token DM (Flottante) -->
-    <div id="token-panel" style="display:none; position: absolute; bottom: 80px; right: 80px; background: rgba(26, 26, 26, 0.96); border: 2px solid #00897b; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 6px 16px rgba(0,0,0,0.65); z-index: 1000; width: 340px; max-height: 540px; flex-direction: column; gap: 8px; font-family: sans-serif; box-sizing: border-box;">
+    <div id="token-panel" style="display:none; position: absolute; bottom: 80px; right: 80px; background: rgba(26, 26, 26, 0.96); border: 2px solid #00897b; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 6px 16px rgba(0,0,0,0.65); z-index: 1000; width: 340px; max-height: 580px; flex-direction: column; gap: 8px; font-family: sans-serif; box-sizing: border-box;">
         <div id="token-panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 5px; cursor: move; user-select: none;">
             <strong style="color: #4db6ac; font-size: 14px; display: flex; align-items: center; gap: 5px;">♟️ Libreria Token</strong>
             <button id="btn-close-token-panel" type="button" style="background: none; border: none; color: #aaa; cursor: pointer; font-size: 16px; padding: 0 4px;" title="Chiudi">✕</button>
@@ -927,8 +909,8 @@
             💡 Trascina file dal PC o clicca il badge cartella (👹/🧑/🛡️/📦) su un token per spostarlo
         </div>
 
-        <!-- Impostazioni Rapide Nuovi Token -->
-        <div style="background: #202020; border: 1px solid #383838; border-radius: 4px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px;">
+        <!-- Impostazioni Rapide & Visualizzazione Token -->
+        <div style="background: #202020; border: 1px solid #383838; border-radius: 4px; padding: 6px 8px; display: flex; flex-direction: column; gap: 5px;">
             <div style="font-size: 11px; color: #4db6ac; font-weight: bold;">Piazzamento nuovi token:</div>
             <div style="display: flex; gap: 6px; align-items: center;">
                 <select id="token-size-select" style="flex: 1.2; background: #111; color: white; border: 1px solid #555; border-radius: 3px; padding: 3px; font-size: 11px;">
@@ -946,18 +928,38 @@
                     <input type="number" id="token-default-hp" placeholder="PV Full" min="0" style="width: 100%; background: #111; color: white; border: 1px solid #555; border-radius: 3px; padding: 3px 4px; font-size: 11px; text-align: center;">
                 </div>
             </div>
+
+            <!-- Stile PV e Condizioni (Lato Giocatori) -->
+            <div style="border-top: 1px solid #333; padding-top: 5px; display: flex; flex-direction: column; gap: 4px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+                    <label for="hp-display-style" style="font-size: 10.5px; font-weight: bold; color: #00bcd4; white-space: nowrap;">Stile PV (Giocatori):</label>
+                    <select id="hp-display-style" style="flex: 1; background: #111; color: white; border: 1px solid #555; border-radius: 3px; padding: 3px; font-size: 11px;">
+                        <option value="bar">Solo Barra (Classico)</option>
+                        <option value="aura">Solo Alone (Immersivo)</option>
+                        <option value="both">Barra + Alone</option>
+                    </select>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+                    <label for="condition-display-style" style="font-size: 10.5px; font-weight: bold; color: #00bcd4; white-space: nowrap;">Condizioni Multiple:</label>
+                    <select id="condition-display-style" style="flex: 1; background: #111; color: white; border: 1px solid #555; border-radius: 3px; padding: 3px; font-size: 11px;">
+                        <option value="concentric">Anelli Concentrici (Testo Curvo)</option>
+                        <option value="segmented">Anello Singolo (Spicchi)</option>
+                        <option value="pills">Pillole con Nome (es. Prono)</option>
+                    </select>
+                </div>
+            </div>
         </div>
     </div>
 
     <script src="js/network.js?v=7"></script>
-    <script src="js/engine.js?v=136"></script>
+    <script src="js/engine.js?v=138"></script>
 
     <script src="js/dice.js?v=124"></script>
     <script src="js/audio.js?v=117"></script>
-    <script src="js/dm.js?v=160"></script>
+    <script src="js/dm.js?v=165"></script>
     <script src="js/compendium.js?v=16"></script>
     <script src="js/pcsheet.js?v=3"></script>
-    <script src="js/initiative.js?v=29"></script>
+    <script src="js/initiative.js?v=33"></script>
 <script>
     document.querySelectorAll('.section h3').forEach(h3 => {
         h3.addEventListener('click', () => {

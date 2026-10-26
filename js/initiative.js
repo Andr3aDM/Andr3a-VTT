@@ -434,6 +434,7 @@ document.getElementById('btn-tracker-state').addEventListener('click', (e) => {
         engine.initiative.active = true;
         engine.initiative.participants.sort((a, b) => (b.init || 0) - (a.init || 0));
         engine.initiative.currentTurnIndex = 0;
+        engine.initiative.round = 1;
         e.target.innerText = 'Riordina/Aggiorna';
         document.getElementById('tracker-combat-controls').style.display = 'flex';
         if (typeof showToast === 'function') showToast('Combattimento avviato!');
@@ -457,6 +458,7 @@ document.getElementById('btn-tracker-reset').addEventListener('click', () => {
 
     engine.initiative.active = false;
     engine.initiative.currentTurnIndex = 0;
+    engine.initiative.round = 1;
     engine.initiative.participants = []; // Svuota e resetta l'ordine di iniziativa
     document.getElementById('btn-tracker-state').innerText = 'Avvia Combattimento';
     document.getElementById('tracker-combat-controls').style.display = 'none';
@@ -502,11 +504,79 @@ document.getElementById('btn-tracker-reset').addEventListener('click', () => {
     if (typeof syncState === 'function') syncState();
 });
 
-document.getElementById('btn-next-turn').addEventListener('click', () => {
-    if(engine.initiative.participants.length === 0) return;
+window.nextInitiativeTurn = function() {
+    if (!engine.initiative.participants || engine.initiative.participants.length === 0) return;
+
+    const curIdx = engine.initiative.currentTurnIndex;
+    const isEndOfRound = (curIdx === engine.initiative.participants.length - 1);
+    const finishingParticipant = engine.initiative.participants[curIdx];
+    const currentRound = engine.initiative.round || 1;
+
+    // Helper per verificare se un partecipante corrisponde all'incantatore della sagoma
+    const doesParticipantMatchShape = (p, shape) => {
+        if (!p || !shape) return false;
+        const pName = (p.name || '').trim().toLowerCase();
+        const pBase = (typeof getParticipantBaseName === 'function') ? getParticipantBaseName(p.name).toLowerCase() : pName;
+        const pTokenId = p.tokenId ? String(p.tokenId) : null;
+        const pId = p.id ? String(p.id) : null;
+
+        const sTokenId = shape.casterTokenId ? String(shape.casterTokenId) : null;
+        const sId = shape.casterId ? String(shape.casterId) : (shape.casterInitiativeId ? String(shape.casterInitiativeId) : null);
+        const sName = shape.casterName ? shape.casterName.trim().toLowerCase() : '';
+        const sBase = (typeof getParticipantBaseName === 'function') ? getParticipantBaseName(shape.casterName).toLowerCase() : sName;
+        const sOwner = shape.owner ? shape.owner.trim().toLowerCase() : '';
+
+        // 1. Match per Token ID
+        if (sTokenId && pTokenId) {
+            return sTokenId === pTokenId;
+        }
+        // 2. Match per ID partecipante tracker
+        if (sId && pId && sId === pId) return true;
+        if (shape.casterInitiativeId && pId && String(shape.casterInitiativeId) === pId) return true;
+
+        // Se entrambi hanno un numero distintivo finale e non sono identici (es. "Orco 1" vs "Orco 2"), NON possono coincidere!
+        const sHasNum = /\d+$/.test(shape.casterName || '');
+        const pHasNum = /\d+$/.test(p.name || '');
+        if (sHasNum && pHasNum && sName !== pName) {
+            return false;
+        }
+
+        // 3. Match per Nome o Nome Base (es. "Mago 1" vs "Mago")
+        if (sName && (sName === pName || sBase === pBase || sName === pBase || sBase === pName)) return true;
+
+        // 4. Match flessibile prefisso / nome composto (es. "Jude" vs "Jude Morningstar")
+        if (sName) {
+            if (pName.startsWith(sName + ' ') || sName.startsWith(pName + ' ')) return true;
+            if (pBase.startsWith(sName + ' ') || sBase.startsWith(pBase + ' ')) return true;
+            if (pName.startsWith(sBase + ' ') || sBase.startsWith(pName + ' ')) return true;
+            const pFirst = pBase.split(/\s+/)[0];
+            const sFirst = sBase.split(/\s+/)[0];
+            if (pFirst && sFirst && pFirst.length >= 3 && pFirst === sFirst) return true;
+        }
+
+        // 5. Match per Proprietario del Token
+        const pTok = pTokenId
+            ? (engine.tokens && engine.tokens.find(t => String(t.id) === pTokenId))
+            : (engine.tokens && engine.tokens.find(t => (t.name || '').trim().toLowerCase() === pName));
+
+        if (sOwner) {
+            if (pTok && typeof isTokenOwnedBy === 'function' && isTokenOwnedBy(pTok, sOwner)) return true;
+            if (sOwner === pName || sOwner === pBase) return true;
+            if (pName.startsWith(sOwner + ' ') || sOwner.startsWith(pName + ' ')) return true;
+            if (pBase.startsWith(sOwner + ' ') || sOwner.startsWith(pBase + ' ')) return true;
+            const pFirst = pBase.split(/\s+/)[0];
+            const oFirst = sOwner.split(/\s+/)[0];
+            if (pFirst && oFirst && pFirst.length >= 3 && pFirst === oFirst) return true;
+            if (pTok && pTok.name) {
+                const tName = pTok.name.trim().toLowerCase();
+                if (tName === sOwner || tName.startsWith(sOwner + ' ') || sOwner.startsWith(tName + ' ')) return true;
+            }
+        }
+
+        return false;
+    };
 
     // Gestione decremento turni per le AoE temporizzate
-    const finishingParticipant = engine.initiative.participants[engine.initiative.currentTurnIndex];
     if (finishingParticipant && engine.shapes && engine.shapes.length > 0) {
         let changed = false;
         const expiredShapes = [];
@@ -515,21 +585,24 @@ document.getElementById('btn-next-turn').addEventListener('click', () => {
             const hasTimer = shape.durationRounds !== undefined && shape.durationRounds !== null && Number(shape.durationRounds) > 0;
             if (!hasTimer) return true; // Le forme permanenti non scalano mai
 
-            // Verifica se la sagoma appartiene a questo partecipante
-            const pName = (finishingParticipant.name || '').trim().toLowerCase();
-            const pTokenId = finishingParticipant.tokenId;
-            const pId = finishingParticipant.id;
+            const matchesCurrentCaster = doesParticipantMatchShape(finishingParticipant, shape);
+            const hasCasterInTracker = engine.initiative.participants.some(p => doesParticipantMatchShape(p, shape));
 
-            const matchToken = shape.casterTokenId && pTokenId && shape.casterTokenId === pTokenId;
-            const matchId = shape.casterId && pId && shape.casterId === pId;
-            const matchName = shape.casterName && pName && shape.casterName.trim().toLowerCase() === pName;
-            const matchOwner = shape.owner && pName && shape.owner.trim().toLowerCase() === pName;
+            // Scaliamo se:
+            // A) Questo partecipante che termina il turno è l'incantatore della sagoma presente nel tracker
+            // B) Oppure la sagoma non ha nessun partecipante attivo nel tracker (es. DM, Ambiente, Trappola) ed è finito il round!
+            const shouldDecrement = hasCasterInTracker ? matchesCurrentCaster : isEndOfRound;
 
-            if (matchToken || matchId || matchName || matchOwner) {
-                // Se è stata appena creata durante questo stesso turno, non scalare subito!
-                // Scalerà al prossimo giro quando ritocca a lui
+            if (shouldDecrement) {
+                // Se è stata appena creata durante questo stesso turno dell'incantatore, salta il primo decremento
                 if (shape.skipFirstDecrement) {
                     shape.skipFirstDecrement = false;
+                    shape._lastDecrementedRound = currentRound;
+                    return true;
+                }
+
+                // Evita doppio decremento nello stesso round
+                if (shape._lastDecrementedRound === currentRound) {
                     return true;
                 }
 
@@ -538,6 +611,7 @@ document.getElementById('btn-next-turn').addEventListener('click', () => {
                 }
 
                 shape.roundsLeft--;
+                shape._lastDecrementedRound = currentRound;
                 changed = true;
 
                 if (shape.roundsLeft <= 0) {
@@ -549,11 +623,11 @@ document.getElementById('btn-next-turn').addEventListener('click', () => {
         });
 
         if (expiredShapes.length > 0) {
-            const cName = finishingParticipant.name || 'Incantatore';
-            if (typeof showToast === 'function') {
-                showToast(`⏳ L'effetto AoE di ${cName} è svanito!`);
-            }
             expiredShapes.forEach(exp => {
+                const cName = exp.casterName || (finishingParticipant ? finishingParticipant.name : '') || 'Incantatore';
+                if (typeof showToast === 'function') {
+                    showToast(`⏳ L'effetto AoE di ${cName} è svanito!`);
+                }
                 if (engine.selectedShapeId === exp.id) {
                     engine.selectedShapeId = null;
                     const sc = document.getElementById('selected-shape-controls');
@@ -572,22 +646,57 @@ document.getElementById('btn-next-turn').addEventListener('click', () => {
     if (finishingParticipant && engine.tokens && engine.tokens.length > 0) {
         let auraChanged = false;
         const pName = (finishingParticipant.name || '').trim().toLowerCase();
-        const pTokenId = finishingParticipant.tokenId;
+        const pBase = (typeof getParticipantBaseName === 'function') ? getParticipantBaseName(finishingParticipant.name).toLowerCase() : pName;
+        const pTokenId = finishingParticipant.tokenId ? String(finishingParticipant.tokenId) : null;
 
         engine.tokens.forEach(tok => {
             if (!tok.aura || !tok.aura.active || !tok.aura.durationRounds || Number(tok.aura.durationRounds) <= 0) return;
-            const matchToken = pTokenId && tok.id === pTokenId;
-            const matchName = tok.name && pName && tok.name.trim().toLowerCase() === pName;
+            const tokIdStr = String(tok.id);
+            const tokName = (tok.name || '').trim().toLowerCase();
+            const tokBase = (typeof getParticipantBaseName === 'function') ? getParticipantBaseName(tok.name).toLowerCase() : tokName;
 
-            if (matchToken || matchName) {
+            let isMatch = false;
+            if (pTokenId) {
+                // Se il partecipante è un token specifico, l'aura deve appartenere a QUESTO specifico token
+                isMatch = (pTokenId === tokIdStr);
+            } else {
+                // Altrimenti (partecipante party o custom non collegato direttamente a ID token), match per nome
+                const tokHasNum = /\d+$/.test(tok.name || '');
+                const pHasNum = /\d+$/.test(finishingParticipant.name || '');
+                if (tokHasNum && pHasNum && tokName !== pName) {
+                    isMatch = false;
+                } else {
+                    isMatch = (
+                        tokName === pName || tokBase === pBase || tokName === pBase || tokBase === pName ||
+                        pName.startsWith(tokName + ' ') || tokName.startsWith(pName + ' ') ||
+                        pBase.startsWith(tokBase + ' ') || tokBase.startsWith(pBase + ' ')
+                    );
+                }
+            }
+
+            // Se il token è nel tracker, scala solo sul suo turno. Se non è nel tracker (es. evocazione DM o neutrale), scala a fine round!
+            const hasTokInTracker = engine.initiative.participants.some(p => {
+                if (p.tokenId && String(p.tokenId) === tokIdStr) return true;
+                const pN = (p.name || '').trim().toLowerCase();
+                const pB = (typeof getParticipantBaseName === 'function') ? getParticipantBaseName(p.name).toLowerCase() : pN;
+                return tokName === pN || tokBase === pB || tokName === pB || tokBase === pN;
+            });
+            const shouldDecrement = hasTokInTracker ? isMatch : isEndOfRound;
+
+            if (shouldDecrement) {
                 if (tok.aura.skipFirstDecrement) {
                     tok.aura.skipFirstDecrement = false;
+                    tok.aura._lastDecrementedRound = currentRound;
+                    return;
+                }
+                if (tok.aura._lastDecrementedRound === currentRound) {
                     return;
                 }
                 if (tok.aura.roundsLeft === undefined || tok.aura.roundsLeft === null) {
                     tok.aura.roundsLeft = Number(tok.aura.durationRounds);
                 }
                 tok.aura.roundsLeft--;
+                tok.aura._lastDecrementedRound = currentRound;
                 auraChanged = true;
 
                 if (tok.aura.roundsLeft <= 0) {
@@ -595,6 +704,7 @@ document.getElementById('btn-next-turn').addEventListener('click', () => {
                     delete tok.aura.roundsLeft;
                     delete tok.aura.durationRounds;
                     delete tok.aura.skipFirstDecrement;
+                    delete tok.aura._lastDecrementedRound;
                     if (typeof showToast === 'function') {
                         showToast(`⏳ L'aura di ${tok.name || 'Token'} si è dissolta!`);
                     }
@@ -608,14 +718,32 @@ document.getElementById('btn-next-turn').addEventListener('click', () => {
         }
     }
 
+    if (isEndOfRound) {
+        engine.initiative.round = currentRound + 1;
+    }
     engine.initiative.currentTurnIndex = (engine.initiative.currentTurnIndex + 1) % engine.initiative.participants.length;
     renderTrackerList();
-});
-document.getElementById('btn-prev-turn').addEventListener('click', () => {
-    if(engine.initiative.participants.length === 0) return;
+};
+
+window.prevInitiativeTurn = function() {
+    if (!engine.initiative.participants || engine.initiative.participants.length === 0) return;
     engine.initiative.currentTurnIndex = (engine.initiative.currentTurnIndex - 1 + engine.initiative.participants.length) % engine.initiative.participants.length;
     renderTrackerList();
-});
+};
+
+const _btnNextEl = document.getElementById('btn-next-turn');
+if (_btnNextEl) {
+    const _cleanNext = _btnNextEl.cloneNode(true);
+    _btnNextEl.parentNode.replaceChild(_cleanNext, _btnNextEl);
+    _cleanNext.onclick = window.nextInitiativeTurn;
+}
+
+const _btnPrevEl = document.getElementById('btn-prev-turn');
+if (_btnPrevEl) {
+    const _cleanPrev = _btnPrevEl.cloneNode(true);
+    _btnPrevEl.parentNode.replaceChild(_cleanPrev, _btnPrevEl);
+    _cleanPrev.onclick = window.prevInitiativeTurn;
+}
 
 document.getElementById('tracker-player-visible').addEventListener('change', (e) => {
     engine.initiative.isVisibleToPlayers = e.target.checked;

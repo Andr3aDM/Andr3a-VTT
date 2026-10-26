@@ -7,6 +7,27 @@
  */
 
 (function() {
+    function escapeHTML(str) {
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/[&<>'"]/g, c => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            "'": '&#39;',
+            '"': '&quot;'
+        }[c]));
+    }
+
+    function sanitizeImageSrc(src) {
+        if (!src || typeof src !== 'string') return '';
+        const trimmed = src.trim();
+        const low = trimmed.toLowerCase();
+        if (low.startsWith('data:image/') || low.startsWith('http://') || low.startsWith('https://') || low.startsWith('./') || low.startsWith('/')) {
+            return trimmed;
+        }
+        return '';
+    }
+
     const searchCache = new Map();
     let currentMonster = null;
     let rawMonster = null;
@@ -1159,13 +1180,13 @@
 
                 item.innerHTML = `
                     <div>
-                        <strong style="color: #ef5350; font-size: 12px;">${m.name}</strong>
-                        <div style="color: #888; font-size: 10px;">${type}</div>
+                        <strong style="color: #ef5350; font-size: 12px;">${escapeHTML(m.name)}</strong>
+                        <div style="color: #888; font-size: 10px;">${escapeHTML(type)}</div>
                     </div>
                     <div style="text-align: right; color: #bbb; font-size: 11px; white-space: nowrap;">
-                        <span style="color: #4fc3f7;" title="Classe Armatura">🛡️ ${ac}</span> | 
-                        <span style="color: #ef5350;" title="Punti Ferita">❤️ ${hp}</span> | 
-                        <span style="color: #ffb74d;" title="Grado Sfida">CR ${cr}</span>
+                        <span style="color: #4fc3f7;" title="Classe Armatura">🛡️ ${escapeHTML(ac)}</span> | 
+                        <span style="color: #ef5350;" title="Punti Ferita">❤️ ${escapeHTML(hp)}</span> | 
+                        <span style="color: #ffb74d;" title="Grado Sfida">CR ${escapeHTML(cr)}</span>
                     </div>
                 `;
 
@@ -1473,16 +1494,17 @@
                 });
             }
 
-            const tokenAvatarSrc = m.tokenSrc || this.generateLetterToken(m);
+            const rawAvatar = m.tokenSrc || this.generateLetterToken(m);
+            const tokenAvatarSrc = sanitizeImageSrc(rawAvatar) || this.generateLetterToken(m);
 
             details.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #b71c1c; padding-bottom: 6px; margin-bottom: 8px;">
                     <div style="flex: 1; min-width: 0;">
-                        <div style="font-size: 18px; font-weight: bold; color: #ef5350; font-family: serif; letter-spacing: 0.5px;">${m.name}</div>
-                        <div style="font-style: italic; color: #9e9e9e; font-size: 11px;">${sizeType}</div>
+                        <div style="font-size: 18px; font-weight: bold; color: #ef5350; font-family: serif; letter-spacing: 0.5px;">${escapeHTML(m.name)}</div>
+                        <div style="font-style: italic; color: #9e9e9e; font-size: 11px;">${escapeHTML(sizeType)}</div>
                     </div>
                     <div id="statblock-avatar-wrapper" style="position: relative; cursor: pointer; margin-left: 10px; flex-shrink: 0;" title="Clicca per cambiare immagine o premi Ctrl+V con un token copiato negli appunti">
-                        <img id="statblock-avatar-img" src="${tokenAvatarSrc}" style="width: 52px; height: 52px; border-radius: 50%; border: 2px solid #ef5350; object-fit: cover; background: #111; box-shadow: 0 2px 6px rgba(0,0,0,0.6);">
+                        <img id="statblock-avatar-img" src="${escapeHTML(tokenAvatarSrc)}" style="width: 52px; height: 52px; border-radius: 50%; border: 2px solid #ef5350; object-fit: cover; background: #111; box-shadow: 0 2px 6px rgba(0,0,0,0.6);">
                         <span style="position: absolute; bottom: -2px; right: -2px; background: #b71c1c; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: white;" title="Cambia Token">📷</span>
                         <input type="file" id="statblock-avatar-file-input" accept="image/*" style="display: none;">
                     </div>

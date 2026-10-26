@@ -9,6 +9,7 @@ function escapeHTML(str) {
     }[tag]));
 }
 const engine = new VTTEngine('main-canvas-container', true);
+window.engine = engine;
 
 // Modalità Offline di base
 network.startOffline();
@@ -40,7 +41,14 @@ if (btnOpenPlayerOnline) {
     });
 }
 
-window.VTT_VERSION = 'Beta 1.3';
+window.VTT_VERSION = 'Beta 1.4';
+
+function updateTokenControlsVisibility(show) {
+    const controls = document.getElementById('selected-token-controls');
+    const noTok = document.getElementById('no-token-selected-msg');
+    if (controls) controls.style.display = show ? 'block' : 'none';
+    if (noTok) noTok.style.display = show ? 'none' : 'block';
+}
 
 function getTokenOwners(token) {
     if (!token) return [];
@@ -289,11 +297,18 @@ network.onMessage((data, peerId) => {
             }
         }
     } else if (data.type === 'PING') {
+        if (!window._lastPeerPingTimes) window._lastPeerPingTimes = new Map();
+        const now = Date.now();
+        const lastPingTime = window._lastPeerPingTimes.get(peerId) || 0;
+        if (now - lastPingTime < 350) return; // Rate-limiting ping per peer
+        window._lastPeerPingTimes.set(peerId, now);
+
         const pingPayload = data.payload || data;
         const pingId = pingPayload.id || (pingPayload.x + '_' + pingPayload.y + '_' + (pingPayload.t || ''));
         if (window.lastReceivedPingId === pingId) return;
         window.lastReceivedPingId = pingId;
-        engine.pings.push({id: pingId, x: pingPayload.x, y: pingPayload.y, start: Date.now(), color: pingPayload.color || '#ff0000'});
+        if (engine.pings && engine.pings.length > 20) engine.pings.shift(); // Previene accumulo infinito di ping
+        engine.pings.push({id: pingId, x: pingPayload.x, y: pingPayload.y, start: now, color: pingPayload.color || '#ff0000'});
         engine.renderUI();
         // Invia SOLO ai giocatori remoti via PeerJS (non rimbalzare sul BroadcastChannel locale se è già locale!)
         if (peerId !== 'local' && network.mode === 'offline') {
@@ -310,6 +325,15 @@ network.onMessage((data, peerId) => {
         const senderName = (peerId === 'local') ? (data.payload?.owner || 'local') : (network.connections[peerId] ? network.connections[peerId].name : (data.payload?.owner || 'player'));
         if (data.payload) {
             data.payload.owner = senderName;
+            if (Array.isArray(data.payload.points) && data.payload.points.length > 5000) {
+                data.payload.points = data.payload.points.slice(0, 5000);
+            }
+            const normSender = senderName.trim().toLowerCase();
+            const playerStrokeCount = (engine.publicStrokes || []).filter(st => (st.owner || '').trim().toLowerCase() === normSender).length;
+            if (playerStrokeCount >= 150) {
+                const oldestIdx = engine.publicStrokes.findIndex(st => (st.owner || '').trim().toLowerCase() === normSender);
+                if (oldestIdx !== -1) engine.publicStrokes.splice(oldestIdx, 1);
+            }
             engine.publicStrokes.push(data.payload);
             engine.renderAll();
             syncState(true);
@@ -326,12 +350,54 @@ network.onMessage((data, peerId) => {
             syncState(true);
         }
     } else if (data.type === 'PLAYER_ADD_SHAPE') {
-        engine.shapes.push(data.payload);
-        engine.renderAll();
-        syncState(true);
+        const senderName = (peerId === 'local') ? (data.payload?.owner || 'local') : (network.connections[peerId] ? network.connections[peerId].name : null);
+        if (!senderName) return;
+        const normSender = senderName.trim().toLowerCase();
+        const playerShapeCount = (engine.shapes || []).filter(sh => (sh.owner || '').trim().toLowerCase() === normSender).length;
+        if (playerShapeCount >= 20) {
+            console.warn(`Quota sagome raggiunta per ${senderName}`);
+            return;
+        }
+        if (data.payload) {
+            data.payload.owner = senderName;
+
+            // Se non ha ancora casterTokenId/casterName completi, collegalo al token del giocatore se esistente
+            if (!data.payload.casterTokenId && engine.tokens && engine.tokens.length > 0) {
+                const myTok = engine.tokens.find(t => isTokenOwnedBy(t, senderName) || (t.name && (t.name.trim().toLowerCase() === normSender || t.name.trim().toLowerCase().startsWith(normSender + ' '))));
+                if (myTok) {
+                    data.payload.casterTokenId = myTok.id;
+                    if (!data.payload.casterName || data.payload.casterName === senderName) {
+                        data.payload.casterName = myTok.name;
+                    }
+                }
+            }
+
+            // Se in combattimento ed è il turno del giocatore/incantatore:
+            if (engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0) {
+                const curP = engine.initiative.participants[engine.initiative.currentTurnIndex];
+                if (curP) {
+                    const curName = (curP.name || '').trim().toLowerCase();
+                    const sCasterName = (data.payload.casterName || '').trim().toLowerCase();
+                    const curTok = curP.tokenId ? engine.tokens.find(t => String(t.id) === String(curP.tokenId)) : null;
+                    const isCurOwned = curTok ? isTokenOwnedBy(curTok, senderName) : false;
+                    
+                    if (isCurOwned || (data.payload.casterTokenId && String(curP.tokenId) === String(data.payload.casterTokenId)) ||
+                        curName === normSender || curName.startsWith(normSender + ' ') || curName.includes(normSender) ||
+                        curName === sCasterName || curName.startsWith(sCasterName + ' ') || curName.includes(sCasterName)) {
+                        data.payload.skipFirstDecrement = true;
+                        data.payload.casterInitiativeId = curP.id;
+                    }
+                }
+            }
+
+            engine.shapes.push(data.payload);
+            engine.renderAll();
+            syncState(true);
+        }
     } else if (data.type === 'PLAYER_MOVE_SHAPE') {
+        const senderName = (peerId === 'local') ? (data.payload?.player || 'local') : (network.connections[peerId] ? network.connections[peerId].name : null);
         const s = engine.shapes.find(x => x.id === data.payload.id);
-        if (s) {
+        if (s && (peerId === 'local' || !s.owner || (senderName && s.owner.toLowerCase() === senderName.toLowerCase()))) {
             s.x = data.payload.x;
             s.y = data.payload.y;
             engine.requestTokenLayerRender();
@@ -348,8 +414,9 @@ network.onMessage((data, peerId) => {
             }
         }
     } else if (data.type === 'PLAYER_END_SHAPE') {
+        const senderName = (peerId === 'local') ? (data.payload?.player || 'local') : (network.connections[peerId] ? network.connections[peerId].name : null);
         const s = engine.shapes.find(x => x.id === data.payload.id);
-        if (s) {
+        if (s && (peerId === 'local' || !s.owner || (senderName && s.owner.toLowerCase() === senderName.toLowerCase()))) {
             s.x = data.payload.x;
             s.y = data.payload.y;
             engine.renderTokensLayer();
@@ -368,8 +435,9 @@ network.onMessage((data, peerId) => {
             }
         }
     } else if (data.type === 'PLAYER_UPDATE_SHAPE') {
+        const senderName = (peerId === 'local') ? (data.payload?.player || data.payload?.owner || 'local') : (network.connections[peerId] ? network.connections[peerId].name : null);
         const s = engine.shapes.find(x => x.id === data.payload.id);
-        if (s) {
+        if (s && (peerId === 'local' || !s.owner || (senderName && s.owner.toLowerCase() === senderName.toLowerCase()))) {
             s.sizeFt = data.payload.sizeFt;
             if (data.payload.widthFt !== undefined) s.widthFt = data.payload.widthFt;
             s.angle = data.payload.angle;
@@ -379,21 +447,62 @@ network.onMessage((data, peerId) => {
                 s.durationRounds = data.payload.durationRounds;
                 s.roundsLeft = data.payload.roundsLeft;
             }
+            if (data.payload.casterName !== undefined) s.casterName = data.payload.casterName;
+            if (data.payload.casterTokenId !== undefined) s.casterTokenId = data.payload.casterTokenId;
+            if (data.payload.casterInitiativeId !== undefined) s.casterInitiativeId = data.payload.casterInitiativeId;
+
             if (data.payload.skipFirstDecrement !== undefined) {
                 s.skipFirstDecrement = data.payload.skipFirstDecrement;
             }
+
+            // Se in combattimento ed è stato impostato un timer durante il proprio turno:
+            if (s.durationRounds > 0 && engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0) {
+                const curP = engine.initiative.participants[engine.initiative.currentTurnIndex];
+                if (curP) {
+                    const normSender = senderName ? senderName.trim().toLowerCase() : '';
+                    const curName = (curP.name || '').trim().toLowerCase();
+                    const sCasterName = (s.casterName || data.payload.casterName || '').trim().toLowerCase();
+                    const curTok = curP.tokenId ? engine.tokens.find(t => String(t.id) === String(curP.tokenId)) : null;
+                    const isCurOwned = (curTok && senderName) ? isTokenOwnedBy(curTok, senderName) : false;
+                    
+                    if (isCurOwned || (s.casterTokenId && String(curP.tokenId) === String(s.casterTokenId)) ||
+                        (s.casterInitiativeId && String(s.casterInitiativeId) === String(curP.id)) ||
+                        curName === normSender || curName.startsWith(normSender + ' ') || curName.includes(normSender) ||
+                        curName === sCasterName || curName.startsWith(sCasterName + ' ') || curName.includes(sCasterName)) {
+                        s.skipFirstDecrement = true;
+                        s.casterInitiativeId = curP.id;
+                    }
+                }
+            } else if (s.durationRounds === 0) {
+                delete s.skipFirstDecrement;
+                delete s.roundsLeft;
+                delete s.casterInitiativeId;
+            }
+
             engine.renderAll();
             syncState(true);
         }
     } else if (data.type === 'PLAYER_DELETE_SHAPE') {
-        engine.shapes = engine.shapes.filter(x => x.id !== data.payload.id);
-        engine.renderAll();
-        syncState(true);
+        const senderName = (peerId === 'local') ? (data.payload?.player || 'local') : (network.connections[peerId] ? network.connections[peerId].name : null);
+        const s = engine.shapes.find(x => x.id === data.payload.id);
+        if (s && (peerId === 'local' || !s.owner || (senderName && s.owner.toLowerCase() === senderName.toLowerCase()))) {
+            engine.shapes = engine.shapes.filter(x => x.id !== data.payload.id);
+            engine.renderAll();
+            syncState(true);
+        }
     } else if (data.type === 'PLAYER_UPDATE_TOKEN_AURA') {
         const token = engine.tokens.find(t => t.id === data.payload.id);
         const senderName = (peerId === 'local') ? (data.payload.player || null) : (network.connections[peerId] ? network.connections[peerId].name : null);
         if (token && isTokenOwnedBy(token, senderName)) {
             token.aura = data.payload.auraObj;
+            if (engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0) {
+                const curP = engine.initiative.participants[engine.initiative.currentTurnIndex];
+                if (curP && (String(curP.tokenId) === String(token.id) || (curP.name && token.name && curP.name.trim().toLowerCase() === token.name.trim().toLowerCase()))) {
+                    if (token.aura && token.aura.active && token.aura.durationRounds > 0) {
+                        token.aura.skipFirstDecrement = true;
+                    }
+                }
+            }
             engine.renderAll();
             syncState(true);
         }
@@ -413,7 +522,7 @@ network.onMessage((data, peerId) => {
         const payload = data.payload || {};
         const token = engine.tokens.find(t => t.id === payload.tokenId);
         const senderName = (peerId === 'local') ? (payload.player || null) : (network.connections[peerId] ? network.connections[peerId].name : null);
-        if (token && (peerId === 'local' || !senderName || isTokenOwnedBy(token, senderName))) {
+        if (token && (peerId === 'local' || (senderName && isTokenOwnedBy(token, senderName)))) {
             if (payload.pcSheet) {
                 token.pcSheet = payload.pcSheet;
                 token.pcSheet.updatedAt = Date.now();
@@ -447,7 +556,7 @@ network.onMessage((data, peerId) => {
         const payload = data.payload || {};
         const token = engine.tokens.find(t => t.id === payload.tokenId);
         const senderName = (peerId === 'local') ? (payload.player || null) : (network.connections[peerId] ? network.connections[peerId].name : null);
-        if (token && (peerId === 'local' || !senderName || isTokenOwnedBy(token, senderName))) {
+        if (token && (peerId === 'local' || (senderName && isTokenOwnedBy(token, senderName)))) {
             token.adventureJournal = payload.adventureJournal || '';
             token.adventureJournalUpdatedAt = Date.now();
             if (token.pcSheet) token.pcSheet.adventureJournal = token.adventureJournal;
@@ -494,6 +603,7 @@ let lastClickedTokenId = null;
 let lastClickedTokenTime = 0;
 let lastStatblockOpenTime = 0;
 let clickedTokenForInteraction = null;
+let clickedShapeForInteraction = null;
 
 
 window.getSmartTokenName = function(t) {
@@ -1071,7 +1181,6 @@ if (aoePanel) {
 
 // Inizializza Pannello Libreria Token
 const btnToggleTokens = document.getElementById('btn-toggle-tokens');
-const btnOpenTokensSidebar = document.getElementById('btn-open-tokens-sidebar');
 const tokenPanel = document.getElementById('token-panel');
 if (tokenPanel) {
     const tokenHeader = document.getElementById('token-panel-header');
@@ -1088,7 +1197,6 @@ if (tokenPanel) {
     };
 
     if (btnToggleTokens) btnToggleTokens.addEventListener('click', toggleTokenPanel);
-    if (btnOpenTokensSidebar) btnOpenTokensSidebar.addEventListener('click', toggleTokenPanel);
 
     const btnCloseToken = document.getElementById('btn-close-token-panel');
     if (btnCloseToken) {
@@ -2938,14 +3046,17 @@ function updateVisibilityButtonUI(targets) {
 
 window.updateSelectedTokenControls = function(ent) {
     const controls = document.getElementById('selected-token-controls');
+    const noTokenMsg = document.getElementById('no-token-selected-msg');
     if (!controls) return;
     const targets = getSelectedTargetTokens();
     if (!ent && targets.length > 0) ent = targets[targets.length - 1];
     if (!ent || targets.length === 0) {
         controls.style.display = 'none';
+        if (noTokenMsg) noTokenMsg.style.display = 'block';
         return;
     }
     controls.style.display = 'block';
+    if (noTokenMsg) noTokenMsg.style.display = 'none';
 
     const titleEl = document.getElementById('selected-token-title');
     if (titleEl) {
@@ -2998,7 +3109,7 @@ window.updateSelectedTokenControls = function(ent) {
     const btnStat = document.getElementById('btn-open-statblock');
     if (btnStat) {
         if (ent.statblock && ent.statblock.name) {
-            btnStat.innerHTML = `<span>📜 ${ent.statblock.name}</span>`;
+            btnStat.innerHTML = `<span>📜 ${escapeHTML(ent.statblock.name)}</span>`;
             btnStat.style.background = '#00897b';
             btnStat.title = `Visualizza Scheda Mostro: ${ent.statblock.name}`;
         } else {
@@ -3012,7 +3123,7 @@ window.updateSelectedTokenControls = function(ent) {
     const btnPc = document.getElementById('btn-open-pcsheet');
     if (btnPc) {
         if (ent.pcSheet && ent.pcSheet.name) {
-            btnPc.innerHTML = `<span>🧙 ${ent.pcSheet.name}</span>`;
+            btnPc.innerHTML = `<span>🧙 ${escapeHTML(ent.pcSheet.name)}</span>`;
             btnPc.style.background = '#4a148c';
             btnPc.style.borderColor = '#ffd54f';
             btnPc.title = `Apri Scheda PG: ${ent.pcSheet.name} (Liv. ${ent.pcSheet.level || 1})`;
@@ -3521,7 +3632,7 @@ document.getElementById('btn-delete-token').addEventListener('click', () => {
 
     engine.selectedTokens.clear();
     engine.selectedTokenId = null;
-    document.getElementById('selected-token-controls').style.display = 'none';
+    updateTokenControlsVisibility(false);
     engine.renderAll();
     syncState();
     if (typeof tokenPanel !== 'undefined' && tokenPanel && tokenPanel.style.display !== 'none') {
@@ -3888,6 +3999,26 @@ document.getElementById('aoe-type').addEventListener('change', (e) => {
     document.getElementById('aoe-width').style.display = e.target.value === 'line' ? 'block' : 'none';
 });
 
+document.getElementById('aoe-unit').addEventListener('change', (e) => {
+    const input = document.getElementById('aoe-size');
+    const inputW = document.getElementById('aoe-width');
+    let oldVal = parseFloat(input.value); if (isNaN(oldVal)) oldVal = 0;
+    let oldW = parseFloat(inputW.value); if (isNaN(oldW)) oldW = 5;
+    if (e.target.value === 'ft') {
+        input.step = '5';
+        input.value = Math.round(oldVal / 1.5 * 5);
+        inputW.step = '1';
+        inputW.value = Math.round(oldW / 1.5 * 5);
+    } else {
+        input.step = '1.5';
+        let newVal = (oldVal / 5 * 1.5);
+        input.value = Number.isInteger(newVal) ? newVal : newVal.toFixed(1);
+        inputW.step = '0.5';
+        let newW = (oldW / 5 * 1.5);
+        inputW.value = Number.isInteger(newW) ? newW : newW.toFixed(1);
+    }
+});
+
 // AoE Logic
 document.getElementById('btn-add-aoe').addEventListener('click', () => {
     const type = document.getElementById('aoe-type').value;
@@ -3910,20 +4041,25 @@ document.getElementById('btn-add-aoe').addEventListener('click', () => {
     let casterId = null;
     let skipFirst = false;
 
-    if (engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0) {
-        const curP = engine.initiative.participants[engine.initiative.currentTurnIndex];
-        if (curP) {
-            casterId = curP.id;
-            casterName = curP.name;
-            casterTokenId = curP.tokenId || null;
-            skipFirst = true; // Lanciato durante il suo turno: non scalare alla chiusura di questo stesso turno!
-        }
-    } else if (engine.selectedTokenId) {
+    const curP = (engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0)
+        ? engine.initiative.participants[engine.initiative.currentTurnIndex]
+        : null;
+
+    if (engine.selectedTokenId) {
         const selTok = engine.tokens.find(t => t.id === engine.selectedTokenId);
         if (selTok) {
             casterTokenId = selTok.id;
             casterName = selTok.name;
+            casterId = 'tok_' + selTok.id;
+            if (curP && (String(curP.tokenId) === String(selTok.id) || (curP.name && selTok.name && curP.name.trim().toLowerCase() === selTok.name.trim().toLowerCase()))) {
+                skipFirst = true;
+            }
         }
+    } else if (curP) {
+        casterId = curP.id;
+        casterName = curP.name;
+        casterTokenId = curP.tokenId || null;
+        skipFirst = true; // Lanciato durante il suo turno: non scalare alla chiusura di questo stesso turno!
     }
 
     engine.shapes.push({
@@ -3957,11 +4093,44 @@ if (shapeEditDuration) {
             if (!isNaN(raw) && raw > 0) {
                 shape.durationRounds = raw;
                 shape.roundsLeft = raw;
-                delete shape.skipFirstDecrement;
+
+                const curP = (engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0)
+                    ? engine.initiative.participants[engine.initiative.currentTurnIndex]
+                    : null;
+
+                // Se la sagoma non ha ancora un incantatore valido, collegala al token selezionato o al partecipante di turno
+                if (!shape.casterTokenId && (!shape.casterName || shape.casterName === 'DM')) {
+                    if (engine.selectedTokenId) {
+                        const selTok = engine.tokens.find(t => t.id === engine.selectedTokenId);
+                        if (selTok) {
+                            shape.casterTokenId = selTok.id;
+                            shape.casterName = selTok.name;
+                            shape.casterId = 'tok_' + selTok.id;
+                        }
+                    } else if (curP) {
+                        shape.casterId = curP.id;
+                        shape.casterName = curP.name;
+                        shape.casterTokenId = curP.tokenId || null;
+                    }
+                }
+
+                // Se impostato durante il turno dell'incantatore in combattimento, salta il primo decremento
+                if (curP) {
+                    const curName = (curP.name || '').trim().toLowerCase();
+                    const sCaster = (shape.casterName || '').trim().toLowerCase();
+                    if ((shape.casterTokenId && String(curP.tokenId) === String(shape.casterTokenId)) ||
+                        (shape.casterId && String(curP.id) === String(shape.casterId)) ||
+                        (shape.casterInitiativeId && String(curP.id) === String(shape.casterInitiativeId)) ||
+                        curName === sCaster || curName.startsWith(sCaster + ' ') || curName.includes(sCaster)) {
+                        shape.skipFirstDecrement = true;
+                        shape.casterInitiativeId = curP.id;
+                    }
+                }
             } else {
                 shape.durationRounds = 0;
                 delete shape.roundsLeft;
                 delete shape.skipFirstDecrement;
+                delete shape.casterInitiativeId;
             }
             engine.renderTokensLayer();
             syncState();
@@ -4147,6 +4316,7 @@ function handleStart(e) {
         activeStroke = null;
         activeStrokeType = null;
         clickedTokenForInteraction = null;
+        clickedShapeForInteraction = null;
         pendingDeselect = false;
         if (engine && engine.lasso) engine.lasso = null;
 
@@ -4239,7 +4409,7 @@ function handleStart(e) {
         if (!e.shiftKey) {
             engine.selectedTokens.clear();
             engine.selectedTokenId = null;
-            document.getElementById('selected-token-controls').style.display = 'none';
+            updateTokenControlsVisibility(false);
         }
         engine.renderAll();
         if (pingTimeout) { clearTimeout(pingTimeout); pingTimeout = null; }
@@ -4260,8 +4430,13 @@ function handleStart(e) {
                 const dx = worldPos.x - s.x;
                 const dy = worldPos.y - s.y;
                 const hasTimer = s.durationRounds !== undefined && s.durationRounds !== null && Number(s.durationRounds) > 0;
-                const hitRadiusSq = hasTimer ? 550 : 350; // raggio di click sul badge o bottone
-                if (dx*dx + dy*dy <= hitRadiusSq) {
+                let isHit = false;
+                if (hasTimer) {
+                    isHit = (Math.abs(dx) <= 26 && Math.abs(dy) <= 16) || (dx*dx + dy*dy <= 650);
+                } else {
+                    isHit = (dx*dx + dy*dy <= 400);
+                }
+                if (isHit) {
                     clickedEntity = { type: 'shape', ref: s };
                     break;
                 }
@@ -4315,7 +4490,7 @@ function handleStart(e) {
             const ent = clickedEntity.ref;
             if (clickedEntity.type === 'note') {
                 engine.selectedTokenId = null;
-                document.getElementById('selected-token-controls').style.display = 'none';
+                updateTokenControlsVisibility(false);
                 selectedNote = ent;
                 document.getElementById('selected-note-controls').style.display = 'block';
                 document.getElementById('note-title').value = ent.title || "";
@@ -4372,7 +4547,7 @@ function handleStart(e) {
                     const prim = engine.tokens.find(t => t.id === engine.selectedTokenId) || ent;
                     if (window.updateSelectedTokenControls) window.updateSelectedTokenControls(prim);
                 } else {
-                    document.getElementById('selected-token-controls').style.display = 'none';
+                    updateTokenControlsVisibility(false);
                 }
 
                 // Avvia Ping su Creatura se tenuta premuta (senza shift)
@@ -4396,39 +4571,11 @@ function handleStart(e) {
                 }
             } else if (clickedEntity.type === 'shape') {
                 engine.selectedTokenId = null;
-                document.getElementById('selected-token-controls').style.display = 'none';
-                engine.selectedShapeId = ent.id;
-                if (aoePanel) aoePanel.style.display = 'flex';
-                document.getElementById('selected-shape-controls').style.display = 'flex';
-                document.getElementById('shape-edit-width').style.display = ent.type === 'line' ? 'block' : 'none';
-                document.getElementById('shape-edit-unit').value = 'ft';
-                document.getElementById('shape-edit-size').step = '5';
-                document.getElementById('shape-edit-width').step = '1';
-                document.getElementById('shape-edit-size').value = Math.round(ent.sizeFt * 10) / 10;
-                document.getElementById('shape-edit-width').value = ent.widthFt !== undefined ? Math.round(ent.widthFt * 10) / 10 : 5;
-                const highlightCb = document.getElementById('shape-edit-highlight-tokens');
-                if (highlightCb) highlightCb.checked = ent.highlightTokens !== false;
-                const durEdit = document.getElementById('shape-edit-duration');
-                if (durEdit) {
-                    durEdit.value = (ent.roundsLeft !== undefined) ? ent.roundsLeft : (ent.durationRounds || '');
-                }
+                if (engine.selectedTokens) engine.selectedTokens.clear();
+                updateTokenControlsVisibility(false);
                 activeStroke = ent;
                 activeStrokeType = 'shape';
-
-                // Avvia Ping su Forma AoE
-                pingTimeout = setTimeout(() => {
-                    pingTimeout = null;
-                    isPanning = false;
-                    pendingDeselect = false;
-                    isDragging = false;
-                    activeStroke = null;
-                    activeStrokeType = null;
-                    const pId = 'dm_ping_' + Date.now();
-                    window.lastReceivedPingId = pId;
-                    engine.pings.push({id: pId, x: ent.x, y: ent.y, start: Date.now(), color: '#ffcc00'});
-                    engine.renderUI();
-                    network.send({ type: 'PING', payload: { id: pId, x: ent.x, y: ent.y, color: '#ffcc00', t: Date.now() } });
-                }, 600);
+                clickedShapeForInteraction = ent;
             }
         } else {
             activeStroke = null;
@@ -4786,7 +4933,7 @@ function handleEnd(e) {
         pendingDeselect = false;
         engine.selectedTokens.clear();
         engine.selectedTokenId = null;
-        document.getElementById('selected-token-controls').style.display = 'none';
+        updateTokenControlsVisibility(false);
         engine.renderAll();
     }
 
@@ -4866,7 +5013,7 @@ function handleEnd(e) {
                 window.updateSelectedTokenControls(ent);
             }
         } else {
-            document.getElementById('selected-token-controls').style.display = 'none';
+            updateTokenControlsVisibility(false);
         }
         engine.renderAll();
         return;
@@ -4993,6 +5140,39 @@ function handleEnd(e) {
     } else {
         lastClickedTokenId = null;
         lastClickedTokenTime = 0;
+    }
+
+    if (clickedShapeForInteraction) {
+        const isTouch = e && ((e.touches && e.touches.length > 0) || (e.changedTouches && e.changedTouches.length > 0) || e.pointerType === 'touch');
+        const maxMove = isTouch ? 25 : 10;
+        const moveDist = Math.hypot(pos.x - startMouseX, pos.y - startMouseY);
+
+        if (moveDist < maxMove) {
+            // È stato un CLICK/TAP sul bottone AoE: apri il pannello di modifica!
+            const ent = clickedShapeForInteraction;
+            engine.selectedShapeId = ent.id;
+            if (aoePanel) aoePanel.style.display = 'flex';
+            document.getElementById('selected-shape-controls').style.display = 'flex';
+            document.getElementById('shape-edit-width').style.display = ent.type === 'line' ? 'block' : 'none';
+            document.getElementById('shape-edit-unit').value = 'ft';
+            document.getElementById('shape-edit-size').step = '5';
+            document.getElementById('shape-edit-width').step = '1';
+            document.getElementById('shape-edit-size').value = Math.round(ent.sizeFt * 10) / 10;
+            document.getElementById('shape-edit-width').value = ent.widthFt !== undefined ? Math.round(ent.widthFt * 10) / 10 : 5;
+            const highlightCb = document.getElementById('shape-edit-highlight-tokens');
+            if (highlightCb) highlightCb.checked = ent.highlightTokens !== false;
+            const durEdit = document.getElementById('shape-edit-duration');
+            if (durEdit) {
+                durEdit.value = (ent.roundsLeft !== undefined) ? ent.roundsLeft : (ent.durationRounds || '');
+            }
+            engine.renderTokensLayer();
+        } else {
+            // È stato un TRASCINAMENTO (spostamento): NON aprire il pannello di modifica!
+            engine.selectedShapeId = null;
+            document.getElementById('selected-shape-controls').style.display = 'none';
+            engine.renderTokensLayer();
+        }
+        clickedShapeForInteraction = null;
     }
 }
 

@@ -86,10 +86,18 @@ class NetworkManager {
         return new Promise((resolve, reject) => {
             const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
             const numbers = "0123456789";
+            const getRandomChar = (charset) => {
+                if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+                    const u = new Uint32Array(1);
+                    window.crypto.getRandomValues(u);
+                    return charset.charAt(u[0] % charset.length);
+                }
+                return charset.charAt(Math.floor(Math.random() * charset.length));
+            };
             let id = "";
-            for(let i=0; i<4; i++) id += letters.charAt(Math.floor(Math.random()*letters.length));
+            for(let i=0; i<4; i++) id += getRandomChar(letters);
             id += "-";
-            for(let i=0; i<4; i++) id += numbers.charAt(Math.floor(Math.random()*numbers.length));
+            for(let i=0; i<4; i++) id += getRandomChar(numbers);
             
             this.roomId = id;
             this.peer = new Peer(id);
@@ -110,17 +118,30 @@ class NetworkManager {
                         const pid = conn.peer;
                         const joinName = (data.payload && data.payload.name ? String(data.payload.name) : '').trim() || 'Giocatore';
                         const normJoin = joinName.toLowerCase();
+                        const incomingToken = data.payload ? data.payload.sessionToken : null;
 
-                        // Se esiste già una connessione con lo stesso nome (giocatore uscito e rientrato),
-                        // sostituiscila pulitamente senza duplicare il giocatore!
+                        // Se esiste già una connessione con lo stesso nome:
                         let isReconnect = false;
                         for (let oldPid in this.connections) {
                             if (oldPid !== pid && this.connections[oldPid]) {
                                 const existingName = (this.connections[oldPid].name || '').trim().toLowerCase();
                                 if (existingName === normJoin) {
+                                    const oldEntry = this.connections[oldPid];
+                                    const oldConn = oldEntry.conn;
+
+                                    // Se la vecchia connessione è ancora attiva e ha un token diverso: respingi tentativo di hijacking
+                                    if (oldConn && oldConn.open && oldEntry.sessionToken && incomingToken && oldEntry.sessionToken !== incomingToken) {
+                                        console.warn(`Tentativo di connessione con nome duplicato rifiutato per ${joinName}`);
+                                        conn.send({
+                                            type: 'JOIN_REJECTED',
+                                            reason: `Il nome "${joinName}" è già utilizzato da un altro giocatore attualmente connesso.`
+                                        });
+                                        setTimeout(() => { try { conn.close(); } catch (e) {} }, 400);
+                                        return;
+                                    }
+
                                     isReconnect = true;
-                                    const oldConn = this.connections[oldPid].conn;
-                                    this.connections[oldPid].chunkQueue = [];
+                                    oldEntry.chunkQueue = [];
                                     delete this.connections[oldPid];
                                     try { if (oldConn && oldConn !== conn) oldConn.close(); } catch (e) {}
                                 }
@@ -130,12 +151,16 @@ class NetworkManager {
                         this.connections[pid] = {
                             conn: conn,
                             name: joinName,
+                            sessionToken: incomingToken,
                             chunkQueue: [],
                             pumping: false
                         };
                         console.log(`Giocatore ${joinName} unito.`);
                         conn.send({ type: 'JOIN_ACCEPTED', payload: { name: joinName } });
                         if (this.onConnectCallback) this.onConnectCallback(joinName, pid, isReconnect);
+                    } else if (!this.connections[conn.peer]) {
+                        // Ignora pacchetti non autenticati prima del join
+                        return;
                     }
                     this._handleRawData(data, conn.peer);
                 });
@@ -165,6 +190,19 @@ class NetworkManager {
             this.playerId = 'player_' + Date.now();
             this.mode = 'client';
 
+            let sessionKey = 'vtt_sess_' + this.roomId + '_' + encodeURIComponent(playerName.trim().toLowerCase());
+            let sessionToken = null;
+            try {
+                sessionToken = sessionStorage.getItem(sessionKey);
+                if (!sessionToken) {
+                    sessionToken = 'tok_' + Math.random().toString(36).substring(2) + '_' + Date.now();
+                    sessionStorage.setItem(sessionKey, sessionToken);
+                }
+            } catch (e) {
+                sessionToken = 'tok_' + Math.random().toString(36).substring(2) + '_' + Date.now();
+            }
+            this.sessionToken = sessionToken;
+
             // Chiudi subito il BroadcastChannel locale per evitare doppi messaggi e desincronizzazioni
             // quando si aprono più tab sullo stesso PC!
             if (this.bc) {
@@ -183,7 +221,7 @@ class NetworkManager {
                     this.mode = 'client';
                     this.hostConn.send({
                         type: 'PLAYER_JOIN',
-                        payload: { name: this.playerName, id: this.playerId }
+                        payload: { name: this.playerName, id: this.playerId, sessionToken: this.sessionToken }
                     });
                 });
                 
@@ -192,6 +230,10 @@ class NetworkManager {
                         console.log("Connessione accettata dal DM.");
                         resolve();
                         if(this.onConnectCallback) this.onConnectCallback();
+                    } else if (data && data.type === 'JOIN_REJECTED') {
+                        console.warn("Connessione rifiutata dal DM:", data.reason);
+                        reject(new Error(data.reason || "Accesso rifiutato dal DM."));
+                        return;
                     }
                     this._handleRawData(data, 'dm');
                 });

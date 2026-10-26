@@ -153,9 +153,9 @@ class VTTEngine {
             this.ctx.tokens.clearRect(0, 0, w, h);
             this.renderShapes();
             this.renderTokens();
-            this.renderShapeHandles();
             this.updateTokensInShapes();
         }
+        this.renderTokenEffects();
         this.renderUI();
     }
 
@@ -197,8 +197,8 @@ class VTTEngine {
         this.renderDrawings();
         this.renderShapes(); // Draw AoE before tokens
         this.renderTokens();
-        this.renderShapeHandles(); // Draw handles/badges in foreground over tokens
         this.updateTokensInShapes();
+        this.renderTokenEffects();
         this.renderUI();
     }
 
@@ -288,12 +288,15 @@ class VTTEngine {
         });
     }
 
-    renderShapeHandles() {
-        const ctx = this.ctx.tokens;
+    renderShapeHandles(targetCtx) {
+        const ctx = targetCtx || this.ctx.tokenEffects || this.ctx.tokens;
         if (!this.shapes || this.shapes.length === 0) return;
 
         this.shapes.forEach(shape => {
             if (!this.isDM && !shape.visible) return;
+
+            // Se la sagoma è in nebbia di guerra per i player, sparisce completamente!
+            if (!this.isDM && this.isPointInFog(shape.x, shape.y)) return;
 
             const isMyShape = shape.owner && shape.owner === this.localPlayerName;
             const canControl = this.isDM || isMyShape;
@@ -309,24 +312,25 @@ class VTTEngine {
             ctx.translate(shape.x, shape.y);
 
             if (hasTimer) {
-                // Pillola compatta tipo badge condizioni: ⏳ 3
+                // Badge con clessidra e contatore turni: ⏳ 3
+                // Dimensioni ottimizzate e font 14px in grassetto per massima visibilità
                 const text = `⏳ ${roundsLeft}`;
-                ctx.font = 'bold 11px sans-serif';
+                ctx.font = 'bold 14px system-ui, -apple-system, sans-serif';
                 const textMetrics = ctx.measureText(text);
-                const padX = 6;
-                const pillH = 18;
-                const pillW = Math.max(30, Math.round(textMetrics.width + padX * 2));
+                const padX = 8;
+                const pillH = 24;
+                const pillW = Math.max(38, Math.round(textMetrics.width + padX * 2));
                 const rx = -pillW / 2;
                 const ry = -pillH / 2;
                 const pillRadius = Math.round(pillH / 2);
 
-                // 1. Ombra esterna per stacco netto sopra qualsiasi token
+                // 1. Ombra esterna netta sopra qualsiasi token/sfondo
                 ctx.save();
                 ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-                ctx.shadowBlur = 5;
-                ctx.shadowOffsetY = 1;
+                ctx.shadowBlur = 6;
+                ctx.shadowOffsetY = 1.5;
 
-                // 2. Sfondo scuro compatto
+                // 2. Sfondo solido scuro per leggibilità perfetta
                 ctx.beginPath();
                 if (ctx.roundRect) {
                     ctx.roundRect(rx, ry, pillW, pillH, pillRadius);
@@ -337,7 +341,7 @@ class VTTEngine {
                 ctx.fill();
                 ctx.restore();
 
-                // 3. Bordo vivo con colore sagoma (o ciano evidenziato se selezionata)
+                // 3. Bordo marcato con colore sagoma (o ciano evidenziato se selezionata)
                 ctx.beginPath();
                 if (ctx.roundRect) {
                     ctx.roundRect(rx, ry, pillW, pillH, pillRadius);
@@ -345,40 +349,42 @@ class VTTEngine {
                     ctx.rect(rx, ry, pillW, pillH);
                 }
                 ctx.strokeStyle = isSelected ? '#00ffff' : (shape.color || '#ff5722');
-                ctx.lineWidth = isSelected ? 2 : 1.5;
+                ctx.lineWidth = isSelected ? 2.5 : 2;
                 ctx.stroke();
 
-                // 4. Testo centrato nitido
+                // 4. Testo centrato nitido e ben leggibile
                 ctx.fillStyle = '#ffffff';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(text, 0, 1);
 
-                // 5. Se controllabile, piccolo indicatore di rotazione
+                // 5. Se controllabile, indicatore di rotazione
                 if (canControl) {
                     ctx.rotate(shape.angle * Math.PI / 180);
                     ctx.fillStyle = isSelected ? '#00ffff' : '#ffffff';
-                    ctx.fillRect(pillW / 2 + 1, -1.5, 6, 3);
+                    ctx.fillRect(pillW / 2 + 1, -2, 7, 4);
                 }
             } else if (canControl) {
                 // Sagoma PERMANENTE: classico bottone circolare con tacca di rotazione
-                // Disegnato in primo piano sopra i token!
+                // Disegnato su layer 5 sopra i token (raggio 13px, diametro 26px)
+                const r = 13;
                 ctx.save();
-                ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-                ctx.shadowBlur = 4;
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+                ctx.shadowBlur = 5;
+                ctx.shadowOffsetY = 1;
                 ctx.beginPath();
-                ctx.arc(0, 0, 10, 0, Math.PI * 2);
+                ctx.arc(0, 0, r, 0, Math.PI * 2);
                 ctx.fillStyle = isSelected ? '#00ffff' : '#ffffff';
                 ctx.fill();
                 ctx.restore();
 
-                ctx.strokeStyle = '#000000';
-                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = isSelected ? '#007799' : '#000000';
+                ctx.lineWidth = 2;
                 ctx.stroke();
 
                 ctx.rotate(shape.angle * Math.PI / 180);
                 ctx.fillStyle = '#000000';
-                ctx.fillRect(0, -2, 14, 4);
+                ctx.fillRect(0, -2.5, 17, 5);
             }
 
             ctx.restore();
@@ -675,20 +681,48 @@ class VTTEngine {
                         }
                     }
                 }
+            } else {
+                // Fallback elegante se il token non ha un file immagine (es. generato via codice o pedina rapida)
+                const cx = token.x + token.width / 2;
+                const cy = token.y + token.height / 2;
+                const r = Math.max(8, Math.min(token.width, token.height) / 2 - 3);
+
+                ctx.save();
+                if (this.isDM && !token.visible) ctx.globalAlpha = 0.5;
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                ctx.fillStyle = token.color || '#37474f';
+                ctx.fill();
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = '#ffffff';
+                ctx.shadowColor = 'rgba(0,0,0,0.6)';
+                ctx.shadowBlur = 6;
+                ctx.stroke();
+
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#ffffff';
+                ctx.font = `bold ${Math.round(r * 0.9)}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const initial = (token.name || '?').trim().charAt(0).toUpperCase();
+                ctx.fillText(initial, cx, cy);
+                ctx.restore();
             }
-// Teschio Morte (HP <= 0)
-                if (token.hpCurrent !== undefined && token.hpCurrent !== null && token.hpCurrent !== "" && parseFloat(token.hpCurrent) <= 0) {
-                    ctx.font = `bold ${token.width * 0.7}px Arial`;
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillStyle = '#ff3333';
-                    ctx.strokeStyle = 'black';
-                    ctx.lineWidth = Math.max(2, token.width * 0.05);
-                    const skullX = token.x + token.width / 2;
-                    const skullY = token.y + token.height / 2;
-                    ctx.strokeText('💀', skullX, skullY);
-                    ctx.fillText('💀', skullX, skullY);
-                }
+
+            // Teschio Morte (HP <= 0)
+            if (token.hpCurrent !== undefined && token.hpCurrent !== null && token.hpCurrent !== "" && parseFloat(token.hpCurrent) <= 0) {
+                ctx.font = `bold ${token.width * 0.7}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#ff3333';
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = Math.max(2, token.width * 0.05);
+                const skullX = token.x + token.width / 2;
+                const skullY = token.y + token.height / 2;
+                ctx.strokeText('💀', skullX, skullY);
+                ctx.fillText('💀', skullX, skullY);
+            }
         });
 
         // Draw Overlays: Nome, Barra PV, e Condizioni in PRIMO PIANO
@@ -728,140 +762,144 @@ class VTTEngine {
         }
 
         const hasAoEHighlights = this._tokensWithAoE && this._tokensWithAoE.size > 0;
-        if (!turnToken && !hasAoEHighlights) return;
+        if (turnToken || hasAoEHighlights) {
+            const now = Date.now();
+            const pulse = (Math.sin(now / 200) + 1) / 2; // 0 to 1
 
-        const now = Date.now();
-        const pulse = (Math.sin(now / 200) + 1) / 2; // 0 to 1
-
-        // Raccogli tutti i token che necessitano di anelli
-        const tokensWithRings = new Set();
-        if (turnToken) tokensWithRings.add(turnToken);
-        if (hasAoEHighlights) {
-            const tokenMap = new Map();
-            for (let i = 0; i < this.tokens.length; i++) {
-                tokenMap.set(this.tokens[i].id, this.tokens[i]);
-            }
-            this._tokensWithAoE.forEach((colors, tokenId) => {
-                const tok = tokenMap.get(tokenId);
-                if (tok && (this.isDM || tok.visible)) {
-                    tokensWithRings.add(tok);
+            // Raccogli tutti i token che necessitano di anelli
+            const tokensWithRings = new Set();
+            if (turnToken) tokensWithRings.add(turnToken);
+            if (hasAoEHighlights) {
+                const tokenMap = new Map();
+                for (let i = 0; i < this.tokens.length; i++) {
+                    tokenMap.set(this.tokens[i].id, this.tokens[i]);
                 }
+                this._tokensWithAoE.forEach((colors, tokenId) => {
+                    const tok = tokenMap.get(tokenId);
+                    if (tok && (this.isDM || tok.visible)) {
+                        tokensWithRings.add(tok);
+                    }
+                });
+            }
+
+            const useFastNeon = tokensWithRings.size > 8;
+
+            tokensWithRings.forEach(token => {
+                const cx = token.x + token.width / 2;
+                const cy = token.y + token.height / 2;
+                const R = token.width / 2;
+                const isCurrentTurn = (turnToken && turnToken.id === token.id);
+                const aoeColors = (this._tokensWithAoE && this._tokensWithAoE.get(token.id)) || null;
+
+                // 1. AURA ESTERNA: AoE (se presente) - Subito dopo il token, raggio R + 4
+                if (aoeColors && aoeColors.length > 0) {
+                    let aoeColor = aoeColors[0];
+                    if (aoeColors.length > 1) {
+                        const cycleIndex = Math.floor((now / 200 - Math.PI * 1.5) / (2 * Math.PI));
+                        const safeIndex = ((cycleIndex % aoeColors.length) + aoeColors.length) % aoeColors.length;
+                        aoeColor = aoeColors[safeIndex];
+                    }
+                    const r_aoe = R + 4;
+                    ctx.save();
+
+                    // Livello 1: Sottile contorno scuro per contrasto su qualsiasi sfondo/mappa
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+                    ctx.lineWidth = 6;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    if (useFastNeon) {
+                        ctx.strokeStyle = this.hexToRgba(aoeColor, 0.35 * (0.75 + pulse * 0.25));
+                        ctx.lineWidth = 9;
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
+                        ctx.stroke();
+
+                        ctx.strokeStyle = this.hexToRgba(aoeColor, 0.85);
+                        ctx.lineWidth = 4.5;
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
+                        ctx.stroke();
+                    } else {
+                        const aoeAlpha = 0.75 + pulse * 0.25;
+                        ctx.strokeStyle = this.hexToRgba(aoeColor, aoeAlpha);
+                        ctx.lineWidth = 4.5;
+                        ctx.shadowColor = aoeColor;
+                        ctx.shadowBlur = 10 + pulse * 6;
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+
+                    if (!useFastNeon) {
+                        ctx.shadowColor = '#ffffff';
+                        ctx.shadowBlur = 4;
+                    }
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${0.75 + pulse * 0.25})`;
+                    ctx.lineWidth = 1.6;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.restore();
+                }
+
+                // 2. AURA INTERNA: Turno Iniziativa (se è il suo turno) - Leggermente interno al bordo, raggio R - 3
+                if (isCurrentTurn) {
+                    const r_turn = Math.max(1, R - 3);
+                    ctx.save();
+
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+                    ctx.lineWidth = 5;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    if (useFastNeon) {
+                        ctx.strokeStyle = `rgba(0, 255, 0, ${0.35 * (0.75 + pulse * 0.25)})`;
+                        ctx.lineWidth = 7.5;
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
+                        ctx.stroke();
+
+                        ctx.strokeStyle = `rgba(0, 255, 0, 0.85)`;
+                        ctx.lineWidth = 3.5;
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
+                        ctx.stroke();
+                    } else {
+                        const turnAlpha = 0.75 + pulse * 0.25;
+                        ctx.strokeStyle = `rgba(0, 255, 0, ${turnAlpha})`;
+                        ctx.lineWidth = 3.5;
+                        ctx.shadowColor = '#00ff00';
+                        ctx.shadowBlur = 8 + pulse * 4;
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+
+                    if (!useFastNeon) {
+                        ctx.shadowColor = '#ffffff';
+                        ctx.shadowBlur = 3;
+                    }
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${0.7 + pulse * 0.3})`;
+                    ctx.lineWidth = 1.3;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.restore();
+                }
+
+                // 3. OVERLAYS IN PRIMO PIANO: Nome, Barra PV, Condizioni
+                this.drawTokenOverlays(ctx, token);
             });
         }
 
-        const useFastNeon = tokensWithRings.size > 8;
-
-        tokensWithRings.forEach(token => {
-            const cx = token.x + token.width / 2;
-            const cy = token.y + token.height / 2;
-            const R = token.width / 2;
-            const isCurrentTurn = (turnToken && turnToken.id === token.id);
-            const aoeColors = (this._tokensWithAoE && this._tokensWithAoE.get(token.id)) || null;
-
-            // 1. AURA ESTERNA: AoE (se presente) - Subito dopo il token, raggio R + 4
-            if (aoeColors && aoeColors.length > 0) {
-                let aoeColor = aoeColors[0];
-                if (aoeColors.length > 1) {
-                    const cycleIndex = Math.floor((now / 200 - Math.PI * 1.5) / (2 * Math.PI));
-                    const safeIndex = ((cycleIndex % aoeColors.length) + aoeColors.length) % aoeColors.length;
-                    aoeColor = aoeColors[safeIndex];
-                }
-                const r_aoe = R + 4;
-                ctx.save();
-
-                // Livello 1: Sottile contorno scuro per contrasto su qualsiasi sfondo/mappa
-                ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
-                ctx.lineWidth = 6;
-                ctx.beginPath();
-                ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
-                ctx.stroke();
-
-                if (useFastNeon) {
-                    ctx.strokeStyle = this.hexToRgba(aoeColor, 0.35 * (0.75 + pulse * 0.25));
-                    ctx.lineWidth = 9;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
-                    ctx.stroke();
-
-                    ctx.strokeStyle = this.hexToRgba(aoeColor, 0.85);
-                    ctx.lineWidth = 4.5;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
-                    ctx.stroke();
-                } else {
-                    const aoeAlpha = 0.75 + pulse * 0.25;
-                    ctx.strokeStyle = this.hexToRgba(aoeColor, aoeAlpha);
-                    ctx.lineWidth = 4.5;
-                    ctx.shadowColor = aoeColor;
-                    ctx.shadowBlur = 10 + pulse * 6;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
-                    ctx.stroke();
-                }
-
-                if (!useFastNeon) {
-                    ctx.shadowColor = '#ffffff';
-                    ctx.shadowBlur = 4;
-                }
-                ctx.strokeStyle = `rgba(255, 255, 255, ${0.75 + pulse * 0.25})`;
-                ctx.lineWidth = 1.6;
-                ctx.beginPath();
-                ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
-                ctx.stroke();
-
-                ctx.restore();
-            }
-
-            // 2. AURA INTERNA: Turno Iniziativa (se è il suo turno) - Leggermente interno al bordo, raggio R - 3
-            if (isCurrentTurn) {
-                const r_turn = Math.max(1, R - 3);
-                ctx.save();
-
-                ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
-                ctx.lineWidth = 5;
-                ctx.beginPath();
-                ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
-                ctx.stroke();
-
-                if (useFastNeon) {
-                    ctx.strokeStyle = `rgba(0, 255, 0, ${0.35 * (0.75 + pulse * 0.25)})`;
-                    ctx.lineWidth = 7.5;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
-                    ctx.stroke();
-
-                    ctx.strokeStyle = `rgba(0, 255, 0, 0.85)`;
-                    ctx.lineWidth = 3.5;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
-                    ctx.stroke();
-                } else {
-                    const turnAlpha = 0.75 + pulse * 0.25;
-                    ctx.strokeStyle = `rgba(0, 255, 0, ${turnAlpha})`;
-                    ctx.lineWidth = 3.5;
-                    ctx.shadowColor = '#00ff00';
-                    ctx.shadowBlur = 8 + pulse * 4;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
-                    ctx.stroke();
-                }
-
-                if (!useFastNeon) {
-                    ctx.shadowColor = '#ffffff';
-                    ctx.shadowBlur = 3;
-                }
-                ctx.strokeStyle = `rgba(255, 255, 255, ${0.7 + pulse * 0.3})`;
-                ctx.lineWidth = 1.3;
-                ctx.beginPath();
-                ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
-                ctx.stroke();
-
-                ctx.restore();
-            }
-
-            // 3. OVERLAYS IN PRIMO PIANO: Nome, Barra PV, Condizioni
-            this.drawTokenOverlays(ctx, token);
-        });
+        // 4. BADGE E MANIGLIE AoE: Disegnati su layer tokenEffects (livello 5)
+        // Più in alto dei token (livello 4), MA sotto la nebbia (livello 6)!
+        this.renderShapeHandles(ctx);
     }
 
     drawTokenOverlays(ctx, token) {
