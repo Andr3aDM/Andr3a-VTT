@@ -208,9 +208,72 @@ document.getElementById('btn-login-online').addEventListener('click', () => {
     }
 });
 
+let playerToastTimeout = null;
+function showPlayerToast(msg) {
+    if (typeof window.t === 'function') msg = window.t(msg);
+    let t = document.getElementById('player-toast-msg');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = 'player-toast-msg';
+        t.style.position = 'fixed';
+        t.style.top = '20px';
+        t.style.left = '50%';
+        t.style.transform = 'translateX(-50%)';
+        t.style.boxShadow = '0 4px 12px rgba(0,0,0,0.6)';
+        t.style.color = 'white';
+        t.style.padding = '10px 20px';
+        t.style.borderRadius = '6px';
+        t.style.zIndex = '10000';
+        t.style.fontWeight = 'bold';
+        t.style.fontSize = '13px';
+        t.style.transition = 'opacity 0.25s';
+        t.style.pointerEvents = 'none';
+        document.body.appendChild(t);
+    }
+    if (msg.includes('🔴')) {
+        t.style.background = 'rgba(198, 40, 40, 0.95)';
+        t.style.border = '1px solid #ef5350';
+    } else if (msg.includes('🔄')) {
+        t.style.background = 'rgba(21, 101, 192, 0.95)';
+        t.style.border = '1px solid #64b5f6';
+    } else {
+        t.style.background = 'rgba(46, 125, 50, 0.95)';
+        t.style.border = '1px solid #81c784';
+    }
+    t.innerText = msg;
+    t.style.opacity = '1';
+    if (playerToastTimeout) clearTimeout(playerToastTimeout);
+    playerToastTimeout = setTimeout(() => {
+        t.style.opacity = '0';
+        playerToastTimeout = null;
+    }, 3200);
+}
+window.showToast = showPlayerToast;
+
+if (typeof network.onDisconnect === 'function') {
+    network.onDisconnect(() => {
+        showPlayerToast(typeof window.t === 'function' ? window.t('🔴 Connessione con il Master interrotta.') : '🔴 Connessione con il Master interrotta.');
+    });
+}
+
 network.onMessage((data, peerId) => {
 
-    if (data.type === 'DICE_ROLL') {
+    if (data.type === 'PLAYER_DISCONNECTED_NOTICE') {
+        const left = data.payload?.name;
+        if (left) {
+            const pfx = typeof window.t === 'function' ? window.t('🔴 Giocatore disconnesso:') : '🔴 Giocatore disconnesso:';
+            showPlayerToast(pfx + ' ' + left);
+        }
+    } else if (data.type === 'PLAYER_CONNECTED_NOTICE') {
+        const joined = data.payload?.name;
+        const isRec = data.payload?.isReconnect;
+        if (joined && joined !== network.playerName) {
+            const pfx = isRec
+                ? (typeof window.t === 'function' ? window.t('🔄 Giocatore riconnesso:') : '🔄 Giocatore riconnesso:')
+                : (typeof window.t === 'function' ? window.t('🟢 Giocatore connesso:') : '🟢 Giocatore connesso:');
+            showPlayerToast(pfx + ' ' + joined);
+        }
+    } else if (data.type === 'DICE_ROLL') {
         const payload = data.payload || {};
         const isFromMe = (payload.sender && payload.sender === network.playerName) ||
                          (payload.senderPeerId && payload.senderPeerId === network.myPeerId) ||

@@ -8,6 +8,8 @@ class NetworkManager {
         this.roomId = null;
         this.playerName = null;
         this.playerId = null;
+        this._heartbeatTimer = null;
+        this._leaveListenersAttached = false;
         
         this.onMessageCallback = null;
         this.onConnectCallback = null;
@@ -102,9 +104,44 @@ class NetworkManager {
             this.roomId = id;
             this.peer = new Peer(id);
             
+            const handleConnClose = (targetPid) => {
+                const pidToClose = targetPid || null;
+                if (!pidToClose) return;
+                const entry = this.connections[pidToClose];
+                if (entry) {
+                    const leftName = entry.name;
+                    console.log(`Giocatore ${leftName} disconnesso (peer: ${pidToClose}).`);
+                    entry.chunkQueue = [];
+                    delete this.connections[pidToClose];
+                    try { if (entry.conn && entry.conn.open) entry.conn.close(); } catch (e) {}
+                    if (this.onDisconnectCallback) this.onDisconnectCallback(leftName, pidToClose);
+                }
+            };
+
             this.peer.on('open', (id) => {
                 this.mode = 'host';
                 console.log('Stanza online creata con ID:', id);
+
+                // Watchdog Heartbeat attivo ogni 3s per rilevare disconnessioni
+                if (this._heartbeatTimer) clearInterval(this._heartbeatTimer);
+                this._heartbeatTimer = setInterval(() => {
+                    const now = Date.now();
+                    for (let pid in this.connections) {
+                        const entry = this.connections[pid];
+                        if (!entry) continue;
+                        if (!entry.conn || !entry.conn.open || (entry.lastSeen && (now - entry.lastSeen > 8000))) {
+                            console.warn(`Watchdog: timeout connessione rilevato per ${entry.name} (${pid})`);
+                            handleConnClose(pid);
+                            continue;
+                        }
+                        try {
+                            if (entry.conn.open) {
+                                entry.conn.send({ type: '__PING__' });
+                            }
+                        } catch (e) {}
+                    }
+                }, 3000);
+
                 resolve(id);
             });
             
@@ -112,10 +149,50 @@ class NetworkManager {
             
             this.peer.on('connection', (conn) => {
                 console.log("Nuovo giocatore in connessione...");
-                conn.on('open', () => {});
+                const pid = conn.peer;
+
+                // Monitoraggio WebRTC a livello di RTCPeerConnection (rileva caduta tab/rete rapida)
+                const attachPc = () => {
+                    const pc = conn.peerConnection;
+                    if (!pc || pc._vttMonitored) return;
+                    pc._vttMonitored = true;
+                    const checkPcState = () => {
+                        const cs = pc.connectionState;
+                        const ics = pc.iceConnectionState;
+                        if (cs === 'closed' || cs === 'failed' || cs === 'disconnected' ||
+                            ics === 'closed' || ics === 'failed' || ics === 'disconnected') {
+                            handleConnClose(conn.peer);
+                        }
+                    };
+                    try {
+                        pc.addEventListener('connectionstatechange', checkPcState);
+                        pc.addEventListener('iceconnectionstatechange', checkPcState);
+                    } catch(e) {}
+                };
+                if (conn.peerConnection) attachPc();
+                else conn.on('open', attachPc);
+
                 conn.on('data', (data) => {
+                    if (data && data.type === '__PING__') {
+                        try { conn.send({ type: '__PONG__' }); } catch (e) {}
+                        return;
+                    }
+                    if (data && data.type === '__PONG__') {
+                        if (this.connections[conn.peer]) {
+                            this.connections[conn.peer].lastSeen = Date.now();
+                        }
+                        return;
+                    }
+                    if (data && data.type === 'PLAYER_LEAVE') {
+                        handleConnClose(conn.peer);
+                        return;
+                    }
+
+                    if (this.connections[conn.peer]) {
+                        this.connections[conn.peer].lastSeen = Date.now();
+                    }
+
                     if (data && data.type === 'PLAYER_JOIN') {
-                        const pid = conn.peer;
                         const joinName = (data.payload && data.payload.name ? String(data.payload.name) : '').trim() || 'Giocatore';
                         const normJoin = joinName.toLowerCase();
                         const incomingToken = data.payload ? data.payload.sessionToken : null;
@@ -129,8 +206,16 @@ class NetworkManager {
                                     const oldEntry = this.connections[oldPid];
                                     const oldConn = oldEntry.conn;
 
-                                    // Se la vecchia connessione è ancora attiva e ha un token diverso: respingi tentativo di hijacking
-                                    if (oldConn && oldConn.open && oldEntry.sessionToken && incomingToken && oldEntry.sessionToken !== incomingToken) {
+                                    const pc = oldConn ? oldConn.peerConnection : null;
+                                    const isPcDead = !oldConn || !oldConn.open || (pc && (
+                                        pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed' ||
+                                        pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed'
+                                    ));
+                                    const isTimeDead = oldEntry.lastSeen && (Date.now() - oldEntry.lastSeen > 6000);
+                                    const isSameSession = oldEntry.sessionToken && incomingToken && (oldEntry.sessionToken === incomingToken);
+
+                                    // Rifiuta SOLO se la vecchia connessione è pienamente attiva negli ultimi 5s E il token è chiaramente diverso (un altro dispositivo che tenta di entrare con lo stesso nome mentre il primo sta giocando)
+                                    if (!isPcDead && !isTimeDead && !isSameSession) {
                                         console.warn(`Tentativo di connessione con nome duplicato rifiutato per ${joinName}`);
                                         conn.send({
                                             type: 'JOIN_REJECTED',
@@ -141,6 +226,7 @@ class NetworkManager {
                                     }
 
                                     isReconnect = true;
+                                    console.log(`Riconnessione giocatore: ${joinName} (sostituzione vecchio peer ${oldPid} con ${pid})`);
                                     oldEntry.chunkQueue = [];
                                     delete this.connections[oldPid];
                                     try { if (oldConn && oldConn !== conn) oldConn.close(); } catch (e) {}
@@ -152,6 +238,7 @@ class NetworkManager {
                             conn: conn,
                             name: joinName,
                             sessionToken: incomingToken,
+                            lastSeen: Date.now(),
                             chunkQueue: [],
                             pumping: false
                         };
@@ -164,20 +251,9 @@ class NetworkManager {
                     }
                     this._handleRawData(data, conn.peer);
                 });
-                const handleConnClose = () => {
-                    for (let k in this.connections) {
-                        if (this.connections[k].conn === conn) {
-                            const leftName = this.connections[k].name;
-                            console.log(`Giocatore ${leftName} disconnesso.`);
-                            this.connections[k].chunkQueue = [];
-                            delete this.connections[k];
-                            if (this.onDisconnectCallback) this.onDisconnectCallback(leftName, k);
-                            break;
-                        }
-                    }
-                };
-                conn.on('close', handleConnClose);
-                conn.on('error', handleConnClose);
+
+                conn.on('close', () => handleConnClose(conn.peer));
+                conn.on('error', () => handleConnClose(conn.peer));
             });
         });
     }
@@ -193,15 +269,33 @@ class NetworkManager {
             let sessionKey = 'vtt_sess_' + this.roomId + '_' + encodeURIComponent(playerName.trim().toLowerCase());
             let sessionToken = null;
             try {
-                sessionToken = sessionStorage.getItem(sessionKey);
+                sessionToken = localStorage.getItem(sessionKey);
                 if (!sessionToken) {
                     sessionToken = 'tok_' + Math.random().toString(36).substring(2) + '_' + Date.now();
-                    sessionStorage.setItem(sessionKey, sessionToken);
+                    localStorage.setItem(sessionKey, sessionToken);
                 }
             } catch (e) {
                 sessionToken = 'tok_' + Math.random().toString(36).substring(2) + '_' + Date.now();
             }
             this.sessionToken = sessionToken;
+
+            // Aggancia listener prima della chiusura finestra per notificare il DM in uscita
+            if (typeof window !== 'undefined' && !this._leaveListenersAttached) {
+                this._leaveListenersAttached = true;
+                const handleWindowLeave = () => {
+                    if (this.mode === 'client' && this.hostConn && this.hostConn.open) {
+                        try {
+                            this.hostConn.send({
+                                type: 'PLAYER_LEAVE',
+                                payload: { name: this.playerName, id: this.playerId, sessionToken: this.sessionToken }
+                            });
+                        } catch (e) {}
+                        try { this.hostConn.close(); } catch (e) {}
+                    }
+                };
+                window.addEventListener('beforeunload', handleWindowLeave);
+                window.addEventListener('pagehide', handleWindowLeave);
+            }
 
             // Chiudi subito il BroadcastChannel locale per evitare doppi messaggi e desincronizzazioni
             // quando si aprono più tab sullo stesso PC!
@@ -226,6 +320,13 @@ class NetworkManager {
                 });
                 
                 this.hostConn.on('data', (data) => {
+                    if (data && data.type === '__PING__') {
+                        try { this.hostConn.send({ type: '__PONG__' }); } catch (e) {}
+                        return;
+                    }
+                    if (data && data.type === '__PONG__') {
+                        return;
+                    }
                     if (data && data.type === 'JOIN_ACCEPTED') {
                         console.log("Connessione accettata dal DM.");
                         resolve();

@@ -72,10 +72,10 @@
         }[c] || c));
     }
 
-    function stripHtml(html, maxLen = 300) {
+    function stripHtml(html, maxLen = 0) {
         if (!html) return '';
         let txt = String(html)
-            .replace(/<\/p>/gi, '\n')
+            .replace(/<\/p>/gi, '\n\n')
             .replace(/<br\s*\/?>/gi, '\n')
             .replace(/<\/li>/gi, '\n')
             .replace(/<li>/gi, '• ')
@@ -221,6 +221,19 @@
             });
         }
 
+        // Helper per estrarre Nomi Personalizzati (typeId: 8) e Note/Descrizioni Personalizzate (typeId: 9)
+        const cvList = Array.isArray(d.characterValues) ? d.characterValues : [];
+        const getCustomName = (id, defId = null) => {
+            if (!id && !defId) return null;
+            const cv = cvList.find(x => x.typeId === 8 && (String(x.valueId) === String(id) || (defId && String(x.valueId) === String(defId))));
+            return (cv && typeof cv.value === 'string' && cv.value.trim()) ? cv.value.trim() : null;
+        };
+        const getCustomNotes = (id, defId = null) => {
+            if (!id && !defId) return null;
+            const cv = cvList.find(x => x.typeId === 9 && (String(x.valueId) === String(id) || (defId && String(x.valueId) === String(defId))));
+            return (cv && typeof cv.value === 'string' && cv.value.trim()) ? cv.value.trim() : null;
+        };
+
         // 2. Calcolo Caratteristiche (STR, DEX, CON, INT, WIS, CHA)
         const abilities = {};
         ABILITY_META.forEach(meta => {
@@ -253,7 +266,15 @@
             }
 
             const mod = Math.floor((score - 10) / 2);
-            abilities[meta.key] = { score, mod };
+            const baseVal = (baseEntry && baseEntry.value !== null ? parseInt(baseEntry.value) : 10);
+            const bonusVal = (bonusEntry && bonusEntry.value !== null ? parseInt(bonusEntry.value) : 0);
+            const fullLbl = isEng() ? meta.fullEn : meta.fullIt;
+            let abParts = [`Base: ${baseVal}`];
+            if (bonusVal) abParts.push(`Bonus: +${bonusVal}`);
+            if (setFloor !== null && setFloor > (baseVal + bonusVal)) abParts.push(`Minimo: ${setFloor}`);
+            if (overrideEntry && overrideEntry.value !== null) abParts.push(`Override: ${overrideEntry.value}`);
+            const abBreakdown = `${fullLbl}: ${score} [${abParts.join(', ')}] ➔ Modificatore: ${fmtMod(mod)}`;
+            abilities[meta.key] = { score, mod, breakdown: abBreakdown };
         });
 
         // 3. Tiri Salvezza
@@ -276,7 +297,14 @@
                 }
             });
             const total = abilities[meta.key].mod + (prof ? profBonus : 0) + globalSaveBonus + saveBonus;
-            saves[meta.key] = { prof, bonus: total };
+            const fullLbl = isEng() ? meta.fullEn : meta.fullIt;
+            const abShort = isEng() ? meta.labelEn : meta.labelIt;
+            let svParts = [`Mod. ${abShort} (${fmtMod(abilities[meta.key].mod)})`];
+            if (prof) svParts.push(`Competenza (${fmtMod(profBonus)})`);
+            if (saveBonus) svParts.push(`Bonus (${fmtMod(saveBonus)})`);
+            if (globalSaveBonus) svParts.push(`Bonus Globale (${fmtMod(globalSaveBonus)})`);
+            const svBreakdown = `TS ${fullLbl}: ${svParts.join(' + ')} = ${fmtMod(total)}`;
+            saves[meta.key] = { prof, bonus: total, breakdown: svBreakdown };
         });
 
         // 4. Abilità (18 Skills)
@@ -300,15 +328,63 @@
 
             const abMod = abilities[sk.ab].mod;
             const profAdd = profLevel === 2 ? (profBonus * 2) : (profLevel === 1 ? profBonus : (profLevel === 0.5 ? Math.floor(profBonus / 2) : 0));
+            const totalBonus = abMod + profAdd + flatBonus;
+            const nameDisp = isEng() ? sk.en : sk.it;
+            const abMeta = ABILITY_META.find(a => a.key === sk.ab);
+            const abShort = isEng() ? abMeta.labelEn : abMeta.labelIt;
+            let skParts = [`Mod. ${abShort} (${fmtMod(abMod)})`];
+            if (profLevel === 2) skParts.push(`Maestria (${fmtMod(profBonus * 2)})`);
+            else if (profLevel === 1) skParts.push(`Competenza (${fmtMod(profBonus)})`);
+            else if (profLevel === 0.5) skParts.push(`Mezza Comp. (${fmtMod(Math.floor(profBonus / 2))})`);
+            if (flatBonus) skParts.push(`Bonus (${fmtMod(flatBonus)})`);
+            const skBreakdown = `${nameDisp}: ${skParts.join(' + ')} = ${fmtMod(totalBonus)}`;
+
             skills[sk.sub] = {
                 ab: sk.ab,
                 prof: profLevel,
-                bonus: abMod + profAdd + flatBonus,
-                adv
+                bonus: totalBonus,
+                adv,
+                breakdown: skBreakdown
             };
         });
 
-        const passivePerception = 10 + (skills['perception'] ? skills['perception'].bonus : abilities.wis.mod);
+        // Calcolo Punteggi Passivi Ufficiali (Percezione, Indagare, Intuizione)
+        let passivePercBonus = 0;
+        let passiveInvBonus = 0;
+        let passiveInsBonus = 0;
+        allMods.forEach(m => {
+            const val = parseInt(m.value ?? m.fixedValue) || 0;
+            if (m.type === 'bonus') {
+                if (m.subType === 'passive-perception') passivePercBonus += val;
+                if (m.subType === 'passive-investigation') passiveInvBonus += val;
+                if (m.subType === 'passive-insight') passiveInsBonus += val;
+            }
+        });
+
+        const percSkillBonus = skills['perception'] ? skills['perception'].bonus : abilities.wis.mod;
+        const invSkillBonus = skills['investigation'] ? skills['investigation'].bonus : abilities.int.mod;
+        const insSkillBonus = skills['insight'] ? skills['insight'].bonus : abilities.wis.mod;
+
+        const passivePerceptionVal = 10 + percSkillBonus + passivePercBonus;
+        const passiveInvestigationVal = 10 + invSkillBonus + passiveInvBonus;
+        const passiveInsightVal = 10 + insSkillBonus + passiveInsBonus;
+
+        const passives = {
+            perception: {
+                value: passivePerceptionVal,
+                breakdown: `Percezione Passiva: 10 + Percezione (${fmtMod(percSkillBonus)})${passivePercBonus ? ' + Bonus (' + fmtMod(passivePercBonus) + ')' : ''} = ${passivePerceptionVal}`
+            },
+            investigation: {
+                value: passiveInvestigationVal,
+                breakdown: `Indagare Passivo: 10 + Indagare (${fmtMod(invSkillBonus)})${passiveInvBonus ? ' + Bonus (' + fmtMod(passiveInvBonus) + ')' : ''} = ${passiveInvestigationVal}`
+            },
+            insight: {
+                value: passiveInsightVal,
+                breakdown: `Intuizione Passiva: 10 + Intuizione (${fmtMod(insSkillBonus)})${passiveInsBonus ? ' + Bonus (' + fmtMod(passiveInsBonus) + ')' : ''} = ${passiveInsightVal}`
+            }
+        };
+
+        const passivePerception = passivePerceptionVal;
 
         // 5. Punti Ferita (HP), Classe Armatura (CA), Velocità, Iniziativa
         let hpPerLevelBonus = 0;
@@ -329,7 +405,12 @@
         // Calcolo CA (Armatura equipaggiata + Scudo + Mod Destrezza + Bonus)
         let baseAc = 10 + abilities.dex.mod;
         let hasBodyArmor = false;
+        let bodyArmorName = '';
+        let bodyArmorRaw = 10;
+        let dexModApplied = abilities.dex.mod;
         let shieldBonus = 0;
+        let shieldName = '';
+
         (d.inventory || []).forEach(it => {
             if (!it || !it.equipped || !it.definition) return;
             const def = it.definition;
@@ -343,30 +424,63 @@
                 });
                 if (def.armorTypeId === 4) {
                     shieldBonus += (parseInt(def.armorClass) || 2) + magicAc;
+                    shieldName = getCustomName(it.id, def.id) || def.name || 'Scudo';
                 } else {
                     hasBodyArmor = true;
-                    const rawArmor = (parseInt(def.armorClass) || 10) + magicAc;
-                    if (def.armorTypeId === 1) baseAc = rawArmor + abilities.dex.mod;
-                    else if (def.armorTypeId === 2) baseAc = rawArmor + Math.min(2, abilities.dex.mod);
-                    else if (def.armorTypeId === 3) baseAc = rawArmor;
+                    bodyArmorName = getCustomName(it.id, def.id) || def.name || 'Armatura';
+                    bodyArmorRaw = (parseInt(def.armorClass) || 10) + magicAc;
+                    if (def.armorTypeId === 1) {
+                        dexModApplied = abilities.dex.mod;
+                        baseAc = bodyArmorRaw + dexModApplied;
+                    } else if (def.armorTypeId === 2) {
+                        dexModApplied = Math.min(2, abilities.dex.mod);
+                        baseAc = bodyArmorRaw + dexModApplied;
+                    } else if (def.armorTypeId === 3) {
+                        dexModApplied = 0;
+                        baseAc = bodyArmorRaw;
+                    }
                 }
             }
         });
 
         let acBonus = 0;
         let unarmoredBonus = 0;
+        let unarmoredStatName = '';
+        let unarmoredStatMod = 0;
+
         allMods.forEach(m => {
             if (m._group === 'item' && m.subType === 'armor-class') {
-                // Verifica che non sia già stato contato come armatura/scudo
                 const invItem = (d.inventory || []).find(i => i.definition && i.definition.id === m.componentId);
                 if (invItem && invItem.definition && invItem.definition.armorClass) return;
             }
             if (m.type === 'bonus' && m.subType === 'armor-class') {
                 acBonus += parseInt(m.value ?? m.fixedValue) || 0;
             } else if (!hasBodyArmor && m.type === 'bonus' && m.subType === 'unarmored-armor-class') {
-                unarmoredBonus += parseInt(m.value ?? m.fixedValue) || 0;
+                if (m.statId) {
+                    const statMeta = ABILITY_META.find(a => a.id === m.statId);
+                    if (statMeta && abilities[statMeta.key]) {
+                        unarmoredStatName = statMeta.labelIt;
+                        unarmoredStatMod = abilities[statMeta.key].mod;
+                        unarmoredBonus += unarmoredStatMod;
+                    }
+                } else {
+                    unarmoredBonus += parseInt(m.value ?? m.fixedValue) || 0;
+                }
             } else if (!hasBodyArmor && m.type === 'set' && m.subType === 'unarmored-armor-class') {
-                const setVal = (parseInt(m.value ?? m.fixedValue) || 10) + abilities.dex.mod;
+                // Unarmored Defense (Monaco: Dex + Wis, Barbaro: Dex + Con, Draconic Sorcerer: 13 + Dex)
+                const baseVal = parseInt(m.value ?? m.fixedValue) || 10;
+                let extraStatMod = 0;
+                if (m.statId) {
+                    const statMeta = ABILITY_META.find(a => a.id === m.statId);
+                    if (statMeta && abilities[statMeta.key]) {
+                        if (!(m.statId === 5 && shieldBonus > 0)) {
+                            extraStatMod = abilities[statMeta.key].mod;
+                            unarmoredStatName = statMeta.labelIt;
+                            unarmoredStatMod = extraStatMod;
+                        }
+                    }
+                }
+                const setVal = baseVal + abilities.dex.mod + extraStatMod;
                 if (setVal > baseAc) baseAc = setVal;
             }
         });
@@ -377,25 +491,94 @@
             if ((cv.typeId === 2 || cv.typeId === 3) && cv.value) ac += parseInt(cv.value) || 0;
         });
 
-        // Iniziativa
+        let acBreakdownParts = [];
+        if (hasBodyArmor) {
+            acBreakdownParts.push(`${bodyArmorName} (${bodyArmorRaw})`);
+            if (dexModApplied !== 0) acBreakdownParts.push(`DES (${fmtMod(dexModApplied)})`);
+        } else if (unarmoredStatName) {
+            acBreakdownParts.push(`Base (10)`);
+            acBreakdownParts.push(`DES (${fmtMod(abilities.dex.mod)})`);
+            acBreakdownParts.push(`Difesa Senz'Armatura ${unarmoredStatName} (${fmtMod(unarmoredStatMod)})`);
+        } else {
+            acBreakdownParts.push(`Base (10)`);
+            acBreakdownParts.push(`DES (${fmtMod(abilities.dex.mod)})`);
+        }
+        if (shieldBonus > 0) acBreakdownParts.push(`${shieldName || 'Scudo'} (+${shieldBonus})`);
+        if (acBonus !== 0) acBreakdownParts.push(`Bonus (${fmtMod(acBonus)})`);
+        const acBreakdown = `CA ${ac}: ${acBreakdownParts.join(' + ')}`;
+
+        // Iniziativa (Dex mod + eventuali talenti/competenze/caratteristiche secondarie)
         let initBonus = abilities.dex.mod;
+        let initProfApplied = false;
+        let initHalfProfApplied = false;
+        let initStatName = '';
+        let initStatMod = 0;
+        let initFlatBonus = 0;
+
         allMods.forEach(m => {
-            if (m.type === 'bonus' && m.subType === 'initiative') {
-                initBonus += parseInt(m.value ?? m.fixedValue) || 0;
+            if (m.subType === 'initiative') {
+                // Bonus numerico diretto (es. Alert 2014 = +5 o oggetti magici)
+                if (m.type === 'bonus' && (m.value !== null && m.value !== undefined || m.fixedValue !== null && m.fixedValue !== undefined)) {
+                    const fb = parseInt(m.value ?? m.fixedValue) || 0;
+                    initBonus += fb;
+                    initFlatBonus += fb;
+                }
+                // Competenza nell'iniziativa (es. Alert 2024 dove bonusTypes = [1] o type = proficiency)
+                if (m.bonusTypes && Array.isArray(m.bonusTypes) && m.bonusTypes.includes(1)) {
+                    initBonus += profBonus;
+                    initProfApplied = true;
+                } else if (m.type === 'proficiency') {
+                    initBonus += profBonus;
+                    initProfApplied = true;
+                } else if (m.type === 'half-proficiency') {
+                    initBonus += Math.floor(profBonus / 2);
+                    initHalfProfApplied = true;
+                }
+                // Caratteristica secondaria (es. Swashbuckler statId: 6, Chronurgy statId: 4, Gloom Stalker statId: 5)
+                if (m.statId) {
+                    const statMeta = ABILITY_META.find(a => a.id === m.statId);
+                    if (statMeta && abilities[statMeta.key]) {
+                        initStatName = statMeta.labelIt;
+                        initStatMod = abilities[statMeta.key].mod;
+                        initBonus += initStatMod;
+                    }
+                }
             }
         });
 
+        // Override iniziativa in characterValues (typeId 43)
+        (d.characterValues || []).forEach(cv => {
+            if (cv.typeId === 43 && cv.value) {
+                initBonus = parseInt(cv.value) || initBonus;
+            }
+        });
+
+        let initBreakdownParts = [`DES (${fmtMod(abilities.dex.mod)})`];
+        if (initProfApplied) initBreakdownParts.push(`Competenza [Allerta] (${fmtMod(profBonus)})`);
+        if (initHalfProfApplied) initBreakdownParts.push(`Mezza Comp. (${fmtMod(Math.floor(profBonus / 2))})`);
+        if (initStatName) initBreakdownParts.push(`${initStatName} (${fmtMod(initStatMod)})`);
+        if (initFlatBonus !== 0) initBreakdownParts.push(`Bonus (${fmtMod(initFlatBonus)})`);
+        const initBreakdown = `Iniziativa ${fmtMod(initBonus)}: ${initBreakdownParts.join(' + ')}`;
+
         // Velocità
         let walkFt = d.race?.weightSpeeds?.normal?.walk || 30;
+        let speedBonusFt = 0;
         allMods.forEach(m => {
             if (m.type === 'set' && m.subType === 'innate-speed-walking') {
                 walkFt = parseInt(m.value ?? m.fixedValue) || walkFt;
             } else if (m.type === 'bonus' && (m.subType === 'speed' || m.subType === 'unarmored-movement')) {
-                walkFt += parseInt(m.value ?? m.fixedValue) || 0;
+                const b = parseInt(m.value ?? m.fixedValue) || 0;
+                walkFt += b;
+                speedBonusFt += b;
             }
         });
         const walkMeters = ((walkFt / 5) * 1.5).toFixed(1).replace(/\.0$/, '');
         const speedStr = `${walkMeters}m (${walkFt}ft)`;
+        const baseWalkFt = d.race?.weightSpeeds?.normal?.walk || 30;
+        let speedBreakdownParts = [`Base (${baseWalkFt}ft)`];
+        if (speedBonusFt > 0) speedBreakdownParts.push(`Bonus/Monaco (+${speedBonusFt}ft)`);
+        const speedBreakdown = `Velocità ${speedStr}: ${speedBreakdownParts.join(' + ')}`;
+        const profBreakdown = `Bonus Competenza: ${fmtMod(profBonus)} (Livello Personaggio: ${totalLevel})`;
 
         // 6. Incantesimi e Slot
         const spellAbMeta = ABILITY_META.find(a => a.id === primarySpellAbilityId) || ABILITY_META[3]; // default INT
@@ -475,7 +658,15 @@
             });
 
             // Fallback: cerca formula dadi nella descrizione (es. "3d8" o "8d6")
-            const cleanDesc = stripHtml(def.description, 300);
+            let cleanDesc = stripHtml(def.description, 0);
+            // Include eventuali note o descrizioni personalizzate da characterValues (typeId 9)
+            const customSpellDesc = (d.characterValues || []).find(cv => cv.typeId === 9 && (String(cv.valueId) === String(sp.id) || String(cv.valueId) === String(def.id)))?.value;
+            if (customSpellDesc) {
+                const cleanCustom = stripHtml(customSpellDesc, 0);
+                if (cleanCustom) {
+                    cleanDesc = cleanCustom + (cleanDesc ? '\n\n' + cleanDesc : '');
+                }
+            }
             if (!formula && cleanDesc) {
                 const dm = cleanDesc.match(/\b(\d+d\d+(?:\s*[+\-]\s*\d+)?)\b/i);
                 if (dm) formula = dm[1].replace(/\s+/g, '');
@@ -489,8 +680,12 @@
             const saveStat = def.saveDcAbilityId ? SAVE_ID_MAP[def.saveDcAbilityId] : '';
             const isAttack = !!def.requiresAttackRoll;
 
+            const customSpellName = getCustomName(sp.id, def.id);
+            const dispSpellName = customSpellName ? (customSpellName.toLowerCase() === def.name.toLowerCase() ? def.name : `${customSpellName} [${def.name}]`) : def.name;
+
             seenSpells.set(nameKey, {
-                name: def.name,
+                name: dispSpellName,
+                originalName: def.name,
                 level: parseInt(def.level) || 0,
                 school: def.school || '',
                 prepared: isPrep,
@@ -511,6 +706,69 @@
 
         // 7. Attacchi Rapidi (Armi equipaggiate + Trucchetti/Incantesimi d'attacco)
         const attacks = [];
+
+        // Colpo Senz'Armi (Unarmed Strike) universale per tutte le classi
+        let unarmedDie = '1';
+        let isUnarmedMonk = classesList.some(c => (c.definition?.name || '').toLowerCase() === 'monk');
+        if (isUnarmedMonk) {
+            classesList.forEach(c => {
+                if ((c.definition?.name || '').toLowerCase() === 'monk') {
+                    (c.classFeatures || []).forEach(cf => {
+                        if ((cf.definition?.name || '').toLowerCase() === 'martial arts' && cf.levelScale?.dice?.diceString) {
+                            unarmedDie = cf.levelScale.dice.diceString;
+                        }
+                    });
+                }
+            });
+            if (unarmedDie === '1') {
+                const monkLvl = classesList.find(c => (c.definition?.name || '').toLowerCase() === 'monk')?.level || totalLevel;
+                if (monkLvl >= 17) unarmedDie = '1d12';
+                else if (monkLvl >= 11) unarmedDie = '1d10';
+                else if (monkLvl >= 5) unarmedDie = '1d8';
+                else unarmedDie = '1d6';
+            }
+        } else {
+            const hasUnarmedFighting = allMods.some(m => (m.friendlySubtypeName || m.subType || '').toLowerCase().includes('unarmed fighting') || (m.subType || '').includes('unarmed-fighting'));
+            const hasTavernBrawler = allMods.some(m => (m.friendlySubtypeName || m.subType || '').toLowerCase().includes('tavern brawler'));
+            if (hasUnarmedFighting) unarmedDie = '1d8';
+            else if (hasTavernBrawler) unarmedDie = '1d4';
+        }
+
+        const unarmedAbMod = isUnarmedMonk ? Math.max(abilities.str.mod, abilities.dex.mod) : abilities.str.mod;
+        const unarmedToHit = unarmedAbMod + profBonus;
+        let unarmedDmgStr = '';
+        if (unarmedDie === '1') {
+            const rawDmg = 1 + unarmedAbMod;
+            unarmedDmgStr = `${Math.max(1, rawDmg)}`;
+        } else {
+            unarmedDmgStr = unarmedAbMod === 0 ? unarmedDie : `${unarmedDie}${unarmedAbMod > 0 ? '+' + unarmedAbMod : unarmedAbMod}`;
+        }
+
+        let unarmedCustomName = null;
+        let unarmedCustomNotes = null;
+        if (d.actions && typeof d.actions === 'object') {
+            for (const arr of Object.values(d.actions)) {
+                if (!Array.isArray(arr)) continue;
+                arr.forEach(act => {
+                    if (act && (act.name || '').toLowerCase().includes('unarmed')) {
+                        const cn = getCustomName(act.id, act.definition?.id);
+                        if (cn) unarmedCustomName = cn;
+                        const cnote = getCustomNotes(act.id, act.definition?.id);
+                        if (cnote) unarmedCustomNotes = cnote;
+                    }
+                });
+            }
+        }
+
+        attacks.push({
+            name: unarmedCustomName || "👊 Colpo Senz'Armi",
+            originalName: 'Unarmed Strike',
+            toHit: unarmedToHit,
+            damage: unarmedDmgStr,
+            dmgType: 'Contundente',
+            notes: unarmedCustomNotes ? `Mischia (1.5m) • ${unarmedCustomNotes}` : 'Mischia (1.5m)'
+        });
+
         (d.inventory || []).forEach(it => {
             if (!it || !it.definition) return;
             const def = it.definition;
@@ -518,10 +776,18 @@
             if (!isWeapon) return;
             if (!it.equipped && (d.inventory || []).filter(x => x.definition?.filterType === 'Weapon').length > 3) return;
 
+            const customWeaponName = getCustomName(it.id, def.id);
+            const customWeaponNotes = getCustomNotes(it.id, def.id);
+            const dispWeaponName = customWeaponName || def.name;
+
             const props = (def.properties || []).map(p => (p.name || '').toLowerCase());
             const isFinesse = props.includes('finesse');
             const isRanged = def.attackType === 2 || props.includes('ammunition');
-            const abMod = isFinesse
+            const isMonk = classesList.some(c => (c.definition?.name || '').toLowerCase() === 'monk');
+            const isMonkWeapon = isMonk && def.filterType === 'Weapon' &&
+                ((def.type || '').includes('Simple') || (def.name || '').toLowerCase().includes('shortsword') || (def.type || '').includes('Quarterstaff') || (def.type || '').includes('Dagger') || (def.type || '').includes('Spear') || (def.type || '').includes('Handaxe')) &&
+                !props.includes('two-handed') && !props.includes('heavy');
+            const abMod = (isFinesse || isMonkWeapon)
                 ? Math.max(abilities.str.mod, abilities.dex.mod)
                 : (isRanged ? abilities.dex.mod : abilities.str.mod);
 
@@ -537,12 +803,18 @@
             const totalDmgMod = abMod + magicBonus;
             const dmgFormula = totalDmgMod === 0 ? dmgDice : `${dmgDice}${totalDmgMod > 0 ? '+' + totalDmgMod : totalDmgMod}`;
 
+            let noteParts = [];
+            if (def.range) noteParts.push(`${((def.range / 5) * 1.5).toFixed(0)}m`);
+            else noteParts.push('Mischia');
+            if (customWeaponNotes) noteParts.push(customWeaponNotes);
+
             attacks.push({
-                name: def.name,
+                name: dispWeaponName,
+                originalName: def.name,
                 toHit: toHit,
                 damage: dmgFormula,
                 dmgType: def.damageType || '',
-                notes: def.range ? `${((def.range / 5) * 1.5).toFixed(0)}m` : 'Mischia'
+                notes: noteParts.join(' • ')
             });
         });
 
@@ -577,7 +849,7 @@
             features.push({
                 name: name.trim(),
                 cat: category, // 'race' | 'class' | 'feat'
-                desc: stripHtml(descHtml, 300),
+                desc: stripHtml(descHtml, 0),
                 maxUses: parseInt(maxUses) || 0,
                 usedUses: parseInt(usedUses) || 0
             });
@@ -595,8 +867,12 @@
                     if (maxU > 0) {
                         actionUsesMap.set(act.name.trim().toLowerCase(), { max: maxU, used: usedU });
                     }
-                    if (act.snippet || act.description) {
-                        addFeature(act.name, 'action', act.snippet || act.description, maxU, usedU);
+                    const customActName = getCustomName(act.id, act.definition?.id) || act.name;
+                    const customActNotes = getCustomNotes(act.id, act.definition?.id);
+                    let descText = act.snippet || act.description || '';
+                    if (customActNotes) descText = customActNotes + (descText ? '\n\n' + descText : '');
+                    if (descText) {
+                        addFeature(customActName, 'action', descText, maxU, usedU);
                     }
                 });
             }
@@ -668,9 +944,16 @@
             hpCurrent,
             hpTemp,
             ac,
+            acBreakdown,
             initBonus,
+            initBreakdown,
             speed: speedStr,
-            passivePerception,
+            speedBreakdown,
+            profBreakdown,
+            passives,
+            passivePerception: passives.perception.value,
+            passiveInvestigation: passives.investigation.value,
+            passiveInsight: passives.insight.value,
             abilities,
             saves,
             skills,
@@ -1610,8 +1893,9 @@
             const modStr = fmtMod(ab.mod);
             const lbl = isEng() ? meta.labelEn : meta.labelIt;
             const fullLbl = isEng() ? meta.fullEn : meta.fullIt;
+            const abTip = esc(ab.breakdown || `${fullLbl}: ${ab.score} [Modificatore: ${modStr}]`);
             abilitiesHtml += `
-                <div class="pcs-ability-card pcs-roll-trigger" data-formula="${modStr}" data-label="${tr('Prova', 'Check')} ${fullLbl}" title="${tr('Clicca per tirare Prova di', 'Click to roll')} ${fullLbl} (1d20${modStr})">
+                <div class="pcs-ability-card pcs-roll-trigger" data-formula="${modStr}" data-label="${tr('Prova', 'Check')} ${fullLbl}" title="${abTip} - ${tr('Clicca per tirare Prova', 'Click to roll Check')} (1d20${modStr})">
                     <div style="font-size: 10.5px; color: #9fa8da; font-weight: bold;">${lbl}</div>
                     <div style="font-size: 16px; font-weight: bold; color: #ffd54f; margin: 1px 0;">🎲 ${modStr}</div>
                     <div style="font-size: 11px; color: #bbb; background: #14161b; display: inline-block; padding: 0 6px; border-radius: 8px;">${ab.score}</div>
@@ -1621,21 +1905,54 @@
         abilitiesHtml += '</div>';
 
         // 2. Tiri Salvezza (6)
-        let savesHtml = '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-bottom: 10px;">';
+        let savesHtml = '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-bottom: 8px;">';
         ABILITY_META.forEach(meta => {
             const sv = (s.saves && s.saves[meta.key]) || { prof: false, bonus: 0 };
             const modStr = fmtMod(sv.bonus);
             const lbl = isEng() ? meta.labelEn : meta.labelIt;
             const fullLbl = isEng() ? meta.fullEn : meta.fullIt;
             const dot = sv.prof ? '<span style="color:#00e676;" title="Competente">●</span>' : '<span style="color:#555;">○</span>';
+            const svTip = esc(sv.breakdown || `TS ${fullLbl}: ${modStr}`);
             savesHtml += `
-                <div class="pcs-row-item pcs-roll-trigger" data-formula="${modStr}" data-label="TS ${fullLbl}" title="${tr('Tiro Salvezza su', 'Saving Throw')} ${fullLbl} (1d20${modStr})" style="margin-bottom:0;">
+                <div class="pcs-row-item pcs-roll-trigger" data-formula="${modStr}" data-label="TS ${fullLbl}" title="${svTip} - ${tr('Clicca per tirare', 'Click to roll')} (1d20${modStr})" style="margin-bottom:0;">
                     <span>${dot} <strong>${lbl}</strong></span>
                     <span style="color: #ffd54f; font-weight: bold;">🎲 ${modStr}</span>
                 </div>
             `;
         });
         savesHtml += '</div>';
+
+        // 2b. Tre Punteggi Passivi Ufficiali (Percezione, Indagare, Intuizione)
+        const passivesObj = s.passives || {};
+        const passPercVal = passivesObj.perception?.value ?? (10 + (s.skills?.perception?.bonus || 0));
+        const passInvVal = passivesObj.investigation?.value ?? (10 + (s.skills?.investigation?.bonus || 0));
+        const passInsVal = passivesObj.insight?.value ?? (10 + (s.skills?.insight?.bonus || 0));
+
+        const passPercTip = esc(passivesObj.perception?.breakdown || `Percezione Passiva: 10 + Percezione (${fmtMod(s.skills?.perception?.bonus || 0)}) = ${passPercVal}`);
+        const passInvTip = esc(passivesObj.investigation?.breakdown || `Indagare Passivo: 10 + Indagare (${fmtMod(s.skills?.investigation?.bonus || 0)}) = ${passInvVal}`);
+        const passInsTip = esc(passivesObj.insight?.breakdown || `Intuizione Passiva: 10 + Intuizione (${fmtMod(s.skills?.insight?.bonus || 0)}) = ${passInsVal}`);
+
+        const passivesHtml = `
+            <div style="margin-bottom: 9px; background: #161820; border: 1px solid #2d313c; border-radius: 5px; padding: 5px 8px;">
+                <div style="font-size: 10.5px; font-weight: bold; color: #80cbc4; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+                    <span>👁️ ${tr('Punteggi Passivi', 'Passive Scores')}</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
+                    <div class="pcs-row-item pcs-roll-trigger" data-formula="${fmtMod(s.skills?.perception?.bonus || 0)}" data-label="${tr('Percezione (Passiva)', 'Perception (Passive)')}" style="padding: 3px 6px; margin-bottom: 0; justify-content: space-between; font-size: 11px; cursor: pointer;" title="${passPercTip} - ${tr('Clicca per tirare Prova', 'Click to roll Check')}">
+                        <span style="color: #bbb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">👁️ ${tr('Percezione', 'Perception')}</span>
+                        <strong style="color: #80cbc4; margin-left: 3px; font-size: 12px;">${passPercVal}</strong>
+                    </div>
+                    <div class="pcs-row-item pcs-roll-trigger" data-formula="${fmtMod(s.skills?.investigation?.bonus || 0)}" data-label="${tr('Indagare (Passivo)', 'Investigation (Passive)')}" style="padding: 3px 6px; margin-bottom: 0; justify-content: space-between; font-size: 11px; cursor: pointer;" title="${passInvTip} - ${tr('Clicca per tirare Prova', 'Click to roll Check')}">
+                        <span style="color: #bbb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🔍 ${tr('Indagare', 'Investigation')}</span>
+                        <strong style="color: #80cbc4; margin-left: 3px; font-size: 12px;">${passInvVal}</strong>
+                    </div>
+                    <div class="pcs-row-item pcs-roll-trigger" data-formula="${fmtMod(s.skills?.insight?.bonus || 0)}" data-label="${tr('Intuizione (Passiva)', 'Insight (Passive)')}" style="padding: 3px 6px; margin-bottom: 0; justify-content: space-between; font-size: 11px; cursor: pointer;" title="${passInsTip} - ${tr('Clicca per tirare Prova', 'Click to roll Check')}">
+                        <span style="color: #bbb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">💡 ${tr('Intuizione', 'Insight')}</span>
+                        <strong style="color: #80cbc4; margin-left: 3px; font-size: 12px;">${passInsVal}</strong>
+                    </div>
+                </div>
+            </div>
+        `;
 
         // 3. Attacchi e Azioni Rapide
         let attacksHtml = '';
@@ -1653,7 +1970,7 @@
                 attacksHtml += `
                     <div class="pcs-row-item" style="gap: 4px;">
                         <div style="min-width: 0; flex: 1;">
-                            <div style="font-weight: bold; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${esc(a.name)}">${esc(a.name)}</div>
+                            <div style="font-weight: bold; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${esc(a.originalName ? a.name + ' (' + a.originalName + ')' : a.name)}">${esc(a.name)}</div>
                             <div style="font-size: 10px; color: #888;">${esc(a.notes || '')} ${a.dmgType ? '• ' + esc(a.dmgType) : ''}</div>
                         </div>
                         <div style="display: flex; gap: 4px; align-items: center; flex-shrink: 0;">
@@ -1677,34 +1994,40 @@
                 ? '<span style="color:#ffd54f;" title="Maestria (Expertise)">★</span>'
                 : (skObj.prof === 1 ? '<span style="color:#00e676;" title="Competente">●</span>' : (skObj.prof === 0.5 ? '<span style="color:#81d4fa;" title="Mezza Competenza">◐</span>' : '<span style="color:#555;">○</span>'));
             const advBadge = skObj.adv ? '<span style="color:#4caf50; font-size:10px; margin-left:3px;" title="Vantaggio sulla prova">▲</span>' : '';
+            const skTip = esc(skObj.breakdown || `${nameDisp} (${modStr})`);
 
             skillsHtml += `
-                <div class="pcs-row-item pcs-roll-trigger" data-formula="${modStr}" data-label="${nameDisp}" title="${tr('Clicca per tirare', 'Click to roll')} ${nameDisp} (1d20${modStr})">
+                <div class="pcs-row-item pcs-roll-trigger" data-formula="${modStr}" data-label="${nameDisp}" title="${skTip} - ${tr('Clicca per tirare', 'Click to roll')} (1d20${modStr})">
                     <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${icon} ${esc(nameDisp)} <small style="color:#777;">(${abShort})</small>${advBadge}</span>
                     <span style="color: #ffd54f; font-weight: bold; flex-shrink: 0;">🎲 ${modStr}</span>
                 </div>
             `;
         });
 
+        const acTip = esc(s.acBreakdown || `Classe Armatura: ${s.ac || 10}`);
+        const initTip = esc(s.initBreakdown || `Iniziativa: ${initSign}`);
+        const speedTip = esc(s.speedBreakdown || `Velocità: ${esc(s.speed || '9m')}`);
+        const profTip = esc(s.profBreakdown || `Bonus Competenza: ${profSign} (Livello ${s.level || 1})`);
+
         return `
             <!-- Barra Rapida Statistiche Combattimento & PV (Spaziata e ad alta leggibilità) -->
             <div style="display: flex; flex-direction: column; gap: 7px; margin-bottom: 10px; background: #1e2129; padding: 8px 10px; border-radius: 6px; border: 1px solid #323644;">
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: space-between;">
                     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                        <div style="display: inline-flex; align-items: center; gap: 6px; background: #14161c; padding: 4px 10px; border-radius: 5px; border: 1px solid #4fc3f7;" title="Classe Armatura">
+                        <div style="display: inline-flex; align-items: center; gap: 6px; background: #14161c; padding: 4px 10px; border-radius: 5px; border: 1px solid #4fc3f7;" title="${acTip}">
                             <span style="font-size: 11px; color: #4fc3f7; font-weight: bold;">🛡️ CA</span>
                             <input type="number" id="pcs-input-ac" value="${s.ac || 10}" style="width: 56px; height: 26px; padding: 2px 6px; background: #0c0e12; color: #fff; border: 1px solid #4fc3f766; border-radius: 4px; font-weight: bold; font-size: 15px; text-align: center;">
                         </div>
-                        <div class="pcs-roll-trigger" data-formula="${initSign}" data-label="Iniziativa" style="display: inline-flex; align-items: center; gap: 5px; background: #14161c; padding: 6px 10px; border-radius: 5px; border: 1px solid #ffb74d;" title="Clicca per tirare Iniziativa (1d20${initSign})">
+                        <div class="pcs-roll-trigger" data-formula="${initSign}" data-label="Iniziativa" style="display: inline-flex; align-items: center; gap: 5px; background: #14161c; padding: 6px 10px; border-radius: 5px; border: 1px solid #ffb74d;" title="${initTip} - ${tr('Clicca per tirare Iniziativa', 'Click to roll Initiative')} (1d20${initSign})">
                             <span style="font-size: 11px; color: #ffb74d; font-weight: bold;">⚡ Iniz:</span>
                             <strong style="font-size: 13.5px; color: #fff;">🎲 ${initSign}</strong>
                         </div>
-                        <div style="display: inline-flex; align-items: center; gap: 5px; background: #14161c; padding: 6px 10px; border-radius: 5px; border: 1px solid #444;">
+                        <div style="display: inline-flex; align-items: center; gap: 5px; background: #14161c; padding: 6px 10px; border-radius: 5px; border: 1px solid #444;" title="${speedTip}">
                             <span style="font-size: 11px; color: #aaa;">🦶 Vel:</span>
                             <strong style="font-size: 12.5px; color: #fff;">${esc(s.speed || '9m')}</strong>
                         </div>
                     </div>
-                    <div style="display: inline-flex; align-items: center; gap: 6px; background: #14161c; padding: 6px 10px; border-radius: 5px; border: 1px solid #444;" title="Bonus di Competenza e Percezione Passiva">
+                    <div style="display: inline-flex; align-items: center; gap: 6px; background: #14161c; padding: 6px 10px; border-radius: 5px; border: 1px solid #444;" title="${profTip} • ${passPercTip}">
                         <span style="font-size: 11px; color: #ce93d8; font-weight: bold;">🎯 Comp ${profSign}</span>
                         <span style="color: #555;">•</span>
                         <span style="font-size: 11px; color: #80cbc4; font-weight: bold;">👁️ Pass ${s.passivePerception || 10}</span>
@@ -1732,11 +2055,12 @@
             <!-- 6 Caratteristiche -->
             ${abilitiesHtml}
 
-            <!-- Griglia a 2 Colonne: Sinistra (Tiri Salvezza + Attacchi) | Destra (18 Abilità) -->
+            <!-- Griglia a 2 Colonne: Sinistra (Tiri Salvezza + Passive + Attacchi) | Destra (18 Abilità) -->
             <div style="display: grid; grid-template-columns: 1.05fr 1fr; gap: 10px; align-items: start;">
                 <div>
                     <div style="font-size: 11.5px; font-weight: bold; color: #ffd54f; margin-bottom: 5px; border-bottom: 1px solid #333; padding-bottom: 2px;">🛡️ ${tr('Tiri Salvezza', 'Saving Throws')}</div>
                     ${savesHtml}
+                    ${passivesHtml}
                     <div style="font-size: 11.5px; font-weight: bold; color: #ef5350; margin-bottom: 5px; border-bottom: 1px solid #333; padding-bottom: 2px;">⚔️ ${tr('Attacchi & Azioni Rapide', 'Attacks & Quick Actions')}</div>
                     ${attacksHtml}
                 </div>

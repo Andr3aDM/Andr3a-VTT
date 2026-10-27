@@ -171,6 +171,9 @@ network.onConnect((playerName, pid, isReconnect) => {
                 : (typeof window.t === 'function' ? window.t('🟢 Giocatore connesso:') : '🟢 Giocatore connesso:');
             showToast(`${pfx} ${cleanJoin}`);
         }
+        if (typeof network.send === 'function') {
+            network.send({ type: 'PLAYER_CONNECTED_NOTICE', payload: { name: cleanJoin, isReconnect: !!isReconnect } });
+        }
         // Nota: l'invio di mappa, stato e nebbia avviene in PLAYER_READY mirato solo al nuovo peerId
     }
 });
@@ -185,6 +188,9 @@ if (typeof network.onDisconnect === 'function') {
         if (leftName && typeof showToast === 'function') {
             const pfx = typeof window.t === 'function' ? window.t('🔴 Giocatore disconnesso:') : '🔴 Giocatore disconnesso:';
             showToast(`${pfx} ${leftName}`);
+        }
+        if (leftName && typeof network.send === 'function') {
+            network.send({ type: 'PLAYER_DISCONNECTED_NOTICE', payload: { name: leftName } });
         }
     });
 }
@@ -5276,6 +5282,16 @@ function showToast(msg) {
         document.body.appendChild(t);
     }
     t.innerText = msg;
+    if (msg.includes('🔴')) {
+        t.style.background = 'rgba(198, 40, 40, 0.95)';
+        t.style.border = '1px solid #ef5350';
+    } else if (msg.includes('🔄')) {
+        t.style.background = 'rgba(21, 101, 192, 0.95)';
+        t.style.border = '1px solid #64b5f6';
+    } else {
+        t.style.background = 'rgba(46, 125, 50, 0.95)';
+        t.style.border = '1px solid #81c784';
+    }
     t.style.opacity = '1';
     if (toastHideTimeout) clearTimeout(toastHideTimeout);
     toastHideTimeout = setTimeout(() => {
