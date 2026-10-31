@@ -12,6 +12,8 @@ class VTTEngine {
         this.workspace.style.top = '0';
         this.workspace.style.left = '0';
         this.workspace.style.transformOrigin = '0 0';
+        this.workspace.style.willChange = 'transform';
+        this.workspace.style.backfaceVisibility = 'hidden';
         this.container.appendChild(this.workspace);
 
         this.layers = {
@@ -21,7 +23,8 @@ class VTTEngine {
             drawPrivate: this.createCanvas('draw-private-layer', 3),
             tokens: this.createCanvas('tokens-layer', 4),
             tokenEffects: this.createCanvas('token-effects-layer', 5),
-            fog: this.createCanvas('fog-layer', 6)
+            tokenOverlays: this.createCanvas('token-overlays-layer', 6),
+            fog: this.createCanvas('fog-layer', 7)
         };
 
         if (this.isDM) {
@@ -31,7 +34,7 @@ class VTTEngine {
         this.layers.ui = document.createElement('canvas');
         this.layers.ui.id = 'ui-layer';
         this.layers.ui.style.position = 'absolute';
-        this.layers.ui.style.zIndex = 7;
+        this.layers.ui.style.zIndex = 8;
         this.layers.ui.style.top = '0';
         this.layers.ui.style.left = '0';
         this.container.appendChild(this.layers.ui);
@@ -43,6 +46,7 @@ class VTTEngine {
             drawPrivate: this.layers.drawPrivate.getContext('2d'),
             tokens: this.layers.tokens.getContext('2d'),
             tokenEffects: this.layers.tokenEffects.getContext('2d'),
+            tokenOverlays: this.layers.tokenOverlays.getContext('2d'),
             fog: this.layers.fog.getContext('2d'),
             ui: this.layers.ui.getContext('2d')
         };
@@ -52,7 +56,12 @@ class VTTEngine {
         this.scale = 1;
 
         this.mapImage = null;
-        this.grid = { size: 100, color: '#000000', glow: 'none', offsetX: 0, offsetY: 0 };
+        this.grid = { size: 100, color: '#000000', opacity: 1, glow: 'none', offsetX: 0, offsetY: 0 };
+        this._dirtyTokenRects = [];
+        this._dirtyEffectRects = [];
+        this._dirtyOverlayRects = [];
+        this._fogStateAll = 'full';
+        this._fogHitData = null;
         
         this.tokens = [];
         this.pings = [];
@@ -92,6 +101,27 @@ class VTTEngine {
         this.renderUI();
     }
 
+    ensureLayerSize(key) {
+        if (!this.mapImage || !this.layers[key]) return;
+        const w = this.mapImage.width;
+        const h = this.mapImage.height;
+        if (this.layers[key].width !== w || this.layers[key].height !== h) {
+            this.layers[key].width = w;
+            this.layers[key].height = h;
+        }
+    }
+
+    clearDirtyRects(ctx, rects, fallbackW, fallbackH) {
+        if (!ctx) return;
+        if (rects && rects.length > 0) {
+            for (let i = 0; i < rects.length; i++) {
+                const r = rects[i];
+                ctx.clearRect(r.x, r.y, r.w, r.h);
+            }
+            rects.length = 0;
+        }
+    }
+
     setMap(img) {
         this.mapImage = img;
         const w = img.width;
@@ -99,9 +129,17 @@ class VTTEngine {
         
         for (const key in this.layers) {
             if (key === 'ui') continue;
-            if (!this.isDM && key === 'drawPrivate') {
-                this.layers[key].width = 1;
-                this.layers[key].height = 1;
+            // Allocazione pigra (1x1) per i layer di disegno libero finché non ci sono tratti/note (risparmia centinaia di MB su mappe 4K/8K!)
+            if (key === 'drawPrivate') {
+                const hasPriv = this.isDM && ((this.privateStrokes && this.privateStrokes.length > 0) || (this.notes && this.notes.length > 0));
+                this.layers[key].width = hasPriv ? w : 1;
+                this.layers[key].height = hasPriv ? h : 1;
+                continue;
+            }
+            if (key === 'drawPublic') {
+                const hasPub = this.publicStrokes && this.publicStrokes.length > 0;
+                this.layers[key].width = hasPub ? w : 1;
+                this.layers[key].height = hasPub ? h : 1;
                 continue;
             }
             this.layers[key].width = w;
@@ -110,6 +148,10 @@ class VTTEngine {
         
         this._bgDrawn = false;
         this._lastGridSig = null;
+        this._lastDrawSig = null;
+        this._dirtyTokenRects = [];
+        this._dirtyEffectRects = [];
+        this._dirtyOverlayRects = [];
 
         this.fitToScreen();
         if (this.pendingFogImage) {
@@ -135,7 +177,7 @@ class VTTEngine {
     }
 
     updateWorkspaceTransform() {
-        this.workspace.style.transform = `translate(${this.offsetX}px, ${this.offsetY}px) scale(${this.scale})`;
+        this.workspace.style.transform = `translate3d(${this.offsetX}px, ${this.offsetY}px, 0px) scale(${this.scale})`;
     }
 
     renderViewport() {
@@ -150,12 +192,13 @@ class VTTEngine {
         const w = this.mapImage.width;
         const h = this.mapImage.height;
         if (w > 0 && h > 0) {
-            this.ctx.tokens.clearRect(0, 0, w, h);
+            this.clearDirtyRects(this.ctx.tokens, this._dirtyTokenRects, w, h);
             this.renderShapes();
             this.renderTokens();
             this.updateTokensInShapes();
         }
         this.renderTokenEffects();
+        this.renderTokenOverlays();
         this.renderUI();
     }
 
@@ -182,7 +225,14 @@ class VTTEngine {
             this._bgDrawn = true;
         }
 
-        // Ridisegna la griglia solo se i parametri griglia sono cambiati
+        // Opacità griglia istantanea accelerata via GPU compositor (zero redraw necessario per variazioni di opacità!)
+        const gridOpacity = (this.grid.opacity !== undefined && this.grid.opacity !== null) ? Number(this.grid.opacity) : 1;
+        const clampedOpacity = Math.max(0, Math.min(1, isNaN(gridOpacity) ? 1 : gridOpacity));
+        if (this.layers.grid.style.opacity !== String(clampedOpacity)) {
+            this.layers.grid.style.opacity = String(clampedOpacity);
+        }
+
+        // Ridisegna la griglia solo se i parametri geometrici/colore sono cambiati
         const gridSig = `${this.grid.size}_${this.grid.color}_${this.grid.glow}_${this.grid.offsetX || 0}_${this.grid.offsetY || 0}_${w}_${h}`;
         if (this._lastGridSig !== gridSig) {
             this.ctx.grid.clearRect(0, 0, w, h);
@@ -190,15 +240,27 @@ class VTTEngine {
             this._lastGridSig = gridSig;
         }
 
-        this.ctx.tokens.clearRect(0, 0, w, h);
-        this.ctx.drawPublic.clearRect(0, 0, w, h);
-        this.ctx.drawPrivate.clearRect(0, 0, w, h);
+        // Ridisegna i tratti a mano libera e i pin solo se effettivamente modificati
+        const pubLen = this.publicStrokes ? this.publicStrokes.length : 0;
+        const pubLastPts = pubLen > 0 && this.publicStrokes[pubLen - 1].points ? this.publicStrokes[pubLen - 1].points.length : 0;
+        const privLen = this.privateStrokes ? this.privateStrokes.length : 0;
+        const privLastPts = privLen > 0 && this.privateStrokes[privLen - 1].points ? this.privateStrokes[privLen - 1].points.length : 0;
+        const notesSig = (this.isDM && this.notes && this.notes.length > 0)
+            ? this.notes.map(n => `${Math.round(n.x)},${Math.round(n.y)}`).join(';')
+            : '';
+        const drawSig = `${pubLen}:${pubLastPts}_${privLen}:${privLastPts}_${notesSig}_${w}_${h}`;
+        if (this._lastDrawSig !== drawSig) {
+            this.renderDrawings();
+            this._lastDrawSig = drawSig;
+        }
 
-        this.renderDrawings();
+        this.clearDirtyRects(this.ctx.tokens, this._dirtyTokenRects, w, h);
+
         this.renderShapes(); // Draw AoE before tokens
         this.renderTokens();
         this.updateTokensInShapes();
         this.renderTokenEffects();
+        this.renderTokenOverlays();
         this.renderUI();
     }
 
@@ -210,8 +272,13 @@ class VTTEngine {
         this.ctx.grid.clearRect(0, 0, w, h);
         this.ctx.tokens.clearRect(0, 0, w, h);
         if (this.ctx.tokenEffects) this.ctx.tokenEffects.clearRect(0, 0, w, h);
-        this.ctx.drawPublic.clearRect(0, 0, w, h);
-        this.ctx.drawPrivate.clearRect(0, 0, w, h);
+        if (this.ctx.tokenOverlays) this.ctx.tokenOverlays.clearRect(0, 0, w, h);
+        if (this.layers.drawPublic.width > 1) this.ctx.drawPublic.clearRect(0, 0, w, h);
+        if (this.layers.drawPrivate.width > 1) this.ctx.drawPrivate.clearRect(0, 0, w, h);
+        this._dirtyTokenRects = [];
+        this._dirtyEffectRects = [];
+        this._dirtyOverlayRects = [];
+        this._lastDrawSig = null;
     }
 
     renderGrid() {
@@ -226,6 +293,7 @@ class VTTEngine {
             ctx.shadowBlur = 4;
         } else {
             ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
         }
 
         ctx.beginPath();
@@ -254,18 +322,31 @@ class VTTEngine {
     renderShapes() {
         const ctx = this.ctx.tokens; 
         this.shapes.forEach(shape => {
-            if (!this.isDM && !shape.visible) return;
+            if (!this.isDM && shape.visible === false) return;
 
             const pixelsPerFoot = this.grid.size / 5;
             const sizePx = Math.max(0.1, shape.sizeFt * pixelsPerFoot);
+            const widthPx = ((shape.widthFt || 5) * pixelsPerFoot);
+            const ext = Math.ceil(Math.max(sizePx, widthPx) + 16);
+            this._dirtyTokenRects.push({
+                x: Math.floor(shape.x - ext),
+                y: Math.floor(shape.y - ext),
+                w: ext * 2,
+                h: ext * 2
+            });
+            const isHiddenDM = this.isDM && shape.visible === false;
             
             ctx.save();
             ctx.translate(shape.x, shape.y);
             ctx.rotate(shape.angle * Math.PI / 180);
             
-            ctx.fillStyle = shape.color + '66'; // semi-transparent
+            if (isHiddenDM) {
+                ctx.globalAlpha = 0.55;
+                ctx.setLineDash([7, 5]);
+            }
+            ctx.fillStyle = shape.color + (isHiddenDM ? '44' : '66'); // semi-transparent
             ctx.strokeStyle = shape.color;
-            ctx.lineWidth = 2;
+            ctx.lineWidth = isHiddenDM ? 2.5 : 2;
 
             ctx.beginPath();
             if (shape.type === 'circle') {
@@ -293,7 +374,7 @@ class VTTEngine {
         if (!this.shapes || this.shapes.length === 0) return;
 
         this.shapes.forEach(shape => {
-            if (!this.isDM && !shape.visible) return;
+            if (!this.isDM && shape.visible === false) return;
 
             // Se la sagoma è in nebbia di guerra per i player, sparisce completamente!
             if (!this.isDM && this.isPointInFog(shape.x, shape.y)) return;
@@ -303,18 +384,25 @@ class VTTEngine {
             const isSelected = this.isDM ? (this.selectedShapeId === shape.id) : (window.editingPlayerShape && window.editingPlayerShape.id === shape.id);
             const hasTimer = shape.durationRounds !== undefined && shape.durationRounds !== null && Number(shape.durationRounds) > 0;
             const roundsLeft = shape.roundsLeft !== undefined ? shape.roundsLeft : shape.durationRounds;
+            const isHiddenDM = this.isDM && shape.visible === false;
 
             // Se ha il timer: visibile a tutti (DM e Players)!
             // Se permanente: visibile solo se canControl (DM o proprietario) per mantenere la mappa pulita per gli altri player
             if (!hasTimer && !canControl) return;
 
+            this._dirtyEffectRects.push({
+                x: Math.floor(shape.x - 105),
+                y: Math.floor(shape.y - 60),
+                w: 210,
+                h: 110
+            });
+
             ctx.save();
             ctx.translate(shape.x, shape.y);
 
             if (hasTimer) {
-                // Badge con clessidra e contatore turni: ⏳ 3
-                // Dimensioni ottimizzate e font 14px in grassetto per massima visibilità
-                const text = `⏳ ${roundsLeft}`;
+                // Badge con clessidra e contatore turni: ⏳ 3 (o 🙈 ⏳ 3 se nascosta al DM)
+                const text = isHiddenDM ? `🙈 ⏳ ${roundsLeft}` : `⏳ ${roundsLeft}`;
                 ctx.font = 'bold 14px system-ui, -apple-system, sans-serif';
                 const textMetrics = ctx.measureText(text);
                 const padX = 8;
@@ -337,7 +425,7 @@ class VTTEngine {
                 } else {
                     ctx.rect(rx, ry, pillW, pillH);
                 }
-                ctx.fillStyle = isSelected ? '#003747' : '#141414';
+                ctx.fillStyle = isSelected ? '#003747' : (isHiddenDM ? '#2a1038' : '#141414');
                 ctx.fill();
                 ctx.restore();
 
@@ -348,7 +436,7 @@ class VTTEngine {
                 } else {
                     ctx.rect(rx, ry, pillW, pillH);
                 }
-                ctx.strokeStyle = isSelected ? '#00ffff' : (shape.color || '#ff5722');
+                ctx.strokeStyle = isSelected ? '#00ffff' : (isHiddenDM ? '#ba68c8' : (shape.color || '#ff5722'));
                 ctx.lineWidth = isSelected ? 2.5 : 2;
                 ctx.stroke();
 
@@ -374,17 +462,26 @@ class VTTEngine {
                 ctx.shadowOffsetY = 1;
                 ctx.beginPath();
                 ctx.arc(0, 0, r, 0, Math.PI * 2);
-                ctx.fillStyle = isSelected ? '#00ffff' : '#ffffff';
+                ctx.fillStyle = isSelected ? '#00ffff' : (isHiddenDM ? '#38154c' : '#ffffff');
                 ctx.fill();
                 ctx.restore();
 
-                ctx.strokeStyle = isSelected ? '#007799' : '#000000';
+                ctx.strokeStyle = isSelected ? '#007799' : (isHiddenDM ? '#ba68c8' : '#000000');
                 ctx.lineWidth = 2;
                 ctx.stroke();
 
+                ctx.save();
                 ctx.rotate(shape.angle * Math.PI / 180);
-                ctx.fillStyle = '#000000';
+                ctx.fillStyle = isHiddenDM ? '#ba68c8' : '#000000';
                 ctx.fillRect(0, -2.5, 17, 5);
+                ctx.restore();
+
+                if (isHiddenDM) {
+                    ctx.font = '12px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('🙈', 0, 1);
+                }
             }
 
             ctx.restore();
@@ -417,10 +514,19 @@ class VTTEngine {
         if (!token || !shape) return false;
         const sizePx = (shape.sizeFt || 15) * pixelsPerFoot;
         
+        // Tolleranza geometrica interna: evita falsi positivi quando l'AoE sfiora solo il filo del quadretto
+        const inset = 2; // Tolleranza di 2px: esclude filo griglia e micropixel, attiva appena sborda nel quadretto
+        const tX = token.x + inset;
+        const tY = token.y + inset;
+        const tW = Math.max(1, (token.width || 50) - inset * 2);
+        const tH = Math.max(1, (token.height || 50) - inset * 2);
+        const tMaxX = tX + tW;
+        const tMaxY = tY + tH;
+        
         // 1. Cerchio / Sfera
         if (shape.type === 'circle') {
-            const cx = Math.max(token.x, Math.min(shape.x, token.x + token.width));
-            const cy = Math.max(token.y, Math.min(shape.y, token.y + token.height));
+            const cx = Math.max(tX, Math.min(shape.x, tMaxX));
+            const cy = Math.max(tY, Math.min(shape.y, tMaxY));
             return ((shape.x - cx) ** 2 + (shape.y - cy) ** 2) <= sizePx * sizePx;
         }
         
@@ -444,10 +550,10 @@ class VTTEngine {
                 return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
             };
             
-            const c1 = toLocal(token.x, token.y);
-            const c2 = toLocal(token.x + token.width, token.y);
-            const c3 = toLocal(token.x + token.width, token.y + token.height);
-            const c4 = toLocal(token.x, token.y + token.height);
+            const c1 = toLocal(tX, tY);
+            const c2 = toLocal(tMaxX, tY);
+            const c3 = toLocal(tMaxX, tMaxY);
+            const c4 = toLocal(tX, tMaxY);
             
             const minLX = Math.min(c1.x, c2.x, c3.x, c4.x);
             const maxLX = Math.max(c1.x, c2.x, c3.x, c4.x);
@@ -473,36 +579,36 @@ class VTTEngine {
             
             const minWX = Math.min(sc1.x, sc2.x, sc3.x, sc4.x);
             const maxWX = Math.max(sc1.x, sc2.x, sc3.x, sc4.x);
-            if (maxWX < token.x || minWX > token.x + token.width) return false;
+            if (maxWX < tX || minWX > tMaxX) return false;
             
             const minWY = Math.min(sc1.y, sc2.y, sc3.y, sc4.y);
             const maxWY = Math.max(sc1.y, sc2.y, sc3.y, sc4.y);
-            if (maxWY < token.y || minWY > token.y + token.height) return false;
+            if (maxWY < tY || minWY > tMaxY) return false;
             
             return true;
         }
         
         // 3. Cono
         if (shape.type === 'cone') {
-            const cx = Math.max(token.x, Math.min(shape.x, token.x + token.width));
-            const cy = Math.max(token.y, Math.min(shape.y, token.y + token.height));
+            const cx = Math.max(tX, Math.min(shape.x, tMaxX));
+            const cy = Math.max(tY, Math.min(shape.y, tMaxY));
             if ((shape.x - cx)**2 + (shape.y - cy)**2 > sizePx * sizePx) return false;
             
-            if (shape.x >= token.x && shape.x <= token.x + token.width && shape.y >= token.y && shape.y <= token.y + token.height) return true;
+            if (shape.x >= tX && shape.x <= tMaxX && shape.y >= tY && shape.y <= tMaxY) return true;
             
             const shapeAngleRad = (shape.angle || 0) * Math.PI / 180;
             const halfAngle = Math.atan(0.5);
             
             const testPoints = [
-                { x: token.x, y: token.y },
-                { x: token.x + token.width, y: token.y },
-                { x: token.x + token.width, y: token.y + token.height },
-                { x: token.x, y: token.y + token.height },
-                { x: token.x + token.width / 2, y: token.y + token.height / 2 },
-                { x: token.x + token.width / 2, y: token.y },
-                { x: token.x + token.width / 2, y: token.y + token.height },
-                { x: token.x, y: token.y + token.height / 2 },
-                { x: token.x + token.width, y: token.y + token.height / 2 }
+                { x: tX, y: tY },
+                { x: tMaxX, y: tY },
+                { x: tMaxX, y: tMaxY },
+                { x: tX, y: tMaxY },
+                { x: tX + tW / 2, y: tY + tH / 2 },
+                { x: tX + tW / 2, y: tY },
+                { x: tX + tW / 2, y: tMaxY },
+                { x: tX, y: tY + tH / 2 },
+                { x: tMaxX, y: tY + tH / 2 }
             ];
             
             for (let i = 0; i < testPoints.length; i++) {
@@ -534,8 +640,8 @@ class VTTEngine {
             
             const a1 = shapeAngleRad - halfAngle;
             const a2 = shapeAngleRad + halfAngle;
-            if (segIntersectsBox(shape.x, shape.y, shape.x + Math.cos(a1) * sizePx, shape.y + Math.sin(a1) * sizePx, token.x, token.y, token.x + token.width, token.y + token.height)) return true;
-            if (segIntersectsBox(shape.x, shape.y, shape.x + Math.cos(a2) * sizePx, shape.y + Math.sin(a2) * sizePx, token.x, token.y, token.x + token.width, token.y + token.height)) return true;
+            if (segIntersectsBox(shape.x, shape.y, shape.x + Math.cos(a1) * sizePx, shape.y + Math.sin(a1) * sizePx, tX, tY, tMaxX, tMaxY)) return true;
+            if (segIntersectsBox(shape.x, shape.y, shape.x + Math.cos(a2) * sizePx, shape.y + Math.sin(a2) * sizePx, tX, tY, tMaxX, tMaxY)) return true;
             
             return false;
         }
@@ -596,11 +702,18 @@ class VTTEngine {
             });
 
             // 2. Aure mobili emanate da altri token
+            // Tolleranza geometrica: evita falso positivo sul filo della griglia
+            const inset = 2; // Tolleranza di 2px: esclude filo griglia e micropixel, attiva appena sborda nel quadretto
+            const tX = token.x + inset;
+            const tY = token.y + inset;
+            const tMaxX = token.x + token.width - inset;
+            const tMaxY = token.y + token.height - inset;
+
             for (let i = 0; i < precomputedAuras.length; i++) {
                 const pa = precomputedAuras[i];
                 if (pa.id === token.id) continue;
-                const cx = Math.max(token.x, Math.min(pa.cx, token.x + token.width));
-                const cy = Math.max(token.y, Math.min(pa.cy, token.y + token.height));
+                const cx = Math.max(tX, Math.min(pa.cx, tMaxX));
+                const cy = Math.max(tY, Math.min(pa.cy, tMaxY));
                 const dx = pa.cx - cx;
                 const dy = pa.cy - cy;
                 if ((dx * dx + dy * dy) <= pa.radiusSq) {
@@ -627,8 +740,17 @@ class VTTEngine {
             
             if (token.aura && token.aura.active && token.aura.sizePx > 0) {
                 const auraRadius = token.aura.sizePx;
+                const ext = Math.ceil(auraRadius + 6);
+                const cx = px + sizePx / 2;
+                const cy = py + sizePx / 2;
+                this._dirtyTokenRects.push({
+                    x: Math.floor(cx - ext),
+                    y: Math.floor(cy - ext),
+                    w: ext * 2,
+                    h: ext * 2
+                });
                 ctx.beginPath();
-                ctx.arc(px + sizePx/2, py + sizePx/2, auraRadius, 0, Math.PI * 2);
+                ctx.arc(cx, cy, auraRadius, 0, Math.PI * 2);
                 ctx.fillStyle = token.aura.color + '33'; // 20% opacity
                 ctx.fill();
                 ctx.strokeStyle = token.aura.color;
@@ -640,6 +762,13 @@ class VTTEngine {
         // Draw Tokens
         this.tokens.forEach(token => {
             if (!this.isDM && !token.visible) return;
+
+            this._dirtyTokenRects.push({
+                x: Math.floor(token.x - 16),
+                y: Math.floor(token.y - 16),
+                w: Math.ceil(token.width + 32),
+                h: Math.ceil(token.height + 32)
+            });
 
             if (token.imageObj) {
                 if (this.isDM && !token.visible) {
@@ -663,19 +792,23 @@ class VTTEngine {
                                 
                                 if (!this.tintCanvas) {
                                     this.tintCanvas = document.createElement('canvas');
+                                    this.tintCanvas.width = 512;
+                                    this.tintCanvas.height = 512;
                                     this.tintCtx = this.tintCanvas.getContext('2d');
                                 }
-                                this.tintCanvas.width = token.width;
-                                this.tintCanvas.height = token.height;
-                                this.tintCtx.clearRect(0, 0, token.width, token.height);
-                                this.tintCtx.drawImage(token.imageObj, 0, 0, token.width, token.height);
+                                const tw = Math.min(token.width, 512);
+                                const th = Math.min(token.height, 512);
+                                this.tintCtx.globalCompositeOperation = 'source-over';
+                                this.tintCtx.clearRect(0, 0, tw, th);
+                                this.tintCtx.drawImage(token.imageObj, 0, 0, tw, th);
                                 this.tintCtx.globalCompositeOperation = 'source-in';
                                 this.tintCtx.fillStyle = barColor;
-                                this.tintCtx.fillRect(0, 0, token.width, token.height);
+                                this.tintCtx.fillRect(0, 0, tw, th);
+                                this.tintCtx.globalCompositeOperation = 'source-over';
                                 
                                 ctx.save();
-                                ctx.globalAlpha = 0.35;
-                                ctx.drawImage(this.tintCanvas, token.x, token.y);
+                                ctx.globalAlpha = 0.38;
+                                ctx.drawImage(this.tintCanvas, 0, 0, tw, th, token.x, token.y, token.width, token.height);
                                 ctx.restore();
                             }
                         }
@@ -699,6 +832,25 @@ class VTTEngine {
                 ctx.shadowColor = 'rgba(0,0,0,0.6)';
                 ctx.shadowBlur = 6;
                 ctx.stroke();
+
+                // Velatura per token fallback se feriti e stile Alone abilitato
+                const styleFallback = this.hpDisplayStyle || 'bar';
+                if ((styleFallback === 'aura' || styleFallback === 'both') && (this.isDM || token.hpVisibleToPlayers !== false)) {
+                    if (token.hpMax && token.hpMax > 0 && token.hpCurrent !== undefined && token.hpCurrent !== null && token.hpCurrent > 0) {
+                        const percent = Math.max(0, Math.min(1, token.hpCurrent / token.hpMax));
+                        if (percent < 1.0) {
+                            let fbBarColor = '#4caf50';
+                            if (percent <= 0.66 && percent > 0.33) fbBarColor = '#ffeb3b';
+                            else if (percent <= 0.33) fbBarColor = '#f44336';
+                            ctx.beginPath();
+                            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                            ctx.fillStyle = fbBarColor;
+                            ctx.globalAlpha = 0.38;
+                            ctx.fill();
+                            ctx.globalAlpha = (this.isDM && !token.visible) ? 0.5 : 1.0;
+                        }
+                    }
+                }
 
                 ctx.shadowBlur = 0;
                 ctx.fillStyle = '#ffffff';
@@ -724,21 +876,45 @@ class VTTEngine {
                 ctx.fillText('💀', skullX, skullY);
             }
         });
+    }
 
-        // Draw Overlays: Nome, Barra PV, e Condizioni in PRIMO PIANO
+    renderTokenOverlays() {
+        if (!this.mapImage || !this.ctx.tokenOverlays) return;
+        const ctx = this.ctx.tokenOverlays;
+        this.clearDirtyRects(ctx, this._dirtyOverlayRects, this.layers.tokenOverlays.width, this.layers.tokenOverlays.height);
         this.tokens.forEach(token => {
+            if (!this.isDM && !token.visible) return;
+            const condCount = (token.conditions ? token.conditions.length : 0) + (token.condition && token.condition.active ? 1 : 0) + 1;
+            const ringExt = Math.ceil(token.width / 2 + 36 + condCount * 22);
+            const hExt = Math.max(ringExt, Math.ceil(token.width / 2 + 140));
+            const vExt = Math.max(ringExt, Math.ceil(token.height / 2 + 40));
+            const cx = token.x + token.width / 2;
+            const cy = token.y + token.height / 2;
+            this._dirtyOverlayRects.push({
+                x: Math.floor(cx - hExt),
+                y: Math.floor(cy - vExt),
+                w: hExt * 2,
+                h: vExt * 2
+            });
             this.drawTokenOverlays(ctx, token);
         });
     }
 
     isPointInFog(worldX, worldY) {
         if (!this.mapImage || !this.layers.fog) return false;
-        const x = Math.floor(worldX);
-        const y = Math.floor(worldY);
-        if (x < 0 || y < 0 || x >= this.layers.fog.width || y >= this.layers.fog.height) return false;
+        const fw = this.layers.fog.width;
+        const fh = this.layers.fog.height;
+        if (worldX < 0 || worldY < 0 || worldX >= fw || worldY >= fh) return false;
+        if (this._fogStateAll === 'full') return true;
+        if (this._fogStateAll === 'clear') return false;
+        if (this._fogHitData && fw > 0 && fh > 0) {
+            const hx = Math.min(255, Math.max(0, Math.floor((worldX / fw) * 256)));
+            const hy = Math.min(255, Math.max(0, Math.floor((worldY / fh) * 256)));
+            return this._fogHitData[(hy * 256 + hx) * 4 + 3] > 25;
+        }
         try {
-            const pixel = this.ctx.fog.getImageData(x, y, 1, 1).data;
-            return pixel[3] > 25; // alpha > 10% coperto da nebbia
+            const pixel = this.ctx.fog.getImageData(Math.floor(worldX), Math.floor(worldY), 1, 1).data;
+            return pixel[3] > 25;
         } catch (e) {
             return false;
         }
@@ -747,7 +923,7 @@ class VTTEngine {
     renderTokenEffects() {
         if (!this.mapImage || !this.ctx.tokenEffects) return;
         const ctx = this.ctx.tokenEffects;
-        ctx.clearRect(0, 0, this.layers.tokenEffects.width, this.layers.tokenEffects.height);
+        this.clearDirtyRects(ctx, this._dirtyEffectRects, this.layers.tokenEffects.width, this.layers.tokenEffects.height);
 
         let hasActiveInitiative = (this.initiative && this.initiative.active && this.initiative.participants.length > 0);
         let turnToken = null;
@@ -762,9 +938,13 @@ class VTTEngine {
         }
 
         const hasAoEHighlights = this._tokensWithAoE && this._tokensWithAoE.size > 0;
-        if (turnToken || hasAoEHighlights) {
-            const now = Date.now();
-            const pulse = (Math.sin(now / 200) + 1) / 2; // 0 to 1
+        if (!turnToken && !hasAoEHighlights) {
+            this.renderShapeHandles(ctx);
+            return;
+        }
+
+        const now = Date.now();
+        const pulse = (Math.sin(now / 200) + 1) / 2; // Dissolvenza pulsante fluida da 0 a 1
 
             // Raccogli tutti i token che necessitano di anelli
             const tokensWithRings = new Set();
@@ -782,12 +962,19 @@ class VTTEngine {
                 });
             }
 
-            const useFastNeon = tokensWithRings.size > 8;
+            const useFastNeon = true; // 100% Fast Hardware Neon: zero GPU blur, zero CPU spike, ventole silenziose!
 
             tokensWithRings.forEach(token => {
                 const cx = token.x + token.width / 2;
                 const cy = token.y + token.height / 2;
                 const R = token.width / 2;
+                const ringBoxHalf = Math.ceil(R + 20);
+                this._dirtyEffectRects.push({
+                    x: Math.floor(cx - ringBoxHalf),
+                    y: Math.floor(cy - ringBoxHalf),
+                    w: ringBoxHalf * 2,
+                    h: ringBoxHalf * 2
+                });
                 const isCurrentTurn = (turnToken && turnToken.id === token.id);
                 const aoeColors = (this._tokensWithAoE && this._tokensWithAoE.get(token.id)) || null;
 
@@ -892,14 +1079,30 @@ class VTTEngine {
                     ctx.restore();
                 }
 
-                // 3. OVERLAYS IN PRIMO PIANO: Nome, Barra PV, Condizioni
-                this.drawTokenOverlays(ctx, token);
             });
-        }
 
         // 4. BADGE E MANIGLIE AoE: Disegnati su layer tokenEffects (livello 5)
         // Più in alto dei token (livello 4), MA sotto la nebbia (livello 6)!
         this.renderShapeHandles(ctx);
+    }
+
+    isTokenControlledByLocalPlayer(token) {
+        if (!token) return false;
+        if (typeof window.isTokenOwnedByLocalPlayer === 'function') {
+            if (window.isTokenOwnedByLocalPlayer(token)) return true;
+        }
+        const myName = String(this.localPlayerName || (typeof network !== 'undefined' && network ? network.playerName : '') || '').trim().toLowerCase();
+        if (!myName) return false;
+        if (Array.isArray(token.owners) && token.owners.length > 0) {
+            if (token.owners.some(o => String(o).trim().toLowerCase() === myName)) return true;
+        }
+        if (token.owner && typeof token.owner === 'string' && token.owner.trim().toLowerCase() === myName) {
+            return true;
+        }
+        if ((token.isEvocation || token.category === 'evocazioni') && token.evokerName && String(token.evokerName).trim().toLowerCase() === myName) {
+            return true;
+        }
+        return false;
     }
 
     drawTokenOverlays(ctx, token) {
@@ -917,14 +1120,19 @@ class VTTEngine {
             if (canShowName && displayName) {
                 ctx.save();
                 
+                // Calcolo dinamico dimensione testo per massima leggibilità
+                let fontSize = (token.width >= 90) ? 14 : 13;
+                ctx.font = `bold ${fontSize}px Arial`;
+                const measuredNameW = ctx.measureText(displayName).width;
+                const maxBadgeW = Math.max(token.width - 4, Math.min(token.width + 60, Math.ceil(measuredNameW + 16)));
                 const badgeH = 18;
-                const badgeW = token.width - 4;
-                const badgeX = token.x + 2;
+                const badgeW = maxBadgeW;
+                const badgeX = Math.round(token.x + (token.width - badgeW) / 2);
                 const badgeY = token.y + 2; // In cima, dentro al riquadro
 
                 // Sfondo barra superiore
                 const isDMOnly = (this.isDM && nameVis === 'dm');
-                ctx.fillStyle = isDMOnly ? 'rgba(45, 15, 60, 0.88)' : 'rgba(0, 0, 0, 0.75)';
+                ctx.fillStyle = isDMOnly ? 'rgba(45, 15, 60, 0.92)' : 'rgba(0, 0, 0, 0.82)';
 
                 ctx.beginPath();
                 if (ctx.roundRect) {
@@ -934,18 +1142,24 @@ class VTTEngine {
                 }
                 ctx.fill();
 
-                ctx.strokeStyle = isDMOnly ? '#ba68c8' : 'rgba(255, 255, 255, 0.25)';
+                ctx.strokeStyle = isDMOnly ? '#ba68c8' : 'rgba(255, 255, 255, 0.3)';
                 ctx.lineWidth = 1;
                 ctx.stroke();
 
-                // Calcolo dinamico dimensione testo per massima leggibilità
-                let fontSize = 14;
-                ctx.font = `bold ${fontSize}px Arial`;
                 const maxTextW = badgeW - 6;
-                while (ctx.measureText(displayName).width > maxTextW && fontSize > 9) {
-                    fontSize--;
-                    ctx.font = `bold ${fontSize}px Arial`;
+                if (token._cachedDisplayName !== displayName || token._cachedBadgeW !== badgeW) {
+                    let fSize = fontSize;
+                    ctx.font = `bold ${fSize}px Arial`;
+                    while (ctx.measureText(displayName).width > maxTextW && fSize > 9) {
+                        fSize--;
+                        ctx.font = `bold ${fSize}px Arial`;
+                    }
+                    token._cachedDisplayName = displayName;
+                    token._cachedBadgeW = badgeW;
+                    token._cachedFontSize = fSize;
                 }
+                fontSize = token._cachedFontSize || fontSize;
+                ctx.font = `bold ${fontSize}px Arial`;
 
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
@@ -958,16 +1172,72 @@ class VTTEngine {
                 ctx.fillStyle = isDMOnly ? '#f3e5f5' : '#ffffff';
                 ctx.fillText(displayName, token.x + token.width / 2, badgeY + badgeH / 2 + 1);
                 ctx.restore();
+
+                // Sottotitolo per evocazioni: "✦ di [Nome Evocatore]" (CHIARO, GRANDE E AD ALTO CONTRASTO)
+                if (token.evokerName || (token.category === 'evocazioni' && token.owner)) {
+                    const evoker = token.evokerName || token.owner;
+                    const tLeft = (token.durationRounds !== undefined && Number(token.durationRounds) > 0)
+                        ? (token.roundsLeft !== undefined ? token.roundsLeft : token.durationRounds)
+                        : null;
+                    const subText = tLeft !== null ? `✦ di ${evoker} (⏳${tLeft}r)` : `✦ di ${evoker}`;
+                    ctx.save();
+                    
+                    let subFontSize = (token.width >= 90) ? 12.5 : 11.5;
+                    ctx.font = `bold ${subFontSize}px Arial, sans-serif`;
+                    if (token._cachedSubText !== subText || token._cachedSubTokenW !== token.width) {
+                        const measuredW = ctx.measureText(subText).width;
+                        const subH = (token.width >= 90) ? 18 : 16;
+                        const maxSubW = Math.max(token.width + 80, 220);
+                        token._cachedSubW = Math.min(maxSubW, Math.max(Math.round(token.width * 0.85), Math.ceil(measuredW + 18)));
+                        token._cachedSubH = subH;
+                        token._cachedSubText = subText;
+                        token._cachedSubTokenW = token.width;
+                    }
+                    const subW = token._cachedSubW;
+                    const subH = token._cachedSubH || ((token.width >= 90) ? 18 : 16);
+                    const subX = Math.round(token.x + (token.width - subW) / 2);
+                    const subY = badgeY + badgeH + 2;
+
+                    ctx.fillStyle = 'rgba(12, 10, 22, 0.94)';
+                    ctx.beginPath();
+                    if (ctx.roundRect) {
+                        ctx.roundRect(subX, subY, subW, subH, 3.5);
+                    } else {
+                        ctx.rect(subX, subY, subW, subH);
+                    }
+                    ctx.fill();
+
+                    // Bordo dorato/viola luminoso
+                    ctx.strokeStyle = '#b388ff';
+                    ctx.lineWidth = 1.2;
+                    ctx.stroke();
+
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    
+                    // Contorno nero marcato 3.5px per massima chiarezza e contrasto
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 3.5;
+                    ctx.strokeText(subText, token.x + token.width / 2, subY + subH / 2 + 0.5);
+                    
+                    // Testo ORO LUMINOSO / AMBRA (#ffe082) - sempre nitido e perfettamente leggibile sia per GM che per Player!
+                    ctx.fillStyle = '#ffe082';
+                    ctx.fillText(subText, token.x + token.width / 2, subY + subH / 2 + 0.5);
+                    ctx.restore();
+                }
             }
 
             // 2. Health Bar (ZONA BASSA)
+            const isControlledByMe = !this.isDM && this.isTokenControlledByLocalPlayer(token);
+            const showDetailedHp = this.isDM || isControlledByMe;
             const hpStyle = this.hpDisplayStyle || 'bar';
-            const showBar = this.isDM || hpStyle === 'bar' || hpStyle === 'both';
+            const showBar = isControlledByMe || hpStyle === 'bar' || hpStyle === 'both';
             
             if (showBar && token.hpMax && token.hpMax > 0) {
-                if (this.isDM || token.hpVisibleToPlayers !== false) {
+                if (showDetailedHp || token.hpVisibleToPlayers !== false) {
                     const hpMax = token.hpMax;
                     const hpCurr = token.hpCurrent || 0;
+                    const hpTemp = Math.max(0, parseInt(token.hpTemp) || (token.pcSheet && parseInt(token.pcSheet.hpTemp)) || 0);
                     const percent = Math.max(0, Math.min(1, hpCurr / hpMax));
                     
                     let barColor = '#9e9e9e'; // Grigiastra (morto)
@@ -978,19 +1248,18 @@ class VTTEngine {
                     }
                     if (percent >= 1.0) barColor = '#00bcd4'; // Celeste
                     
-                    const isDMBar = this.isDM;
-                    const barHeight = isDMBar ? 16 : 10;
+                    const barHeight = showDetailedHp ? 16 : 10;
                     const barY = token.y + token.height - barHeight - 3;
                     
-                    const text = `${hpCurr}/${hpMax}`;
+                    const text = hpTemp > 0 ? `${hpCurr}/${hpMax} (+${hpTemp})` : `${hpCurr}/${hpMax}`;
                     const fontSize = Math.max(10, Math.min(12, Math.round(barHeight * 0.72)));
                     ctx.font = `bold ${fontSize}px Arial, sans-serif`;
                     const textW = ctx.measureText(text).width;
                     
                     // Capsula compatta ed agile: larghezza calibrata per ospitare comodamente gli HP
-                    const desiredW = isDMBar ? Math.round(textW + 24) : Math.round(Math.min(token.width * 0.55, 60));
-                    const maxBarW = Math.max(30, token.width - 8);
-                    const barWidth = Math.min(Math.max(desiredW, isDMBar ? 50 : 36), maxBarW);
+                    const desiredW = showDetailedHp ? Math.round(textW + 20) : Math.round(Math.min(token.width * 0.55, 60));
+                    const maxBarW = Math.max(30, hpTemp > 0 ? token.width + 12 : token.width - 4);
+                    const barWidth = Math.min(Math.max(desiredW, showDetailedHp ? 50 : 36), maxBarW);
                     const barX = Math.round(token.x + (token.width - barWidth) / 2);
                     const barRadius = Math.round(barHeight / 2);
                     
@@ -1010,7 +1279,7 @@ class VTTEngine {
                     ctx.fill();
                     ctx.restore();
                     
-                    // 2. Clip per il riempimento progressivo arrotondato ai bordi
+                    // 2. Clip per il riempimento progressivo arrotondato ai bordi + indicatore blu PV Temp
                     ctx.save();
                     ctx.beginPath();
                     if (ctx.roundRect) {
@@ -1020,31 +1289,40 @@ class VTTEngine {
                     }
                     ctx.clip();
                     
-                    if (this.isDM) {
-                        const fillWidth = barWidth * percent;
+                    if (hpTemp > 0) {
+                        const totalEffectiveMax = Math.max(hpMax, hpCurr + hpTemp);
+                        const tempRatio = Math.max(0.18, Math.min(0.65, hpTemp / totalEffectiveMax));
+                        const tempWidth = Math.max(8, Math.round(barWidth * tempRatio));
+                        const maxNormalWidth = Math.max(0, barWidth - tempWidth);
+                        const fillWidth = Math.min(maxNormalWidth, Math.round(barWidth * percent));
                         if (fillWidth > 0) {
                             ctx.fillStyle = barColor;
                             ctx.fillRect(barX, barY, fillWidth, barHeight);
                         }
+                        ctx.fillStyle = '#2979ff';
+                        ctx.fillRect(barX + fillWidth, barY, tempWidth, barHeight);
                     } else {
-                        ctx.fillStyle = barColor;
-                        ctx.fillRect(barX, barY, barWidth, barHeight);
+                        const fillWidth = showDetailedHp ? (barWidth * percent) : (barWidth * percent);
+                        if (fillWidth > 0) {
+                            ctx.fillStyle = barColor;
+                            ctx.fillRect(barX, barY, fillWidth, barHeight);
+                        }
                     }
                     ctx.restore();
                     
-                    // 3. Bordo sottile di rifinitura per la capsula
+                    // 3. Bordo sottile di rifinitura per la capsula (azzurro/blu vivo se ha PV Temp!)
                     ctx.beginPath();
                     if (ctx.roundRect) {
                         ctx.roundRect(barX, barY, barWidth, barHeight, barRadius);
                     } else {
                         ctx.rect(barX, barY, barWidth, barHeight);
                     }
-                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
-                    ctx.lineWidth = 1.5;
+                    ctx.strokeStyle = hpTemp > 0 ? '#00e5ff' : 'rgba(0, 0, 0, 0.75)';
+                    ctx.lineWidth = hpTemp > 0 ? 2 : 1.5;
                     ctx.stroke();
                     
-                    // 4. Testo HP centrato (DM View)
-                    if (this.isDM) {
+                    // 4. Testo HP centrato (DM View + Personaggio del Giocatore e le sue Evocazioni!)
+                    if (showDetailedHp) {
                         ctx.fillStyle = '#ffffff';
                         ctx.font = `bold ${fontSize}px Arial, sans-serif`;
                         ctx.textAlign = 'center';
@@ -1066,9 +1344,12 @@ class VTTEngine {
                 rawConditions = [token.condition];
             }
 
-            // Se il token ha un'Aura a tempo attiva, aggiungi il badge dell'Aura
+            // Se il token ha un'Aura a tempo attiva o una Durata Token attiva, aggiungi il relativo badge
             const hasAuraTimer = token.aura && token.aura.active && token.aura.durationRounds > 0;
             const auraRoundsLeft = hasAuraTimer ? (token.aura.roundsLeft !== undefined ? token.aura.roundsLeft : token.aura.durationRounds) : null;
+            const hasEvokerSubtitle = (canShowName && displayName) && !!(token.evokerName || (token.category === 'evocazioni' && token.owner));
+            const hasTokenTimer = !hasEvokerSubtitle && token.durationRounds !== undefined && Number(token.durationRounds) > 0;
+            const tokenRoundsLeft = hasTokenTimer ? (token.roundsLeft !== undefined ? token.roundsLeft : token.durationRounds) : null;
 
             let activeConditions = rawConditions.slice();
             if (hasAuraTimer) {
@@ -1078,125 +1359,140 @@ class VTTEngine {
                     isAuraTimer: true
                 });
             }
+            if (hasTokenTimer) {
+                activeConditions.unshift({
+                    text: `⏳ ${tokenRoundsLeft}r`,
+                    color: '#b388ff',
+                    isAuraTimer: true
+                });
+            }
             
             if (activeConditions.length > 0) {
                 const cx = px + sizePx/2;
                 const cy = py + sizePx/2;
-                const style = this.conditionDisplayStyle || 'concentric';
+                let style = this.conditionDisplayStyle || 'concentric';
+                if (token.isEvocation || token.category === 'evocazioni') {
+                    style = 'pills';
+                }
                 const ringConditions = activeConditions.filter(c => !c.isAuraTimer);
                 
-                // A) Anelli Concentrici / Spicchi
+                // A) Anelli Concentrici / Spicchi (con Cache Offscreen per fluidità assoluta e zero lag!)
                 if ((style === 'concentric' || style === 'segmented') && ringConditions.length > 0) {
-                    ctx.save();
-                    ctx.translate(cx, cy);
-                    
-                    if (style === 'concentric') {
-                        ringConditions.forEach((cond, index) => {
-                            const condRadius = sizePx/2 + 10 + (index * 20); // Ogni anello è più largo di 20px
-                            
-                            // Anello
-                            ctx.beginPath();
-                            ctx.arc(0, 0, condRadius, 0, Math.PI * 2);
-                            ctx.strokeStyle = cond.color;
-                            ctx.lineWidth = 4;
-                            ctx.stroke();
-                            
-                            // Testo curvo
-                            let text = (cond.text || "CONDIZIONE").toUpperCase() + "  •  ";
-                            ctx.font = `bold 16px Arial`;
-                            ctx.fillStyle = "white";
-                            ctx.strokeStyle = "black";
-                            ctx.lineWidth = 3;
-                            ctx.textBaseline = "middle";
-                            ctx.textAlign = "center";
-                            
-                            const textWidth = ctx.measureText(text).width;
+                    const cacheKey = `${style}_${sizePx}_` + ringConditions.map(c => `${c.text || ''}|${c.color || ''}`).join(';');
+                    const maxRingRadius = (style === 'concentric')
+                        ? (sizePx / 2 + 10 + ((ringConditions.length - 1) * 20))
+                        : (sizePx / 2 + 10);
+                    const halfSide = Math.ceil(maxRingRadius + 22);
+                    const side = halfSide * 2;
+
+                    if (token._condRingCacheKey !== cacheKey || !token._condRingCacheCanvas) {
+                        if (!token._condRingCacheCanvas) {
+                            token._condRingCacheCanvas = document.createElement('canvas');
+                        }
+                        token._condRingCacheCanvas.width = side;
+                        token._condRingCacheCanvas.height = side;
+                        const rCtx = token._condRingCacheCanvas.getContext('2d');
+                        rCtx.clearRect(0, 0, side, side);
+                        rCtx.save();
+                        rCtx.translate(halfSide, halfSide);
+
+                        if (style === 'concentric') {
+                            ringConditions.forEach((cond, index) => {
+                                const condRadius = sizePx / 2 + 10 + (index * 20);
+                                rCtx.beginPath();
+                                rCtx.arc(0, 0, condRadius, 0, Math.PI * 2);
+                                rCtx.strokeStyle = cond.color;
+                                rCtx.lineWidth = 4;
+                                rCtx.stroke();
+
+                                let text = (cond.text || "CONDIZIONE").toUpperCase() + "  •  ";
+                                rCtx.font = `bold 16px Arial`;
+                                rCtx.fillStyle = "white";
+                                rCtx.strokeStyle = "black";
+                                rCtx.lineWidth = 3;
+                                rCtx.textBaseline = "middle";
+                                rCtx.textAlign = "center";
+
+                                const textWidth = rCtx.measureText(text).width;
+                                const circumference = 2 * Math.PI * condRadius;
+                                let repeats = Math.floor(circumference / (textWidth + 15));
+                                if (repeats < 1) repeats = 1;
+                                const arcPerRepeat = (2 * Math.PI) / repeats;
+
+                                for (let r = 0; r < repeats; r++) {
+                                    let currentAngle = -Math.PI / 2 + r * arcPerRepeat;
+                                    for (let i = 0; i < text.length; i++) {
+                                        const char = text[i];
+                                        const charWidth = rCtx.measureText(char).width;
+                                        const angle = charWidth / condRadius;
+                                        rCtx.save();
+                                        rCtx.rotate(currentAngle + angle / 2);
+                                        rCtx.translate(0, -condRadius);
+                                        rCtx.strokeText(char, 0, 0);
+                                        rCtx.fillText(char, 0, 0);
+                                        rCtx.restore();
+                                        currentAngle += angle;
+                                    }
+                                }
+                            });
+                        } else if (style === 'segmented') {
+                            const condRadius = sizePx / 2 + 10;
+                            const numConds = ringConditions.length;
+                            const arcLen = (2 * Math.PI) / numConds;
+
+                            for (let i = 0; i < numConds; i++) {
+                                rCtx.beginPath();
+                                rCtx.arc(0, 0, condRadius, i * arcLen, (i + 1) * arcLen);
+                                rCtx.strokeStyle = ringConditions[i].color;
+                                rCtx.lineWidth = 4;
+                                rCtx.stroke();
+                            }
+
+                            let text = ringConditions.map(c => (c.text || "").toUpperCase()).join(" • ") + " • ";
+                            rCtx.font = `bold 16px Arial`;
+                            rCtx.fillStyle = "white";
+                            rCtx.strokeStyle = "black";
+                            rCtx.lineWidth = 3;
+                            rCtx.textBaseline = "middle";
+                            rCtx.textAlign = "center";
+
+                            const textWidth = rCtx.measureText(text).width;
                             const circumference = 2 * Math.PI * condRadius;
-                            
                             let repeats = Math.floor(circumference / (textWidth + 15));
                             if (repeats < 1) repeats = 1;
-                            
                             const arcPerRepeat = (2 * Math.PI) / repeats;
-                            
+
                             for (let r = 0; r < repeats; r++) {
                                 let currentAngle = -Math.PI / 2 + r * arcPerRepeat;
-                                
                                 for (let i = 0; i < text.length; i++) {
                                     const char = text[i];
-                                    const charWidth = ctx.measureText(char).width;
+                                    const charWidth = rCtx.measureText(char).width;
                                     const angle = charWidth / condRadius;
-                                    
-                                    ctx.save();
-                                    ctx.rotate(currentAngle + angle/2);
-                                    ctx.translate(0, -condRadius);
-                                    ctx.strokeText(char, 0, 0);
-                                    ctx.fillText(char, 0, 0);
-                                    ctx.restore();
-                                    
+                                    rCtx.save();
+                                    rCtx.rotate(currentAngle + angle / 2);
+                                    rCtx.translate(0, -condRadius);
+                                    rCtx.strokeText(char, 0, 0);
+                                    rCtx.fillText(char, 0, 0);
+                                    rCtx.restore();
                                     currentAngle += angle;
                                 }
                             }
-                        });
-                    } else if (style === 'segmented') {
-                        const condRadius = sizePx/2 + 10;
-                        const numConds = ringConditions.length;
-                        const arcLen = (2 * Math.PI) / numConds;
-                        
-                        // Disegna gli spicchi colorati
-                        for (let i = 0; i < numConds; i++) {
-                            ctx.beginPath();
-                            ctx.arc(0, 0, condRadius, i * arcLen, (i + 1) * arcLen);
-                            ctx.strokeStyle = ringConditions[i].color;
-                            ctx.lineWidth = 4;
-                            ctx.stroke();
                         }
-                        
-                        // Testo curvo unito
-                        let text = ringConditions.map(c => (c.text || "").toUpperCase()).join(" • ") + " • ";
-                        ctx.font = `bold 16px Arial`;
-                        ctx.fillStyle = "white";
-                        ctx.strokeStyle = "black";
-                        ctx.lineWidth = 3;
-                        ctx.textBaseline = "middle";
-                        ctx.textAlign = "center";
-                        
-                        const textWidth = ctx.measureText(text).width;
-                        const circumference = 2 * Math.PI * condRadius;
-                        
-                        let repeats = Math.floor(circumference / (textWidth + 15));
-                        if (repeats < 1) repeats = 1;
-                        
-                        const arcPerRepeat = (2 * Math.PI) / repeats;
-                        
-                        for (let r = 0; r < repeats; r++) {
-                            let currentAngle = -Math.PI / 2 + r * arcPerRepeat;
-                            
-                            for (let i = 0; i < text.length; i++) {
-                                const char = text[i];
-                                const charWidth = ctx.measureText(char).width;
-                                const angle = charWidth / condRadius;
-                                    
-                                ctx.save();
-                                ctx.rotate(currentAngle + angle/2);
-                                ctx.translate(0, -condRadius);
-                                ctx.strokeText(char, 0, 0);
-                                ctx.fillText(char, 0, 0);
-                                ctx.restore();
-                                
-                                currentAngle += angle;
-                            }
-                        }
+                        rCtx.restore();
+                        token._condRingCacheKey = cacheKey;
+                        token._condRingCacheHalf = halfSide;
                     }
-                    
-                    ctx.restore();
+
+                    const hSide = token._condRingCacheHalf || halfSide;
+                    ctx.drawImage(token._condRingCacheCanvas, Math.round(cx - hSide), Math.round(cy - hSide));
                 }
 
                 // B) Pillole con Nome (es. [ Prono ]) - Ancorate sopra la vita / sotto il nome
                 if (style === 'pills') {
-                    const hasHpBar = (this.isDM || hpStyle === 'bar' || hpStyle === 'both') && 
+                    const hasHpBar = (showDetailedHp || hpStyle === 'bar' || hpStyle === 'both') && 
                                      token.hpMax && token.hpMax > 0 && 
-                                     (this.isDM || token.hpVisibleToPlayers !== false);
-                    const barHeight = this.isDM ? 16 : 10;
+                                     (showDetailedHp || token.hpVisibleToPlayers !== false);
+                    const barHeight = showDetailedHp ? 16 : 10;
                     const barTopY = hasHpBar ? (py + sizePx - barHeight - 3) : (py + sizePx - 2);
 
                     const canShowName = (this.isDM || token.nameVisibleToPlayers !== false) && token.name && token.name.trim() !== '';
@@ -1213,7 +1509,13 @@ class VTTEngine {
                     };
 
                     const pillItems = activeConditions.map(cond => {
-                        const labelText = formatTitleCase(cond.text || cond.type);
+                        let labelText = formatTitleCase(cond.text || cond.type);
+                        if (!cond.isAuraTimer) {
+                            const cRounds = cond.roundsLeft !== undefined ? cond.roundsLeft : cond.durationRounds;
+                            if (cRounds !== undefined && cRounds !== null && Number(cRounds) > 0) {
+                                labelText += ` ⏳${cRounds}`;
+                            }
+                        }
                         const textW = ctx.measureText(labelText).width;
                         const padX = Math.max(6, Math.round(pillH * 0.35));
                         const w = Math.round(textW + (padX * 2));
@@ -1307,51 +1609,78 @@ class VTTEngine {
 
                     drawPillRow(bottomRow, bottomRowY);
                     drawPillRow(topRow, topRowY);
-                } else if (hasAuraTimer) {
-                    // Se lo stile condizioni è concentric o segmented, mostra comunque la pillola dell'Aura sopra la barra PV
-                    const hasHpBar = (this.isDM || hpStyle === 'bar' || hpStyle === 'both') && 
-                                     token.hpMax && token.hpMax > 0 && 
-                                     (this.isDM || token.hpVisibleToPlayers !== false);
-                    const barHeight = this.isDM ? 16 : 10;
-                    const barTopY = hasHpBar ? (py + sizePx - barHeight - 3) : (py + sizePx - 2);
-                    const pillH = Math.max(16, Math.min(22, Math.round(sizePx * 0.20)));
-                    const fontSize = Math.max(9, Math.min(12, Math.round(pillH * 0.58)));
-                    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-                    const labelText = `⏳ ${auraRoundsLeft}`;
-                    const textW = ctx.measureText(labelText).width;
-                    const padX = Math.max(6, Math.round(pillH * 0.35));
-                    const pillW = Math.round(textW + (padX * 2));
-                    const pillX = Math.round(px + (sizePx / 2) - (pillW / 2));
-                    const pillY = barTopY - pillH - 1;
-                    const pillRadius = Math.round(pillH / 2);
+                } else {
+                    // Se lo stile condizioni è concentric o segmented, mostra comunque le pillole dei timer (Token, Aura o Condizioni a tempo) sopra la barra PV
+                    const timedBadges = [];
+                    if (hasTokenTimer) {
+                        timedBadges.push({ label: `⏳ ${tokenRoundsLeft}r`, color: '#b388ff' });
+                    }
+                    if (hasAuraTimer) {
+                        timedBadges.push({ label: `⏳ ${auraRoundsLeft}`, color: token.aura.color || '#ffee58' });
+                    }
+                    ringConditions.forEach(cond => {
+                        const cRounds = cond.roundsLeft !== undefined ? cond.roundsLeft : cond.durationRounds;
+                        if (cRounds !== undefined && cRounds !== null && Number(cRounds) > 0) {
+                            timedBadges.push({ label: `⏳ ${cRounds}`, color: cond.color || '#00bcd4' });
+                        }
+                    });
 
-                    ctx.save();
-                    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-                    ctx.shadowBlur = 4;
-                    ctx.shadowOffsetY = 1;
+                    if (timedBadges.length > 0) {
+                        const hasHpBar = (showDetailedHp || hpStyle === 'bar' || hpStyle === 'both') && 
+                                         token.hpMax && token.hpMax > 0 && 
+                                         (showDetailedHp || token.hpVisibleToPlayers !== false);
+                        const barHeight = showDetailedHp ? 16 : 10;
+                        const barTopY = hasHpBar ? (py + sizePx - barHeight - 3) : (py + sizePx - 2);
+                        const pillH = Math.max(16, Math.min(22, Math.round(sizePx * 0.20)));
+                        const fontSize = Math.max(9, Math.min(12, Math.round(pillH * 0.58)));
+                        ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+                        const padX = Math.max(6, Math.round(pillH * 0.35));
+                        const gap = 3;
 
-                    ctx.beginPath();
-                    if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillW, pillH, pillRadius);
-                    else ctx.rect(pillX, pillY, pillW, pillH);
-                    ctx.fillStyle = '#141414';
-                    ctx.fill();
-                    ctx.restore();
+                        const items = timedBadges.map(b => {
+                            const w = Math.round(ctx.measureText(b.label).width + (padX * 2));
+                            return { ...b, w };
+                        });
+                        const totalW = items.reduce((s, it) => s + it.w, 0) + ((items.length - 1) * gap);
+                        let startX = px + (sizePx / 2) - (totalW / 2);
+                        const pillY = barTopY - pillH - 1;
+                        const pillRadius = Math.round(pillH / 2);
 
-                    ctx.beginPath();
-                    if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillW, pillH, pillRadius);
-                    else ctx.rect(pillX, pillY, pillW, pillH);
-                    ctx.strokeStyle = token.aura.color || '#ffee58';
-                    ctx.lineWidth = 2.2;
-                    ctx.stroke();
+                        items.forEach(it => {
+                            const pillX = Math.round(startX);
+                            const pillW = it.w;
 
-                    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.strokeStyle = '#000000';
-                    ctx.lineWidth = 2.5;
-                    ctx.strokeText(labelText, pillX + (pillW / 2), pillY + (pillH / 2) + 0.5);
-                    ctx.fillStyle = '#ffffff';
-                    ctx.fillText(labelText, pillX + (pillW / 2), pillY + (pillH / 2) + 0.5);
+                            ctx.save();
+                            ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+                            ctx.shadowBlur = 4;
+                            ctx.shadowOffsetY = 1;
+
+                            ctx.beginPath();
+                            if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillW, pillH, pillRadius);
+                            else ctx.rect(pillX, pillY, pillW, pillH);
+                            ctx.fillStyle = '#141414';
+                            ctx.fill();
+                            ctx.restore();
+
+                            ctx.beginPath();
+                            if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillW, pillH, pillRadius);
+                            else ctx.rect(pillX, pillY, pillW, pillH);
+                            ctx.strokeStyle = it.color;
+                            ctx.lineWidth = 2.2;
+                            ctx.stroke();
+
+                            ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.strokeStyle = '#000000';
+                            ctx.lineWidth = 2.5;
+                            ctx.strokeText(it.label, pillX + (pillW / 2), pillY + (pillH / 2) + 0.5);
+                            ctx.fillStyle = '#ffffff';
+                            ctx.fillText(it.label, pillX + (pillW / 2), pillY + (pillH / 2) + 0.5);
+
+                            startX += pillW + gap;
+                        });
+                    }
                 }
             }
 
@@ -1364,26 +1693,43 @@ class VTTEngine {
     }
 
     renderDrawings() {
-        this.drawStrokes(this.ctx.drawPublic, this.publicStrokes);
+        if (!this.mapImage) return;
+        const w = this.mapImage.width;
+        const h = this.mapImage.height;
+
+        if (this.publicStrokes && this.publicStrokes.length > 0) {
+            this.ensureLayerSize('drawPublic');
+            this.ctx.drawPublic.clearRect(0, 0, w, h);
+            this.drawStrokes(this.ctx.drawPublic, this.publicStrokes);
+        } else if (this.layers.drawPublic.width > 1) {
+            this.ctx.drawPublic.clearRect(0, 0, this.layers.drawPublic.width, this.layers.drawPublic.height);
+        }
+
         if (this.isDM) {
-            this.drawStrokes(this.ctx.drawPrivate, this.privateStrokes);
-            
-            for (const note of this.notes) {
-                const nx = note.x;
-                const ny = note.y;
+            const hasPriv = (this.privateStrokes && this.privateStrokes.length > 0) || (this.notes && this.notes.length > 0);
+            if (hasPriv) {
+                this.ensureLayerSize('drawPrivate');
+                this.ctx.drawPrivate.clearRect(0, 0, w, h);
+                this.drawStrokes(this.ctx.drawPrivate, this.privateStrokes);
                 
-                // Icona Pin (Coordinate nel mondo, non serve moltiplicare per scale perché il canvas bg/drawPrivate non sono scalati!)
-                this.ctx.drawPrivate.fillStyle = '#ffcc00';
-                this.ctx.drawPrivate.fillRect(nx - 15, ny - 15, 30, 30);
-                this.ctx.drawPrivate.strokeStyle = 'black';
-                this.ctx.drawPrivate.lineWidth = 2;
-                this.ctx.drawPrivate.strokeRect(nx - 15, ny - 15, 30, 30);
-                
-                this.ctx.drawPrivate.fillStyle = 'black';
-                this.ctx.drawPrivate.font = 'bold 20px Arial';
-                this.ctx.drawPrivate.textAlign = 'center';
-                this.ctx.drawPrivate.textBaseline = 'middle';
-                this.ctx.drawPrivate.fillText('N', nx, ny);
+                for (const note of this.notes) {
+                    const nx = note.x;
+                    const ny = note.y;
+                    
+                    this.ctx.drawPrivate.fillStyle = '#ffcc00';
+                    this.ctx.drawPrivate.fillRect(nx - 15, ny - 15, 30, 30);
+                    this.ctx.drawPrivate.strokeStyle = 'black';
+                    this.ctx.drawPrivate.lineWidth = 2;
+                    this.ctx.drawPrivate.strokeRect(nx - 15, ny - 15, 30, 30);
+                    
+                    this.ctx.drawPrivate.fillStyle = 'black';
+                    this.ctx.drawPrivate.font = 'bold 20px Arial';
+                    this.ctx.drawPrivate.textAlign = 'center';
+                    this.ctx.drawPrivate.textBaseline = 'middle';
+                    this.ctx.drawPrivate.fillText('N', nx, ny);
+                }
+            } else if (this.layers.drawPrivate.width > 1) {
+                this.ctx.drawPrivate.clearRect(0, 0, this.layers.drawPrivate.width, this.layers.drawPrivate.height);
             }
         }
     }
@@ -1405,16 +1751,27 @@ class VTTEngine {
         });
     }
 
-    renderUI() {
-        const ctx = this.ctx.ui;
-        ctx.clearRect(0, 0, this.layers.ui.width, this.layers.ui.height);
-
+    renderUI(fromAnimLoop = false) {
         const now = Date.now();
         let hasActivePings = false;
         let hasActiveLasers = false;
         
         if (!this.lasers) this.lasers = [];
         
+        // Controlla se ci sono elementi attivi sul layer UI prima di pulire
+        const hasLaserPoints = this.lasers.some(l => l.active || (l.points && l.points.length > 0));
+        const hasPingPoints = this.pings && this.pings.length > 0;
+        const hasUiDrawings = hasLaserPoints || hasPingPoints || this.lasso || this.ruler || this.brushPreview;
+        const ctx = this.ctx.ui;
+
+        if (hasUiDrawings) {
+            ctx.clearRect(0, 0, this.layers.ui.width, this.layers.ui.height);
+            this._uiCanvasClean = false;
+        } else if (!this._uiCanvasClean) {
+            ctx.clearRect(0, 0, this.layers.ui.width, this.layers.ui.height);
+            this._uiCanvasClean = true;
+        }
+
         for (let i = this.lasers.length - 1; i >= 0; i--) {
             const laser = this.lasers[i];
             // Rimuovi punti vecchi di 5 secondi
@@ -1504,8 +1861,11 @@ class VTTEngine {
         let hasActiveInitiative = (this.initiative && this.initiative.active && this.initiative.participants.length > 0);
         const hasAoEHighlights = this._tokensWithAoE && this._tokensWithAoE.size > 0;
 
-        // Disegna anelli Turno (verde, interno), AoE e Overlays su layer tokenEffects (sotto la nebbia!)
-        this.renderTokenEffects();
+        // Disegna anelli Turno (verde, interno), AoE e Overlays su layer tokenEffects solo durante il loop di animazione
+        // (renderTokensLayer e renderAll chiamano già renderTokenEffects direttamente, evitando doppi ridisegni su drag/pan/zoom!)
+        if (fromAnimLoop && (hasActiveInitiative || hasAoEHighlights)) {
+            this.renderTokenEffects();
+        }
 
         if (this.lasso) {
             ctx.strokeStyle = 'rgba(0, 153, 255, 0.8)';
@@ -1519,11 +1879,22 @@ class VTTEngine {
             ctx.strokeRect(x, y, w, h);
         }
         
+        // Loop di animazione UI a 30fps: fluidità perfetta per l'occhio, ventole spente, zero lag su mouse e RAM stabile
         if (hasActivePings || hasActiveInitiative || hasActiveLasers || hasAoEHighlights) {
             if (!this._uiAnimFrameId) {
                 this._uiAnimFrameId = requestAnimationFrame(() => {
                     this._uiAnimFrameId = null;
-                    this.renderUI();
+                    const curTime = Date.now();
+                    if (!this._lastUiAnimTime || (curTime - this._lastUiAnimTime >= 30)) {
+                        this._lastUiAnimTime = curTime;
+                        this.renderUI(true);
+                    } else {
+                        this._uiAnimFrameId = requestAnimationFrame(() => {
+                            this._uiAnimFrameId = null;
+                            this._lastUiAnimTime = Date.now();
+                            this.renderUI(true);
+                        });
+                    }
                 });
             }
         }
@@ -1586,12 +1957,16 @@ class VTTEngine {
         const ctx = this.ctx.fog;
         ctx.fillStyle = 'black';
         ctx.fillRect(0, 0, this.layers.fog.width, this.layers.fog.height);
+        this._fogStateAll = 'full';
+        this._fogHitData = null;
     }
 
     clearFog() {
         if (!this.mapImage) return;
         const ctx = this.ctx.fog;
         ctx.clearRect(0, 0, this.layers.fog.width, this.layers.fog.height);
+        this._fogStateAll = 'clear';
+        this._fogHitData = null;
     }
 
     drawFogStroke(points, isErase, shape = 'circle', size = 150) {
@@ -1618,6 +1993,7 @@ class VTTEngine {
         }
         
         ctx.globalCompositeOperation = 'source-over';
+        this._fogStateAll = 'mixed';
     }
 
     applyFogImage(base64Image) {
@@ -1629,6 +2005,24 @@ class VTTEngine {
                 const ctx = this.ctx.fog;
                 ctx.clearRect(0, 0, this.layers.fog.width, this.layers.fog.height);
                 ctx.drawImage(img, 0, 0, this.layers.fog.width, this.layers.fog.height);
+                this._fogStateAll = 'mixed';
+                if (!this.isDM) {
+                    if (!this._fogHitCanvas) {
+                        this._fogHitCanvas = document.createElement('canvas');
+                        this._fogHitCanvas.width = 256;
+                        this._fogHitCanvas.height = 256;
+                        this._fogHitCtx = this._fogHitCanvas.getContext('2d', { willReadFrequently: true });
+                    }
+                    this._fogHitCtx.clearRect(0, 0, 256, 256);
+                    this._fogHitCtx.drawImage(img, 0, 0, 256, 256);
+                    try {
+                        this._fogHitData = this._fogHitCtx.getImageData(0, 0, 256, 256).data;
+                    } catch (e) {
+                        this._fogHitData = null;
+                    }
+                    this.renderTokenEffects();
+                    this.renderTokenOverlays();
+                }
             }
         };
         img.src = base64Image;
@@ -1661,5 +2055,205 @@ class VTTEngine {
             x: (screenX - this.offsetX) / this.scale,
             y: (screenY - this.offsetY) / this.scale
         };
+    }
+
+    worldToScreen(worldX, worldY) {
+        return {
+            x: worldX * this.scale + this.offsetX,
+            y: worldY * this.scale + this.offsetY
+        };
+    }
+
+    centerOn(worldX, worldY) {
+        if (!this.mapImage) return;
+        const viewW = this.container ? this.container.clientWidth : (window.innerWidth || 1000);
+        const viewH = this.container ? this.container.clientHeight : (window.innerHeight || 800);
+        this.offsetX = (viewW / 2) - (worldX * this.scale);
+        this.offsetY = (viewH / 2) - (worldY * this.scale);
+        this.renderViewport();
+    }
+
+    clampShapePosition(shape) {
+        if (!shape || !this.mapImage || !this.mapImage.width || !this.mapImage.height) return;
+        const pad = 24;
+        shape.x = Math.max(pad, Math.min(this.mapImage.width - pad, shape.x));
+        shape.y = Math.max(pad, Math.min(this.mapImage.height - pad, shape.y));
+    }
+
+    isPointInShape(px, py, shape) {
+        if (!shape || shape.x === undefined || shape.y === undefined) return false;
+        const pixelsPerFoot = (this.grid && this.grid.size ? this.grid.size : 50) / 5;
+        const sizePx = Math.max(0.1, (shape.sizeFt || 15) * pixelsPerFoot);
+        const normType = (shape.type === 'sphere' ? 'circle' : shape.type) || 'circle';
+
+        const dx = px - shape.x;
+        const dy = py - shape.y;
+
+        if (normType === 'circle') {
+            return (dx * dx + dy * dy) <= (sizePx * sizePx);
+        }
+
+        if (normType === 'square') {
+            const rad = -(shape.angle || 0) * Math.PI / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            const lx = dx * cos - dy * sin;
+            const ly = dx * sin + dy * cos;
+            const halfS = sizePx / 2;
+            return Math.abs(lx) <= halfS && Math.abs(ly) <= halfS;
+        }
+
+        if (normType === 'cone') {
+            const dSq = dx * dx + dy * dy;
+            if (dSq > sizePx * sizePx) return false;
+            if (dSq < 16) return true; // apex
+            const a = Math.atan2(dy, dx);
+            const shapeAngleRad = (shape.angle || 0) * Math.PI / 180;
+            const diff = (a - shapeAngleRad + Math.PI * 3) % (Math.PI * 2) - Math.PI;
+            return Math.abs(diff) <= Math.atan(0.5);
+        }
+
+        if (normType === 'line') {
+            const rad = -(shape.angle || 0) * Math.PI / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            const lx = dx * cos - dy * sin;
+            const ly = dx * sin + dy * cos;
+            const halfWidth = (((shape.widthFt || 5) / 2) * pixelsPerFoot);
+            return lx >= 0 && lx <= sizePx && Math.abs(ly) <= halfWidth;
+        }
+
+        return false;
+    }
+
+    getSafeAoESpawnPosition(shapeType = 'circle', sizeFt = 15, widthFt = 5) {
+        const pixelsPerFoot = (this.grid && this.grid.size ? this.grid.size : 50) / 5;
+        const sizePx = Math.max(1, (sizeFt || 15) * pixelsPerFoot);
+        const halfWidthPx = Math.max(1, ((widthFt || 5) / 2) * pixelsPerFoot);
+
+        const viewW = this.container ? this.container.clientWidth : (window.innerWidth || 1000);
+        const viewH = this.container ? this.container.clientHeight : (window.innerHeight || 800);
+
+        // Se non c'è una mappa caricata, usa il centro dello schermo
+        if (!this.mapImage || !this.mapImage.width || !this.mapImage.height) {
+            return this.screenToWorld(viewW / 2, viewH / 2);
+        }
+
+        const mapW = this.mapImage.width;
+        const mapH = this.mapImage.height;
+
+        // Coordinate mondiali dell'area di schermo attualmente visibile
+        const p0 = this.screenToWorld(0, 0);
+        const p1 = this.screenToWorld(viewW, viewH);
+
+        const visMinX = Math.min(p0.x, p1.x);
+        const visMaxX = Math.max(p0.x, p1.x);
+        const visMinY = Math.min(p0.y, p1.y);
+        const visMaxY = Math.max(p0.y, p1.y);
+
+        // Intersezione tra viewport e rettangolo effettivo della mappa
+        const interMinX = Math.max(0, visMinX);
+        const interMaxX = Math.min(mapW, visMaxX);
+        const interMinY = Math.max(0, visMinY);
+        const interMaxY = Math.min(mapH, visMaxY);
+
+        let targetX, targetY;
+
+        // Se una porzione rilevante della mappa è visibile a schermo, centrare su quella porzione di mappa
+        if (interMaxX > interMinX + 20 && interMaxY > interMinY + 20) {
+            targetX = (interMinX + interMaxX) / 2;
+            targetY = (interMinY + interMaxY) / 2;
+        } else {
+            // Se la mappa è completamente fuori dallo schermo, centrare al centro della mappa
+            targetX = mapW / 2;
+            targetY = mapH / 2;
+            this.centerOn(targetX, targetY);
+        }
+
+        // Calcola margini minimi per evitare che la sagoma e la maniglia sbordino fuori mappa
+        const pad = 32;
+        let minX = pad, maxX = mapW - pad;
+        let minY = pad, maxY = mapH - pad;
+
+        const normType = (shapeType === 'sphere' ? 'circle' : shapeType) || 'circle';
+
+        if (normType === 'circle') {
+            if (sizePx * 2 <= mapW) {
+                minX = sizePx;
+                maxX = mapW - sizePx;
+            } else {
+                minX = mapW / 2;
+                maxX = mapW / 2;
+            }
+            if (sizePx * 2 <= mapH) {
+                minY = sizePx;
+                maxY = mapH - sizePx;
+            } else {
+                minY = mapH / 2;
+                maxY = mapH / 2;
+            }
+        } else if (normType === 'square') {
+            const halfS = sizePx / 2;
+            if (sizePx <= mapW) {
+                minX = halfS;
+                maxX = mapW - halfS;
+            } else {
+                minX = mapW / 2;
+                maxX = mapW / 2;
+            }
+            if (sizePx <= mapH) {
+                minY = halfS;
+                maxY = mapH - halfS;
+            } else {
+                minY = mapH / 2;
+                maxY = mapH / 2;
+            }
+        } else if (normType === 'cone') {
+            const halfSpread = sizePx * 0.5;
+            if (sizePx + pad <= mapW) {
+                minX = pad;
+                maxX = mapW - sizePx;
+            } else {
+                minX = pad;
+                maxX = Math.max(pad, mapW - pad);
+            }
+            if (halfSpread * 2 <= mapH) {
+                minY = halfSpread;
+                maxY = mapH - halfSpread;
+            } else {
+                minY = mapH / 2;
+                maxY = mapH / 2;
+            }
+        } else if (normType === 'line') {
+            if (sizePx + pad <= mapW) {
+                minX = pad;
+                maxX = mapW - sizePx;
+            } else {
+                minX = pad;
+                maxX = Math.max(pad, mapW - pad);
+            }
+            if (halfWidthPx * 2 <= mapH) {
+                minY = halfWidthPx;
+                maxY = mapH - halfWidthPx;
+            } else {
+                minY = mapH / 2;
+                maxY = mapH / 2;
+            }
+        }
+
+        if (minX > maxX) { minX = mapW / 2; maxX = mapW / 2; }
+        if (minY > maxY) { minY = mapH / 2; maxY = mapH / 2; }
+
+        targetX = Math.max(minX, Math.min(maxX, targetX));
+        targetY = Math.max(minY, Math.min(maxY, targetY));
+
+        // Se dopo il clamping la posizione ricadesse fuori dalla visuale dello schermo (es. zoom estremo sul bordo),
+        // porta dolcemente l'inquadratura sulla sagoma appena creata
+        const screenPos = this.worldToScreen(targetX, targetY);
+        if (screenPos.x < 20 || screenPos.x > viewW - 20 || screenPos.y < 20 || screenPos.y > viewH - 20) {
+            this.centerOn(targetX, targetY);
+        }
+
+        return { x: targetX, y: targetY };
     }
 }

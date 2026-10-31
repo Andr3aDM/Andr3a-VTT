@@ -14,16 +14,66 @@ window.engine = engine;
 // Modalità Offline di base
 network.startOffline();
 
+function setCampaignControlsLocked(locked) {
+    const campSelect = document.getElementById('campaign-select');
+    const btnNew = document.getElementById('btn-new-campaign');
+    const btnDel = document.getElementById('btn-delete-campaign');
+    const btnExp = document.getElementById('btn-export-campaign');
+    const campBadge = document.getElementById('campaign-lock-badge');
+    
+    if (campSelect) campSelect.disabled = locked;
+    if (btnNew) btnNew.disabled = locked;
+    if (btnDel) btnDel.disabled = locked;
+    if (btnExp) btnExp.disabled = locked;
+    
+    if (campBadge) {
+        campBadge.style.display = locked ? 'inline-block' : 'none';
+    }
+}
+window.setCampaignControlsLocked = setCampaignControlsLocked;
+
+function updateHostOnlineButtonState() {
+    const btn = document.getElementById('btn-host-online');
+    const campSelect = document.getElementById('campaign-select');
+    if (!btn) return;
+    if (network && network.mode === 'host') {
+        btn.style.display = 'none';
+        return;
+    }
+    const hasCamp = !!(campSelect && campSelect.value);
+    btn.style.display = 'block';
+    if (!hasCamp) {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'not-allowed';
+        btn.title = typeof window.t === 'function' ? window.t('Seleziona prima una Campagna per avviare la sessione online') : 'Seleziona prima una Campagna per avviare la sessione online';
+    } else {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+        btn.title = typeof window.t === 'function' ? window.t('Avvia Stanza Online per questa campagna') : 'Avvia Stanza Online per questa campagna';
+    }
+}
+window.updateHostOnlineButtonState = updateHostOnlineButtonState;
+
 // Setup online host button
 document.getElementById('btn-host-online').addEventListener('click', () => {
+    const campSelect = document.getElementById('campaign-select');
+    if (!campSelect || !campSelect.value) {
+        alert(typeof window.t === 'function' ? window.t('⚠️ Seleziona prima una Campagna per avviare la sessione online!') : '⚠️ Seleziona prima una Campagna per avviare la sessione online!');
+        return;
+    }
     const btn = document.getElementById('btn-host-online');
+    const btnClose = document.getElementById('btn-close-room');
     const status = document.getElementById('online-status');
     btn.disabled = true;
     btn.innerText = "Creazione Stanza...";
     
     network.hostRoom().then(id => {
         btn.style.display = 'none';
-        status.innerHTML = `<span style="color:#4caf50; font-weight:bold;">Online!</span><br>Codice Stanza: <b style="color:#ffcc00; font-size:16px; user-select: all; cursor: pointer; letter-spacing: 1px;" title="Seleziona o clicca per copiare">${escapeHTML(id)}</b>`;
+        if (btnClose) btnClose.style.display = 'block';
+        status.innerHTML = `<span style="color:#4caf50; font-weight:bold;">Online!</span><br>Codice Stanza: <b id="host-room-code-badge" style="color:#ffcc00; font-size:16px; user-select: all; cursor: pointer; letter-spacing: 1px;" title="Seleziona o clicca per copiare">${escapeHTML(id)}</b>`;
+        setCampaignControlsLocked(true);
     }).catch(err => {
         btn.disabled = false;
         btn.innerText = "Riprova";
@@ -31,6 +81,32 @@ document.getElementById('btn-host-online').addEventListener('click', () => {
         console.error(err);
     });
 });
+
+const btnCloseRoom = document.getElementById('btn-close-room');
+if (btnCloseRoom) {
+    btnCloseRoom.addEventListener('click', () => {
+        const confirmMsg = typeof window.t === 'function' ? window.t('Terminare la sessione online e disconnettere tutti i giocatori?') : 'Terminare la sessione online e disconnettere tutti i giocatori?';
+        if (confirm(confirmMsg)) {
+            network.closeRoom();
+            const btn = document.getElementById('btn-host-online');
+            const status = document.getElementById('online-status');
+            const playersDiv = document.getElementById('online-players');
+            btnCloseRoom.style.display = 'none';
+            if (btn) {
+                btn.style.display = 'block';
+                btn.disabled = false;
+                btn.innerText = typeof window.t === 'function' ? window.t('Avvia Stanza') : 'Avvia Stanza';
+            }
+            if (status) status.innerHTML = typeof window.t === 'function' ? window.t('Stato: Offline (Locale)') : 'Stato: Offline (Locale)';
+            if (playersDiv) playersDiv.innerText = typeof window.t === 'function' ? window.t('Nessun giocatore connesso.') : 'Nessun giocatore connesso.';
+            setCampaignControlsLocked(false);
+            updateHostOnlineButtonState();
+            if (typeof showToast === 'function') {
+                showToast(typeof window.t === 'function' ? window.t('🔴 Sessione online terminata.') : '🔴 Sessione online terminata.');
+            }
+        }
+    });
+}
 
 // Setup button per aprire schermata giocatore online / test con codice
 const btnOpenPlayerOnline = document.getElementById('btn-open-player-online');
@@ -41,7 +117,7 @@ if (btnOpenPlayerOnline) {
     });
 }
 
-window.VTT_VERSION = 'Beta 1.4';
+window.VTT_VERSION = 'Beta 1.5';
 
 function updateTokenControlsVisibility(show) {
     const controls = document.getElementById('selected-token-controls');
@@ -113,10 +189,51 @@ window.getTokenOwners = getTokenOwners;
 window.setTokenOwners = setTokenOwners;
 window.isTokenOwnedBy = isTokenOwnedBy;
 
+network.onGetCharacters(() => {
+    if (!Array.isArray(currentCampaignTokens) || currentCampaignTokens.length === 0) return [];
+
+    const activeNames = new Set(
+        Object.values(network.connections || {})
+            .map(c => (c && c.name ? c.name.trim().toLowerCase() : ''))
+            .filter(Boolean)
+    );
+
+    // Filtra SOLO i veri personaggi (PG) della campagna attiva:
+    // Devono appartenere alla campagna attiva, NON avere una scheda mostro (statblock),
+    // e avere una scheda PG (pcSheet) oppure essere categoria 'personaggi' senza statblock.
+    const campaignPgs = currentCampaignTokens.filter(ct => {
+        if (!ct) return false;
+        // Se ha uno statblock da mostro, NON è un PG (è un mostro/creatura/famiglio/evocazione/mascotte)
+        if (ct.statblock) return false;
+        // Se ha un campaignId diverso da quello attivo, scarta
+        if (ct.campaignId && currentCampaignId && ct.campaignId !== currentCampaignId) return false;
+        const hasPcSheet = !!(ct.pcSheet && (ct.pcSheet.name || ct.pcSheet.characterName || ct.pcSheet.attributes));
+        const isPgCat = (ct.category === 'personaggi');
+        return hasPcSheet || isPgCat;
+    });
+
+    const result = [];
+    const seen = new Set();
+    campaignPgs.forEach(cpg => {
+        const cName = (cpg.name || '').trim();
+        if (!cName) return;
+        const low = cName.toLowerCase();
+        if (seen.has(low)) return;
+        seen.add(low);
+        result.push({
+            id: cpg.id,
+            name: cName,
+            src: cpg.src || '',
+            isTaken: activeNames.has(low)
+        });
+    });
+    return result;
+});
+
 function renderOnlinePlayersList() {
     const div = document.getElementById('online-players');
     if (!div) return;
-    const uniqueNames = [];
+    const uniquePlayers = [];
     const seen = new Set();
     for (let k in network.connections) {
         const entry = network.connections[k];
@@ -125,14 +242,30 @@ function renderOnlinePlayersList() {
             const low = clean.toLowerCase();
             if (clean && !seen.has(low)) {
                 seen.add(low);
-                uniqueNames.push(clean);
+                uniquePlayers.push({ name: clean, peerId: k });
             }
         }
     }
-    if (uniqueNames.length === 0) {
-        div.innerText = "Nessun giocatore connesso.";
+    if (uniquePlayers.length === 0) {
+        div.innerText = typeof window.t === 'function' ? window.t("Nessun giocatore connesso.") : "Nessun giocatore connesso.";
     } else {
-        div.innerHTML = uniqueNames.map(n => `<div>🟢 ${escapeHTML(n)}</div>`).join('');
+        div.innerHTML = uniquePlayers.map(p => `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+                <span>🟢 ${escapeHTML(p.name)}</span>
+                <button class="btn-kick-player" data-pid="${escapeHTML(p.peerId)}" data-name="${escapeHTML(p.name)}" style="background:#b71c1c; color:white; border:none; border-radius:3px; padding:1px 5px; font-size:10px; cursor:pointer;" title="Espelli giocatore">🚫 Espelli</button>
+            </div>
+        `).join('');
+
+        div.querySelectorAll('.btn-kick-player').forEach(b => {
+            b.addEventListener('click', (e) => {
+                const pid = e.currentTarget.getAttribute('data-pid');
+                const pName = e.currentTarget.getAttribute('data-name');
+                const confirmPrompt = typeof window.t === 'function' ? window.t(`Espellere ${pName} dalla stanza?`) : `Espellere ${pName} dalla stanza?`;
+                if (confirm(confirmPrompt)) {
+                    network.kickPlayer(pid);
+                }
+            });
+        });
     }
 }
 
@@ -158,6 +291,22 @@ network.onConnect((playerName, pid, isReconnect) => {
             engine.publicStrokes.forEach(st => {
                 if (st.owner && st.owner.trim().toLowerCase() === lowJoin) st.owner = cleanJoin;
             });
+        }
+
+        // Se un giocatore si connette con il nome esatto di un PG in mappa,
+        // assegna quel token direttamente a lui se non ha ancora proprietari!
+        let tokenAssigned = false;
+        engine.tokens.forEach(t => {
+            if (t.name && t.name.trim().toLowerCase() === lowJoin) {
+                const owners = getTokenOwners(t);
+                if (!owners.some(o => o.toLowerCase() === lowJoin)) {
+                    setTokenOwners(t, [cleanJoin]);
+                    tokenAssigned = true;
+                }
+            }
+        });
+        if (tokenAssigned) {
+            syncState(true);
         }
 
         renderOnlinePlayersList();
@@ -200,15 +349,20 @@ network.onMessage((data, peerId) => {
         if (peerId === 'local' && typeof showToast === 'function') {
             showToast('🟢 Schermo Giocatore Locale connesso!');
         }
-        // Invia STATO immediatamente (<10ms) così token e aure appaiono subito, poi mappa compressa e nebbia
-        syncState(true, true, peerId);
+        // Invia SUBITO la mappa compressa per prima cosa assoluta (0ms black screen)
         const mapPayload = getNetworkMapPayload();
         if (mapPayload) {
             network.send({ type: 'MAP_UPDATE', payload: mapPayload }, peerId);
         }
+        // Invia STATO leggero (<2KB) immediatamente senza bloccare il canale con pacchetti pesanti
+        syncState(true, false, peerId);
         setTimeout(() => {
             syncFog(peerId);
-        }, 120);
+        }, 60);
+        // Invia le immagini dei token dopo 150ms per non intasare la trasmissione iniziale della mappa
+        setTimeout(() => {
+            syncState(true, true, peerId);
+        }, 150);
     } else if (data.type === 'REQUEST_TOKEN_IMAGE') {
         const reqKey = data.imgKey;
         if (reqKey) {
@@ -523,17 +677,159 @@ network.onMessage((data, peerId) => {
             engine.renderAll();
             syncState(true);
         }
+    } else if (data.type === 'PLAYER_SPAWN_TOKEN') {
+        const senderName = (peerId === 'local') ? (data.payload?.owner || 'local') : (network.connections[peerId] ? network.connections[peerId].name : null);
+        if (!senderName || !data.payload) return;
+        const normSender = senderName.trim().toLowerCase();
+
+        // Limite di sicurezza anti-spam: max 10 evocazioni per giocatore
+        const evocationCount = (engine.tokens || []).filter(t => t.category === 'evocazioni' && (t.owner || '').trim().toLowerCase() === normSender).length;
+        if (evocationCount >= 10) {
+            console.warn(`Quota evocazioni raggiunta per ${senderName}`);
+            return;
+        }
+
+        const tokData = data.payload;
+        tokData.owner = senderName;
+        tokData.owners = [senderName];
+        tokData.evokerName = senderName;
+        tokData.category = 'evocazioni';
+        tokData.isEvocation = true;
+
+        const durVal = parseInt(tokData.durationRounds);
+        if (!isNaN(durVal) && durVal > 0) {
+            tokData.durationRounds = durVal;
+            tokData.roundsLeft = (tokData.roundsLeft !== undefined && tokData.roundsLeft > 0) ? parseInt(tokData.roundsLeft) : durVal;
+            if (engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0) {
+                const curP = engine.initiative.participants[engine.initiative.currentTurnIndex];
+                if (curP) {
+                    const curTok = curP.tokenId ? engine.tokens.find(t => String(t.id) === String(curP.tokenId)) : null;
+                    const curName = (curP.name || '').trim().toLowerCase();
+                    if ((curTok && isTokenOwnedBy(curTok, senderName)) ||
+                        curName === normSender || curName.startsWith(normSender + ' ') || curName.includes(normSender)) {
+                        tokData.skipFirstDecrement = true;
+                        tokData.casterInitiativeId = curP.id;
+                        if (!tokData.casterTokenId && curP.tokenId) tokData.casterTokenId = curP.tokenId;
+                    }
+                }
+            }
+        } else {
+            delete tokData.durationRounds;
+            delete tokData.roundsLeft;
+            delete tokData.skipFirstDecrement;
+        }
+
+        // Se l'immagine è un data URI procedurale, crea l'oggetto Image
+        if (tokData.src) {
+            const img = new Image();
+            img.onload = () => {
+                tokData.imageObj = img;
+                engine.requestTokenLayerRender();
+            };
+            img.src = tokData.src;
+            tokData.imageObj = img;
+        }
+
+        engine.tokens.push(tokData);
+        engine.renderAll();
+        syncState(true, false);
+
+        if (typeof showToast === 'function') {
+            showToast(`✨ ${senderName} ha evocato "${tokData.name}"!`);
+        }
+    } else if (data.type === 'PLAYER_DISMISS_TOKEN') {
+        const senderName = (peerId === 'local') ? (data.payload?.player || 'local') : (network.connections[peerId] ? network.connections[peerId].name : null);
+        const tokenId = data.payload?.id;
+        const tok = engine.tokens.find(t => t.id === tokenId);
+        if (tok && (peerId === 'local' || isTokenOwnedBy(tok, senderName))) {
+            engine.tokens = engine.tokens.filter(t => t.id !== tokenId);
+            if (engine.selectedTokenId === tokenId) {
+                engine.selectedTokenId = null;
+                if (engine.selectedTokens) engine.selectedTokens.delete(tokenId);
+                if (typeof updateTokenControlsVisibility === 'function') updateTokenControlsVisibility(false);
+            }
+            engine.renderAll();
+            syncState(true, false);
+            if (typeof showToast === 'function') {
+                showToast(`💨 "${tok.name}" congedato da ${senderName}.`);
+            }
+        }
+    } else if (data.type === 'PLAYER_UPDATE_TOKEN_STATBLOCK') {
+        const p = data.payload;
+        if (p && p.tokenId) {
+            const tok = engine.tokens.find(t => t.id === p.tokenId);
+            if (tok) {
+                tok.statblock = p.statblock;
+                tok.hasStatblock = !!p.statblock;
+                if (p.hpMax !== undefined && p.hpMax > 0) tok.hpMax = p.hpMax;
+                if (p.hpCurrent !== undefined) tok.hpCurrent = p.hpCurrent;
+                if (p.ac !== undefined && p.ac > 0) tok.ac = p.ac;
+                if (p.name && (!tok.name || tok.name === 'Evocazione')) tok.name = p.name;
+                engine.renderTokensLayer();
+                syncState(true, false);
+                network.send({
+                    type: 'TOKEN_STATBLOCK_SYNC',
+                    payload: {
+                        tokenId: tok.id,
+                        statblock: tok.statblock
+                    }
+                });
+            }
+        }
+    } else if (data.type === 'REQUEST_TOKEN_STATBLOCK') {
+        const tok = engine.tokens.find(t => t.id === data.tokenId);
+        if (tok && tok.statblock) {
+            network.send({
+                type: 'TOKEN_STATBLOCK_SYNC',
+                payload: {
+                    tokenId: tok.id,
+                    statblock: tok.statblock
+                }
+            }, peerId);
+        }
     } else if (data.type === 'PLAYER_UPDATE_TOKEN_AURA') {
         const token = engine.tokens.find(t => t.id === data.payload.id);
         const senderName = (peerId === 'local') ? (data.payload.player || null) : (network.connections[peerId] ? network.connections[peerId].name : null);
         if (token && isTokenOwnedBy(token, senderName)) {
-            token.aura = data.payload.auraObj;
-            if (engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0) {
-                const curP = engine.initiative.participants[engine.initiative.currentTurnIndex];
-                if (curP && (String(curP.tokenId) === String(token.id) || (curP.name && token.name && curP.name.trim().toLowerCase() === token.name.trim().toLowerCase()))) {
-                    if (token.aura && token.aura.active && token.aura.durationRounds > 0) {
-                        token.aura.skipFirstDecrement = true;
+            if (data.payload.auraObj !== undefined) {
+                token.aura = data.payload.auraObj;
+                if (engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0) {
+                    const curP = engine.initiative.participants[engine.initiative.currentTurnIndex];
+                    if (curP && (String(curP.tokenId) === String(token.id) || (curP.name && token.name && curP.name.trim().toLowerCase() === token.name.trim().toLowerCase()))) {
+                        if (token.aura && token.aura.active && token.aura.durationRounds > 0) {
+                            token.aura.skipFirstDecrement = true;
+                        }
                     }
+                }
+            }
+            if (data.payload.durationRounds !== undefined) {
+                const durVal = parseInt(data.payload.durationRounds);
+                if (!isNaN(durVal) && durVal > 0) {
+                    token.durationRounds = durVal;
+                    token.roundsLeft = durVal;
+                    token._lastDecrementedRound = undefined;
+                    if (engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0) {
+                        const curP = engine.initiative.participants[engine.initiative.currentTurnIndex];
+                        if (curP) {
+                            const curTok = curP.tokenId ? engine.tokens.find(t => String(t.id) === String(curP.tokenId)) : null;
+                            const normSender = (senderName || '').trim().toLowerCase();
+                            const curName = (curP.name || '').trim().toLowerCase();
+                            if (String(curP.tokenId) === String(token.id) ||
+                                (curTok && isTokenOwnedBy(curTok, senderName)) ||
+                                (normSender && (curName === normSender || curName.startsWith(normSender + ' ') || curName.includes(normSender)))) {
+                                token.skipFirstDecrement = true;
+                                token.casterInitiativeId = curP.id;
+                            }
+                        }
+                    }
+                } else {
+                    delete token.durationRounds;
+                    delete token.roundsLeft;
+                    delete token.skipFirstDecrement;
+                    delete token._lastDecrementedRound;
+                }
+                if (engine.selectedTokenId === token.id && typeof window.updateSelectedTokenControls === 'function') {
+                    window.updateSelectedTokenControls(token);
                 }
             }
             engine.renderAll();
@@ -563,8 +859,12 @@ network.onMessage((data, peerId) => {
             if (payload.adventureJournal !== undefined) {
                 token.adventureJournal = payload.adventureJournal;
             }
+            if (payload.evocationPresets !== undefined) {
+                token.evocationPresets = payload.evocationPresets;
+            }
             if (payload.hpMax !== undefined && payload.hpMax > 0) token.hpMax = payload.hpMax;
             if (payload.hpCurrent !== undefined) token.hpCurrent = payload.hpCurrent;
+            if (payload.hpTemp !== undefined) token.hpTemp = payload.hpTemp;
             if (payload.ac !== undefined && payload.ac > 0) token.ac = payload.ac;
 
             if (engine.initiative && Array.isArray(engine.initiative.participants)) {
@@ -678,11 +978,27 @@ if (lockMapBtn) {
 }
 
 const hpStyleBtn = document.getElementById('hp-display-style');
+const hpStyleQuickBtn = document.getElementById('token-hp-style-quick');
 if (hpStyleBtn) {
-    // Inizializza subito lo stile dell'engine
+    const savedHpStyle = localStorage.getItem('vtt_hp_display_style');
+    if (savedHpStyle) {
+        hpStyleBtn.value = savedHpStyle;
+    }
+    if (hpStyleQuickBtn) hpStyleQuickBtn.value = hpStyleBtn.value;
     engine.hpDisplayStyle = hpStyleBtn.value;
     hpStyleBtn.addEventListener('change', (e) => {
         engine.hpDisplayStyle = e.target.value;
+        if (hpStyleQuickBtn) hpStyleQuickBtn.value = e.target.value;
+        localStorage.setItem('vtt_hp_display_style', e.target.value);
+        engine.renderAll();
+        syncState(true);
+    });
+}
+if (hpStyleQuickBtn) {
+    hpStyleQuickBtn.addEventListener('change', (e) => {
+        engine.hpDisplayStyle = e.target.value;
+        if (hpStyleBtn) hpStyleBtn.value = e.target.value;
+        localStorage.setItem('vtt_hp_display_style', e.target.value);
         engine.renderAll();
         syncState(true);
     });
@@ -690,9 +1006,14 @@ if (hpStyleBtn) {
 
 const condStyleBtn = document.getElementById('condition-display-style');
 if (condStyleBtn) {
+    const savedCondStyle = localStorage.getItem('vtt_condition_display_style');
+    if (savedCondStyle) {
+        condStyleBtn.value = savedCondStyle;
+    }
     engine.conditionDisplayStyle = condStyleBtn.value;
     condStyleBtn.addEventListener('change', (e) => {
         engine.conditionDisplayStyle = e.target.value;
+        localStorage.setItem('vtt_condition_display_style', e.target.value);
         engine.renderAll();
         syncState(true);
     });
@@ -986,10 +1307,12 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
     const networkTokens = visibleTokens.map(t => {
         const cleanSrc = getOrCompressTokenSrc(t);
         const imgKey = getTokenImgKey(cleanSrc);
-        const isShortUrl = cleanSrc && cleanSrc.length <= 200;
+        // Include token monigramma procedurali / icone corte (< 6000 caratteri) direttamente nello stato per rendering a 0ms
+        const isShortUrl = cleanSrc && (cleanSrc.length <= 200 || (cleanSrc.startsWith('data:') && cleanSrc.length <= 6000));
 
         if (cleanSrc && !isShortUrl && imgKey) {
-            const needSend = sendFullImages || !!targetPeerId || !syncedImageKeys.has(imgKey);
+            // Se targetPeerId è specificato, invia immagini solo se sendFullImages è esplicitamente true (evita duplicati)
+            const needSend = targetPeerId ? sendFullImages : (sendFullImages || !syncedImageKeys.has(imgKey));
             if (needSend && !batchQueuedKeys.has(imgKey)) {
                 batchQueuedKeys.add(imgKey);
                 imagesToSendAfterState.push({ imgKey: imgKey, src: cleanSrc });
@@ -1028,6 +1351,7 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
             visible: true,
             hpMax: t.hpMax,
             hpCurrent: t.hpCurrent,
+            hpTemp: t.hpTemp || (t.pcSheet && t.pcSheet.hpTemp) || 0,
             hpVisibleToPlayers: t.hpVisibleToPlayers,
             ac: t.ac,
             aura: t.aura,
@@ -1037,6 +1361,14 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
             owners: getTokenOwners(t),
             hasPcSheet: !!t.pcSheet,
             pcSheetVer: sheetVer,
+            category: t.category || (t.isEvocation ? 'evocazioni' : (t.pcSheet ? 'personaggi' : 'mostri')),
+            isEvocation: !!t.isEvocation,
+            evokerName: t.evokerName || null,
+            durationRounds: t.durationRounds,
+            roundsLeft: t.roundsLeft,
+            color: t.color || null,
+            hasStatblock: !!t.statblock,
+            statblockName: t.statblock ? t.statblock.name : null,
             imgKey: imgKey,
             src: isShortUrl ? cleanSrc : null
         };
@@ -1052,7 +1384,7 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
             conditionDisplayStyle: conditionDisplayStyle,
             grid: engine.grid,
             tokens: networkTokens,
-            shapes: engine.shapes,
+            shapes: (engine.shapes || []).filter(s => s.visible !== false),
             initiative: engine.initiative,
             publicStrokes: engine.publicStrokes,
             viewSync: viewSyncData,
@@ -1109,38 +1441,106 @@ document.getElementById('btn-open-player').addEventListener('click', () => {
     }, 600);
 });
 
-// Load Map
+// Load Map (con ottimizzazione 4K/8K Zero-Freeze e supporto Drag & Drop su Canvas)
+function loadMapFromFile(file) {
+    if (!file || !file.type || !file.type.startsWith('image/')) return;
+    checkUnsavedMapChanges(() => {
+        const cleanMapName = file.name.replace(/\.[^/.]+$/, "");
+        const objUrl = URL.createObjectURL(file);
+        const rawImg = new Image();
+        rawImg.onload = () => {
+            URL.revokeObjectURL(objUrl);
+            const MAX_MAP_DIM = 2560; // Risoluzione 2.5K QHD nitidissima ma fino a 9x più leggera in RAM/VRAM rispetto a 8K
+            let targetW = rawImg.naturalWidth || rawImg.width || 1920;
+            let targetH = rawImg.naturalHeight || rawImg.height || 1080;
+            const needsDownscale = targetW > MAX_MAP_DIM || targetH > MAX_MAP_DIM;
+
+            if (needsDownscale) {
+                const ratio = Math.min(MAX_MAP_DIM / targetW, MAX_MAP_DIM / targetH);
+                targetW = Math.max(1, Math.round(targetW * ratio));
+                targetH = Math.max(1, Math.round(targetH * ratio));
+            }
+
+            const finalizeMapApply = (finalImg, base64Str) => {
+                currentMapBase64 = base64Str;
+                cachedNetworkMapSource = base64Str;
+                cachedNetworkMapOutput = base64Str;
+                gridResizeBaseline = null;
+                engine.setMap(finalImg);
+                if (typeof rescueOutOfBoundsTokens === 'function') {
+                    rescueOutOfBoundsTokens();
+                    engine.renderAll();
+                }
+                currentLoadedMapId = null;
+                currentLoadedMapName = cleanMapName;
+                markMapDirty(true);
+                if (typeof showToast === 'function') {
+                    const pfx = typeof window.t === 'function' ? window.t('🗺️ Mappa caricata:') : '🗺️ Mappa caricata:';
+                    showToast(`${pfx} "${cleanMapName}"`);
+                }
+                // Differisci la sincronizzazione di rete al frame successivo per non bloccare mai la UI
+                requestAnimationFrame(() => {
+                    network.send({ type: 'MAP_UPDATE', payload: getNetworkMapPayload() });
+                    syncState(true, true);
+                    syncFog();
+                });
+            };
+
+            if (needsDownscale || file.size > 1200000) {
+                const c = document.createElement('canvas');
+                c.width = targetW;
+                c.height = targetH;
+                const ctx = c.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(rawImg, 0, 0, targetW, targetH);
+                let optimizedDataUrl = c.toDataURL('image/webp', 0.84);
+                if (!optimizedDataUrl || !optimizedDataUrl.startsWith('data:image/webp')) {
+                    optimizedDataUrl = c.toDataURL('image/jpeg', 0.85);
+                }
+                const scaledImg = new Image();
+                scaledImg.onload = () => finalizeMapApply(scaledImg, optimizedDataUrl);
+                scaledImg.src = optimizedDataUrl;
+            } else {
+                const reader = new FileReader();
+                reader.onload = (ev) => finalizeMapApply(rawImg, ev.target.result);
+                reader.readAsDataURL(file);
+            }
+        };
+        rawImg.onerror = () => {
+            URL.revokeObjectURL(objUrl);
+        };
+        rawImg.src = objUrl;
+    });
+}
+
 const mapUploadEl = document.getElementById('map-upload');
 if (mapUploadEl) {
     mapUploadEl.addEventListener('change', (e) => {
         const file = e.target.files[0];
-        if (file) {
-            checkUnsavedMapChanges(() => {
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    currentMapBase64 = ev.target.result;
-                    const img = new Image();
-                    img.onload = () => {
-                        gridResizeBaseline = null;
-                        engine.setMap(img);
-                        network.send({ type: 'MAP_UPDATE', payload: getNetworkMapPayload() });
-                        syncState(true, true);
-                        syncFog();
-                        const cleanMapName = file.name.replace(/\.[^/.]+$/, "");
-                        currentLoadedMapId = null;
-                        currentLoadedMapName = cleanMapName;
-                        markMapDirty(true);
-                        if (typeof showToast === 'function') {
-                            const pfx = typeof window.t === 'function' ? window.t('🗺️ Mappa caricata:') : '🗺️ Mappa caricata:';
-                            showToast(`${pfx} "${cleanMapName}"`);
-                        }
-                    };
-                    img.src = currentMapBase64;
-                };
-                reader.readAsDataURL(file);
-            });
-        }
+        if (file) loadMapFromFile(file);
         e.target.value = '';
+    });
+}
+
+const mainCanvasDropArea = document.getElementById('main-canvas-container');
+if (mainCanvasDropArea) {
+    mainCanvasDropArea.addEventListener('dragover', (e) => {
+        if (e.target && e.target.closest && e.target.closest('#token-panel, #compendium-panel, #shared-images-panel, #pc-sheet-modal')) return;
+        if (e.dataTransfer && e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files')) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+        }
+    });
+    mainCanvasDropArea.addEventListener('drop', (e) => {
+        if (e.target && e.target.closest && e.target.closest('#token-panel, #compendium-panel, #shared-images-panel, #pc-sheet-modal')) return;
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const file = e.dataTransfer.files[0];
+            if (file && file.type && file.type.startsWith('image/')) {
+                e.preventDefault();
+                loadMapFromFile(file);
+            }
+        }
     });
 }
 
@@ -1289,6 +1689,7 @@ async function refreshCampaigns(autoSelectLast = false) {
         currentCampaignId = select.value || '';
         await loadCampaignTokensFor(select.value || '');
     }
+    updateHostOnlineButtonState();
 }
 
 document.getElementById('btn-new-campaign').addEventListener('click', async () => {
@@ -1373,31 +1774,45 @@ document.getElementById('campaign-select').addEventListener('change', async (e) 
     const id = e.target.value;
     const oldCampaignId = currentCampaignId;
     checkUnsavedMapChanges(async () => {
+        // AZZERAMENTO DI SICUREZZA TOTALE: Svuota la mappa, i token e le sagome del canvas
+        // prima di passare alla nuova campagna. Questo impedisce categoricamente che i token
+        // della vecchia campagna vengano salvati o sommati nella nuova campagna!
+        if (engine) {
+            engine.tokens = [];
+            engine.shapes = [];
+            if (engine.initiative) {
+                engine.initiative.participants = [];
+                engine.initiative.currentTurnIndex = -1;
+                engine.initiative.round = 1;
+            }
+            engine.selectedTokenId = null;
+            if (engine.selectedTokens) engine.selectedTokens.clear();
+            engine.mapImage = null;
+            engine.pendingFogImage = null;
+            currentMapBase64 = null;
+            engine.renderAll();
+        }
+        currentLoadedMapId = null;
+        currentLoadedMapName = "";
+        currentCampaignTokens = [];
+
         currentCampaignId = id;
         currentSelectedFolder = "";
         if (id) {
             localStorage.setItem('vtt_last_campaign_id', id);
-            if (currentLoadedMapId) {
-                const loadedMap = await vttDB.getMap(currentLoadedMapId);
-                if (!loadedMap || loadedMap.campaignId !== id) {
-                    currentLoadedMapId = null;
-                    currentLoadedMapName = "";
-                }
-            }
             document.getElementById('map-manager').style.display = 'block';
             await refreshFolders(id);
-            await refreshMaps(id, currentLoadedMapId || "");
+            await refreshMaps(id, "");
             await loadCampaignTokensFor(id);
             markMapDirty(false);
             updateLoadedMapIndicator();
         } else {
             document.getElementById('map-manager').style.display = 'none';
-            currentLoadedMapId = null;
-            currentLoadedMapName = "";
             await loadCampaignTokensFor('');
             markMapDirty(false);
             updateLoadedMapIndicator();
         }
+        updateHostOnlineButtonState();
     }, () => {
         if (oldCampaignId !== undefined) {
             e.target.value = oldCampaignId;
@@ -1744,11 +2159,18 @@ document.getElementById('btn-load-map').addEventListener('click', async () => {
             engine.setMap(img);
             
             engine.grid = state.grid || engine.grid;
+            if (engine.grid.opacity === undefined || engine.grid.opacity === null) {
+                engine.grid.opacity = 1;
+            }
             if (state.grid) {
                 document.getElementById('grid-size').value = state.grid.size;
                 if (document.getElementById('grid-size-slider')) document.getElementById('grid-size-slider').value = state.grid.size;
                 document.getElementById('grid-color').value = state.grid.color;
                 document.getElementById('grid-glow').value = state.grid.glow;
+                const opacityPct = Math.round(Math.max(0, Math.min(1, Number(engine.grid.opacity))) * 100);
+                if (document.getElementById('grid-opacity')) document.getElementById('grid-opacity').value = opacityPct;
+                if (document.getElementById('grid-opacity-slider')) document.getElementById('grid-opacity-slider').value = opacityPct;
+                if (document.getElementById('grid-opacity-val')) document.getElementById('grid-opacity-val').textContent = `${opacityPct}%`;
             }
             engine.publicStrokes = state.publicStrokes || [];
             engine.privateStrokes = state.privateStrokes || [];
@@ -1769,6 +2191,9 @@ document.getElementById('btn-load-map').addEventListener('click', async () => {
 
             const finishLoadingMap = () => {
                 syncCampaignPlayerCharactersToMap();
+                if (typeof rescueOutOfBoundsTokens === 'function') {
+                    rescueOutOfBoundsTokens();
+                }
                 engine.renderAll();
                 syncState(true, true);
                 if (typeof tokenPanel !== 'undefined' && tokenPanel && tokenPanel.style.display !== 'none') {
@@ -1948,93 +2373,205 @@ if (cbMapGridAnchor) {
 
 let gridResizeBaseline = null;
 
-function createGridResizeBaseline() {
-    const baseSize = engine.grid.size || 50;
-    const baseOffsetX = (engine.grid.offsetX || 0);
-    const baseOffsetY = (engine.grid.offsetY || 0);
-    const effBaseX = baseOffsetX % baseSize;
-    const effBaseY = baseOffsetY % baseSize;
+function rescueOutOfBoundsTokens() {
+    if (!engine || !engine.mapImage || !engine.mapImage.width || !engine.mapImage.height) return false;
+    const mapW = engine.mapImage.width;
+    const mapH = engine.mapImage.height;
+    const gSize = Math.max(10, engine.grid.size || 50);
+    const effOffsetX = (engine.grid.offsetX || 0) % gSize;
+    const effOffsetY = (engine.grid.offsetY || 0) % gSize;
+    let rescuedAny = false;
 
-    return {
-        baseSize,
-        baseOffsetX,
-        baseOffsetY,
-        tokens: engine.tokens.map(t => {
+    const outTokens = (engine.tokens || []).filter(t => {
+        const tw = t.width || gSize;
+        const th = t.height || gSize;
+        return (
+            isNaN(t.x) || isNaN(t.y) ||
+            t.x < -tw * 0.4 || t.y < -th * 0.4 ||
+            t.x > mapW - tw * 0.2 || t.y > mapH - th * 0.2
+        );
+    });
+
+    if (outTokens.length > 0) {
+        let maxRatioX = 1;
+        let maxRatioY = 1;
+        outTokens.forEach(t => {
+            if (!isNaN(t.x) && t.x > mapW * 0.85) maxRatioX = Math.max(maxRatioX, (t.x + (t.width || gSize)) / (mapW * 0.85));
+            if (!isNaN(t.y) && t.y > mapH * 0.85) maxRatioY = Math.max(maxRatioY, (t.y + (t.height || gSize)) / (mapH * 0.85));
+        });
+        const scaleBack = Math.max(maxRatioX, maxRatioY);
+        const occupied = new Set();
+        (engine.tokens || []).forEach(t => {
+            if (!outTokens.includes(t)) {
+                occupied.add(`${Math.round(t.x)},${Math.round(t.y)}`);
+            }
+        });
+
+        outTokens.forEach((t, idx) => {
             const mult = t.sizeMultiplier || 1;
-            const col = (t.x - effBaseX) / baseSize;
-            const row = (t.y - effBaseY) / baseSize;
-            return {
-                token: t,
-                col: col,
-                row: row,
-                origX: t.x,
-                origY: t.y,
-                sizeMultiplier: mult
-            };
-        }),
-        shapes: (engine.shapes || []).map(s => {
-            return {
-                shape: s,
-                col: (s.x - effBaseX) / baseSize,
-                row: (s.y - effBaseY) / baseSize,
-                origX: s.x,
-                origY: s.y
-            };
-        }),
-        notes: (engine.notes || []).map(n => {
-            return {
-                note: n,
-                col: (n.x - effBaseX) / baseSize,
-                row: (n.y - effBaseY) / baseSize,
-                origX: n.x,
-                origY: n.y
-            };
-        })
-    };
+            t.width = gSize * mult;
+            t.height = gSize * mult;
+            const maxX = Math.max(0, mapW - t.width);
+            const maxY = Math.max(0, mapH - t.height);
+
+            let rx = isNaN(t.x) ? (mapW / 2) : (scaleBack > 1.05 && t.x > 0 ? t.x / scaleBack : t.x);
+            let ry = isNaN(t.y) ? (mapH / 2) : (scaleBack > 1.05 && t.y > 0 ? t.y / scaleBack : t.y);
+            rx = Math.round((rx - effOffsetX) / gSize) * gSize + effOffsetX;
+            ry = Math.round((ry - effOffsetY) / gSize) * gSize + effOffsetY;
+            rx = Math.max(0, Math.min(maxX, rx));
+            ry = Math.max(0, Math.min(maxY, ry));
+
+            let key = `${Math.round(rx)},${Math.round(ry)}`;
+            if (occupied.has(key)) {
+                let found = false;
+                for (let radius = 1; radius <= 15 && !found; radius++) {
+                    for (let dy = -radius; dy <= radius && !found; dy++) {
+                        for (let dx = -radius; dx <= radius && !found; dx++) {
+                            if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+                            const cx = Math.max(0, Math.min(maxX, rx + dx * gSize));
+                            const cy = Math.max(0, Math.min(maxY, ry + dy * gSize));
+                            const cKey = `${Math.round(cx)},${Math.round(cy)}`;
+                            if (!occupied.has(cKey)) {
+                                rx = cx;
+                                ry = cy;
+                                key = cKey;
+                                found = true;
+                            }
+                        }
+                    }
+                }
+            }
+            occupied.add(key);
+            t.x = rx;
+            t.y = ry;
+            t._baseMapX = rx;
+            t._baseMapY = ry;
+            t._lastGridResizeX = rx;
+            t._lastGridResizeY = ry;
+            rescuedAny = true;
+        });
+    }
+
+    (engine.shapes || []).forEach(s => {
+        if (engine.clampShapePosition) {
+            const ox = s.x, oy = s.y;
+            engine.clampShapePosition(s);
+            if (s.x !== ox || s.y !== oy) {
+                s._baseMapX = s.x;
+                s._baseMapY = s.y;
+                s._lastGridResizeX = s.x;
+                s._lastGridResizeY = s.y;
+                rescuedAny = true;
+            }
+        }
+    });
+
+    (engine.notes || []).forEach(n => {
+        if (isNaN(n.x) || isNaN(n.y) || n.x < 10 || n.y < 10 || n.x > mapW - 10 || n.y > mapH - 10) {
+            n.x = Math.max(20, Math.min(mapW - 20, isNaN(n.x) ? mapW / 2 : n.x));
+            n.y = Math.max(20, Math.min(mapH - 20, isNaN(n.y) ? mapH / 2 : n.y));
+            n._baseMapX = n.x;
+            n._baseMapY = n.y;
+            n._lastGridResizeX = n.x;
+            n._lastGridResizeY = n.y;
+            rescuedAny = true;
+        }
+    });
+
+    return rescuedAny;
+}
+window.rescueOutOfBoundsTokens = rescueOutOfBoundsTokens;
+
+function createGridResizeBaseline() {
+    return { active: true };
+}
+
+function updateGridAppearance() {
+    const colorEl = document.getElementById('grid-color');
+    const glowEl = document.getElementById('grid-glow');
+    const opacityEl = document.getElementById('grid-opacity');
+
+    if (colorEl) engine.grid.color = colorEl.value;
+    if (glowEl) engine.grid.glow = glowEl.value;
+    if (opacityEl) {
+        const pct = Math.max(0, Math.min(100, isNaN(parseFloat(opacityEl.value)) ? 100 : parseFloat(opacityEl.value)));
+        engine.grid.opacity = pct / 100;
+        const badgeEl = document.getElementById('grid-opacity-val');
+        if (badgeEl) badgeEl.textContent = `${Math.round(pct)}%`;
+    }
+
+    engine.renderAll();
+    if (currentMapBase64) markMapDirty(true);
+    if (Date.now() - (window.lastGridSizeSync || 0) > 60) {
+        window.lastGridSizeSync = Date.now();
+        syncState();
+    }
 }
 
 function updateGrid() {
-    const newSize = parseInt(document.getElementById('grid-size').value) || 50;
-    engine.grid.size = newSize;
-    engine.grid.color = document.getElementById('grid-color').value;
-    engine.grid.glow = document.getElementById('grid-glow').value;
+    const sizeEl = document.getElementById('grid-size');
+    const rawSize = sizeEl ? parseInt(sizeEl.value, 10) : 50;
+    if (isNaN(rawSize) || rawSize < 10) return;
+    const newSize = Math.max(10, Math.min(300, rawSize));
 
-    if (!gridResizeBaseline) {
-        gridResizeBaseline = createGridResizeBaseline();
+    const colorEl = document.getElementById('grid-color');
+    const glowEl = document.getElementById('grid-glow');
+    const opacityEl = document.getElementById('grid-opacity');
+    if (colorEl) engine.grid.color = colorEl.value;
+    if (glowEl) engine.grid.glow = glowEl.value;
+    if (opacityEl) {
+        const pct = Math.max(0, Math.min(100, isNaN(parseFloat(opacityEl.value)) ? 100 : parseFloat(opacityEl.value)));
+        engine.grid.opacity = pct / 100;
     }
+
+    const mapW = (engine.mapImage && engine.mapImage.width) ? engine.mapImage.width : 0;
+    const mapH = (engine.mapImage && engine.mapImage.height) ? engine.mapImage.height : 0;
+
+    // Preserva le coordinate reali sulla mappa (_baseMapX, _baseMapY) prima di cambiare engine.grid.size
+    // così qualsiasi variazione (anche con gap enorme 300px <-> 10px) mantiene i token dentro la mappa
+    // e riportando la griglia al valore originale i token tornano esattamente al pixel di partenza!
+    (engine.tokens || []).forEach(t => {
+        if (t._baseMapX === undefined || t._lastGridResizeX === undefined ||
+            Math.abs(t.x - t._lastGridResizeX) > 0.5 || Math.abs(t.y - t._lastGridResizeY) > 0.5) {
+            t._baseMapX = t.x;
+            t._baseMapY = t.y;
+        }
+    });
+
+    engine.grid.size = newSize;
 
     const isAnchor = document.getElementById('grid-anchor-objects')?.checked !== false;
     const effNewOffsetX = (engine.grid.offsetX || 0) % newSize;
     const effNewOffsetY = (engine.grid.offsetY || 0) % newSize;
 
-    if (isAnchor && gridResizeBaseline) {
-        gridResizeBaseline.tokens.forEach(item => {
-            const t = item.token;
-            t.width = newSize * item.sizeMultiplier;
-            t.height = newSize * item.sizeMultiplier;
-            t.x = effNewOffsetX + item.col * newSize;
-            t.y = effNewOffsetY + item.row * newSize;
-        });
+    (engine.tokens || []).forEach(t => {
+        const mult = t.sizeMultiplier || 1;
+        t.width = newSize * mult;
+        t.height = newSize * mult;
+        if (t.aura && t.aura.radiusFt !== undefined) {
+            t.aura.sizePx = (Number(t.aura.radiusFt) / 5) * newSize;
+        }
 
-        gridResizeBaseline.shapes.forEach(item => {
-            const s = item.shape;
-            s.x = effNewOffsetX + item.col * newSize;
-            s.y = effNewOffsetY + item.row * newSize;
-        });
+        let nx = t._baseMapX !== undefined ? t._baseMapX : t.x;
+        let ny = t._baseMapY !== undefined ? t._baseMapY : t.y;
 
-        gridResizeBaseline.notes.forEach(item => {
-            const n = item.note;
-            n.x = effNewOffsetX + item.col * newSize;
-            n.y = effNewOffsetY + item.row * newSize;
-        });
-    } else {
-        engine.tokens.forEach(t => {
-            if (t.sizeMultiplier) {
-                t.width = newSize * t.sizeMultiplier;
-                t.height = newSize * t.sizeMultiplier;
-            }
-        });
-    }
+        if (isAnchor) {
+            nx = Math.round((nx - effNewOffsetX) / newSize) * newSize + effNewOffsetX;
+            ny = Math.round((ny - effNewOffsetY) / newSize) * newSize + effNewOffsetY;
+        }
+
+        if (mapW > 0 && mapH > 0) {
+            const maxX = Math.max(0, mapW - t.width);
+            const maxY = Math.max(0, mapH - t.height);
+            nx = Math.max(0, Math.min(maxX, nx));
+            ny = Math.max(0, Math.min(maxY, ny));
+        }
+
+        t.x = nx;
+        t.y = ny;
+        t._lastGridResizeX = nx;
+        t._lastGridResizeY = ny;
+    });
 
     engine.renderAll();
     if (Date.now() - (window.lastGridSizeSync || 0) > 60) {
@@ -2045,19 +2582,10 @@ function updateGrid() {
 
 function finalizeGridResize() {
     if (gridResizeBaseline) {
-        const isAnchor = document.getElementById('grid-anchor-objects')?.checked !== false;
-        if (isAnchor) {
-            const effOffsetX = (engine.grid.offsetX || 0) % engine.grid.size;
-            const effOffsetY = (engine.grid.offsetY || 0) % engine.grid.size;
-            engine.tokens.forEach(t => {
-                t.x = Math.round((t.x - effOffsetX) / engine.grid.size) * engine.grid.size + effOffsetX;
-                t.y = Math.round((t.y - effOffsetY) / engine.grid.size) * engine.grid.size + effOffsetY;
-            });
-        }
         gridResizeBaseline = null;
-        if (currentMapBase64) markMapDirty(true);
-        syncState(true);
     }
+    if (currentMapBase64) markMapDirty(true);
+    syncState(true);
 }
 
 const gridSizeInput = document.getElementById('grid-size');
@@ -2080,15 +2608,57 @@ if (gridSizeInput) {
         gridResizeBaseline = createGridResizeBaseline();
     });
     gridSizeInput.addEventListener('input', (e) => {
-        if (gridSizeSlider) gridSizeSlider.value = e.target.value;
-        updateGrid();
+        const val = parseInt(e.target.value, 10);
+        if (!isNaN(val) && val >= 10) {
+            if (gridSizeSlider) gridSizeSlider.value = Math.min(300, val);
+            updateGrid();
+        }
     });
-    gridSizeInput.addEventListener('change', finalizeGridResize);
+    gridSizeInput.addEventListener('change', (e) => {
+        let val = parseInt(e.target.value, 10);
+        if (isNaN(val) || val < 10) val = 10;
+        if (val > 300) val = 300;
+        e.target.value = val;
+        if (gridSizeSlider) gridSizeSlider.value = val;
+        updateGrid();
+        finalizeGridResize();
+    });
     gridSizeInput.addEventListener('blur', finalizeGridResize);
 }
 
-document.getElementById('grid-color').addEventListener('input', updateGrid);
-document.getElementById('grid-glow').addEventListener('change', updateGrid);
+const gridOpacityInput = document.getElementById('grid-opacity');
+const gridOpacitySlider = document.getElementById('grid-opacity-slider');
+
+if (gridOpacitySlider) {
+    gridOpacitySlider.addEventListener('input', (e) => {
+        if (gridOpacityInput) gridOpacityInput.value = e.target.value;
+        updateGridAppearance();
+    });
+    gridOpacitySlider.addEventListener('change', () => syncState(true));
+}
+
+if (gridOpacityInput) {
+    gridOpacityInput.addEventListener('input', (e) => {
+        let val = parseFloat(e.target.value);
+        if (!isNaN(val)) {
+            val = Math.max(0, Math.min(100, val));
+            if (gridOpacitySlider) gridOpacitySlider.value = val;
+            updateGridAppearance();
+        }
+    });
+    gridOpacityInput.addEventListener('change', (e) => {
+        let val = parseFloat(e.target.value);
+        if (isNaN(val) || val < 0) val = 0;
+        if (val > 100) val = 100;
+        e.target.value = Math.round(val);
+        if (gridOpacitySlider) gridOpacitySlider.value = Math.round(val);
+        updateGridAppearance();
+        syncState(true);
+    });
+}
+
+document.getElementById('grid-color').addEventListener('input', updateGridAppearance);
+document.getElementById('grid-glow').addEventListener('change', updateGridAppearance);
 
 function updateToolControlsVisibility() {
     const fogControls = document.getElementById('fog-brush-controls');
@@ -2177,7 +2747,7 @@ function resizeTokenImage(fileOrBlob, maxDim = 256) {
     });
 }
 
-const TOKEN_CATEGORIES = ['mostri', 'png', 'personaggi', 'vari'];
+const TOKEN_CATEGORIES = ['mostri', 'png', 'personaggi', 'vari', 'evocazioni'];
 let currentTokenCategory = 'all';
 
 function getCategoryMeta(cat) {
@@ -2185,6 +2755,7 @@ function getCategoryMeta(cat) {
         case 'png': return { id: 'png', icon: '🧑', label: 'PNG', bg: '#ef6c00' };
         case 'personaggi': return { id: 'personaggi', icon: '🛡️', label: 'Personaggi', bg: '#1565c0' };
         case 'vari': return { id: 'vari', icon: '📦', label: 'Vari', bg: '#6a1b9a' };
+        case 'evocazioni': return { id: 'evocazioni', icon: '✨', label: 'Evocazioni', bg: '#4a148c' };
         case 'mostri':
         default:
             return { id: 'mostri', icon: '👹', label: 'Mostri', bg: '#c62828' };
@@ -2193,9 +2764,14 @@ function getCategoryMeta(cat) {
 
 function inferTokenCategory(t) {
     if (!t) return 'mostri';
+    // Evocazioni / evocati hanno priorità assoluta di categoria
+    if (t.isEvocation || t.category === 'evocazioni') return 'evocazioni';
+    // Statblock da mostro ha priorità: è SEMPRE un mostro/creatura (anche se controllato o assegnato a un giocatore!)
+    if (t.statblock) return 'mostri';
+    // Scheda giocatore ha priorità per i PG
+    if (t.pcSheet) return 'personaggi';
     if (t.category && TOKEN_CATEGORIES.includes(t.category)) return t.category;
     if (getTokenOwners(t).length > 0) return 'personaggi';
-    if (t.statblock) return 'mostri';
     if (savedTokensLibrary && savedTokensLibrary.length > 0 && t.src) {
         const libMatch = savedTokensLibrary.find(x => x.src === t.src);
         if (libMatch && libMatch.category && TOKEN_CATEGORIES.includes(libMatch.category)) {
@@ -2237,13 +2813,26 @@ function scheduleSaveCampaignTokens() {
             }
         }
         try {
-            localStorage.setItem('vtt_default_campaign_tokens', JSON.stringify(currentCampaignTokens.slice(0, 80)));
+            // Evita di saturare il DOM storage e la RAM con stringhe base64: salva solo i metadati leggeri
+            const lightList = currentCampaignTokens.slice(0, 50).map(t => ({
+                id: t.id,
+                name: t.name,
+                category: t.category,
+                sizeMultiplier: t.sizeMultiplier,
+                hpMax: t.hpMax,
+                ac: t.ac
+            }));
+            localStorage.setItem('vtt_default_campaign_tokens_meta', JSON.stringify(lightList));
+            localStorage.removeItem('vtt_default_campaign_tokens');
         } catch (e) {}
     }, 180);
 }
 
 function upsertTokenInCampaign(token, skipGalleryRefresh = false) {
     if (!token || !token.src) return null;
+    if (token.isEvocation || token.category === 'evocazioni') return null; // Non inquinare la libreria permanente di campagna con evocazioni temporanee
+    const activeCamp = currentCampaignId || document.getElementById('campaign-select')?.value || '';
+    if (!activeCamp) return null; // Non salvare nei token di campagna se nessuna campagna è attiva
     const cat = inferTokenCategory(token);
     const cleanName = getCleanTemplateName(token.name || token.originalName || 'Token', cat);
     const cleanSrc = getOrCompressTokenSrc(token) || token.src;
@@ -2279,6 +2868,7 @@ function upsertTokenInCampaign(token, skipGalleryRefresh = false) {
         if (token.pcSheet) {
             existing.pcSheet = JSON.parse(JSON.stringify(token.pcSheet));
         }
+        existing.campaignId = activeCamp;
     } else {
         let stCopy = null;
         if (token.statblock) {
@@ -2301,7 +2891,8 @@ function upsertTokenInCampaign(token, skipGalleryRefresh = false) {
             hpVisibleToPlayers: token.hpVisibleToPlayers !== false,
             statblock: stCopy,
             pcSheet: pcCopy,
-            adventureJournal: token.adventureJournal || ''
+            adventureJournal: token.adventureJournal || '',
+            campaignId: activeCamp
         };
         currentCampaignTokens.push(existing);
     }
@@ -2319,46 +2910,51 @@ async function loadCampaignTokensFor(campaignId) {
     if (campaignId) {
         try {
             loaded = await vttDB.getCampaignTokens(campaignId) || [];
+            // Filtra e assicura il tag di appartenenza campaignId
+            loaded = loaded.filter(t => !t.campaignId || t.campaignId === campaignId);
+            loaded.forEach(t => { t.campaignId = campaignId; });
             // Migrazione/recupero automatico dai salvataggi mappa della stessa campagna:
-            // se la campagna aveva già mappe salvate con PG, PNG o mostri, li recupera tutti nella Campagna!
-            const maps = await vttDB.getMapsByCampaign(campaignId) || [];
-            let addedFromMaps = false;
-            maps.forEach(m => {
-                if (m && m.state && Array.isArray(m.state.tokens)) {
-                    m.state.tokens.forEach(t => {
-                        if (!t || !t.src) return;
-                        const cat = inferTokenCategory(t);
-                        const cleanName = getCleanTemplateName(t.name || t.originalName || 'Token', cat);
-                        const found = loaded.find(x => x.src === t.src || ((cat === 'personaggi' || cat === 'png') && x.category === cat && x.name && x.name.toLowerCase() === cleanName.toLowerCase()));
-                        if (!found) {
-                            let stCopy = null;
-                            if (t.statblock) {
-                                stCopy = JSON.parse(JSON.stringify(t.statblock));
-                                if (stCopy._raw && stCopy._raw.tokenSrc) delete stCopy._raw.tokenSrc;
+            // eseguito SOLTANTO se la campagna non ha ancora token memorizzati (evita il caricamento di decine di MB di mappe 4K in RAM!)
+            if (loaded.length === 0) {
+                const maps = await vttDB.getMapsByCampaign(campaignId) || [];
+                let addedFromMaps = false;
+                maps.forEach(m => {
+                    if (m && m.state && Array.isArray(m.state.tokens)) {
+                        m.state.tokens.forEach(t => {
+                            if (!t || !t.src) return;
+                            const cat = inferTokenCategory(t);
+                            const cleanName = getCleanTemplateName(t.name || t.originalName || 'Token', cat);
+                            const found = loaded.find(x => x.src === t.src || ((cat === 'personaggi' || cat === 'png') && x.category === cat && x.name && x.name.toLowerCase() === cleanName.toLowerCase()));
+                            if (!found) {
+                                let stCopy = null;
+                                if (t.statblock) {
+                                    stCopy = JSON.parse(JSON.stringify(t.statblock));
+                                    if (stCopy._raw && stCopy._raw.tokenSrc) delete stCopy._raw.tokenSrc;
+                                }
+                                const ownersList = getTokenOwners(t);
+                                loaded.push({
+                                    id: 'token_c_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                                    name: cleanName,
+                                    src: t.src,
+                                    category: cat,
+                                    hpMax: t.hpMax || 0,
+                                    ac: t.ac || 10,
+                                    sizeMultiplier: t.sizeMultiplier || 1,
+                                    owners: ownersList,
+                                    owner: ownersList[0] || '',
+                                    nameVisibility: t.nameVisibility || 'all',
+                                    hpVisibleToPlayers: t.hpVisibleToPlayers !== false,
+                                    statblock: stCopy,
+                                    pcSheet: t.pcSheet ? JSON.parse(JSON.stringify(t.pcSheet)) : null
+                                });
+                                addedFromMaps = true;
                             }
-                            const ownersList = getTokenOwners(t);
-                            loaded.push({
-                                id: 'token_c_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-                                name: cleanName,
-                                src: t.src,
-                                category: cat,
-                                hpMax: t.hpMax || 0,
-                                ac: t.ac || 10,
-                                sizeMultiplier: t.sizeMultiplier || 1,
-                                owners: ownersList,
-                                owner: ownersList[0] || '',
-                                nameVisibility: t.nameVisibility || 'all',
-                                hpVisibleToPlayers: t.hpVisibleToPlayers !== false,
-                                statblock: stCopy,
-                                pcSheet: t.pcSheet ? JSON.parse(JSON.stringify(t.pcSheet)) : null
-                            });
-                            addedFromMaps = true;
-                        }
-                    });
+                        });
+                    }
+                });
+                if (addedFromMaps) {
+                    await vttDB.saveCampaignTokens(campaignId, loaded);
                 }
-            });
-            if (addedFromMaps) {
-                await vttDB.saveCampaignTokens(campaignId, loaded);
             }
         } catch (err) {
             console.warn("Errore caricamento token campagna:", err);
@@ -2383,7 +2979,8 @@ function syncCampaignPlayerCharactersToMap() {
     
     // Trova tutti i token identificati come Personaggi Giocatori (PG) nella campagna
     const campaignPgs = currentCampaignTokens.filter(ct => {
-        return ct.category === 'personaggi' || (ct.owners && ct.owners.length > 0) || ct.pcSheet;
+        if (!ct || ct.statblock) return false;
+        return (ct.pcSheet || ct.category === 'personaggi');
     });
     if (campaignPgs.length === 0) return;
 
@@ -2791,9 +3388,13 @@ function createTokenCard(name, src, count = 1, allowDelete = false, id = null, i
         const delBtn = document.createElement('button');
         delBtn.innerHTML = '✕';
         delBtn.title = sourceType === 'campaign' ? 'Rimuovi dai token della Campagna' : 'Rimuovi dalla libreria';
-        delBtn.style.cssText = 'position: absolute; top: -4px; left: -4px; background: rgba(180, 0, 0, 0.85); color: white; border: none; border-radius: 50%; width: 16px; height: 16px; font-size: 9px; cursor: pointer; display: none; align-items: center; justify-content: center; padding: 0;';
-        card.addEventListener('mouseenter', () => delBtn.style.display = 'flex');
-        card.addEventListener('mouseleave', () => delBtn.style.display = 'none');
+        delBtn.style.cssText = sourceType === 'campaign'
+            ? 'position: absolute; top: -3px; left: -3px; background: #c62828; color: white; border: 1px solid #fff; border-radius: 50%; width: 16px; height: 16px; font-size: 9.5px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.8); z-index: 5;'
+            : 'position: absolute; top: -4px; left: -4px; background: rgba(180, 0, 0, 0.85); color: white; border: none; border-radius: 50%; width: 16px; height: 16px; font-size: 9px; cursor: pointer; display: none; align-items: center; justify-content: center; padding: 0;';
+        if (sourceType !== 'campaign') {
+            card.addEventListener('mouseenter', () => delBtn.style.display = 'flex');
+            card.addEventListener('mouseleave', () => delBtn.style.display = 'none');
+        }
         delBtn.onclick = async (e) => {
             e.stopPropagation();
             if (sourceType === 'campaign') {
@@ -3128,6 +3729,15 @@ window.updateSelectedTokenControls = function(ent) {
     const hpMaxInput = document.getElementById('token-hp-max');
     if (hpMaxInput) hpMaxInput.value = ent.hpMax || 0;
 
+    const hpTempInput = document.getElementById('token-hp-temp');
+    if (hpTempInput) {
+        const tVal = ent.hpTemp !== undefined ? ent.hpTemp : ((ent.pcSheet && ent.pcSheet.hpTemp) || 0);
+        hpTempInput.value = tVal > 0 ? tVal : '';
+    }
+
+    const hpStyleQuick = document.getElementById('token-hp-style-quick');
+    if (hpStyleQuick) hpStyleQuick.value = engine.hpDisplayStyle || 'bar';
+
     const hpVisInput = document.getElementById('token-hp-visible');
     if (hpVisInput) hpVisInput.checked = ent.hpVisibleToPlayers !== false;
 
@@ -3140,11 +3750,17 @@ window.updateSelectedTokenControls = function(ent) {
 
     // Pulsante Scheda Mostro
     const btnStat = document.getElementById('btn-open-statblock');
+    const isEvoc = ent.isEvocation || ent.category === 'evocazioni';
     if (btnStat) {
+        btnStat.style.display = 'flex';
         if (ent.statblock && ent.statblock.name) {
             btnStat.innerHTML = `<span>📜 ${escapeHTML(ent.statblock.name)}</span>`;
             btnStat.style.background = '#00897b';
-            btnStat.title = `Visualizza Scheda Mostro: ${ent.statblock.name}`;
+            btnStat.title = `Visualizza Scheda: ${ent.statblock.name}`;
+        } else if (isEvoc) {
+            btnStat.innerHTML = `<span>🐉 Scheda Creatura</span>`;
+            btnStat.style.background = '#0277bd';
+            btnStat.title = 'Assegna o cerca scheda mostro/creatura per questa evocazione';
         } else {
             btnStat.innerHTML = `<span>📜 Mostro</span>`;
             btnStat.style.background = '#0277bd';
@@ -3155,16 +3771,21 @@ window.updateSelectedTokenControls = function(ent) {
     // Pulsante Scheda Personaggio (PG)
     const btnPc = document.getElementById('btn-open-pcsheet');
     if (btnPc) {
-        if (ent.pcSheet && ent.pcSheet.name) {
-            btnPc.innerHTML = `<span>🧙 ${escapeHTML(ent.pcSheet.name)}</span>`;
-            btnPc.style.background = '#4a148c';
-            btnPc.style.borderColor = '#ffd54f';
-            btnPc.title = `Apri Scheda PG: ${ent.pcSheet.name} (Liv. ${ent.pcSheet.level || 1})`;
+        if (isEvoc) {
+            btnPc.style.display = 'none';
         } else {
-            btnPc.innerHTML = `<span>🧙 Scheda PG</span>`;
-            btnPc.style.background = '#6a1b9a';
-            btnPc.style.borderColor = '#ab47bc';
-            btnPc.title = 'Apri o Importa Scheda Personaggio (PG)';
+            btnPc.style.display = 'flex';
+            if (ent.pcSheet && ent.pcSheet.name) {
+                btnPc.innerHTML = `<span>🧙 ${escapeHTML(ent.pcSheet.name)}</span>`;
+                btnPc.style.background = '#4a148c';
+                btnPc.style.borderColor = '#ffd54f';
+                btnPc.title = `Apri Scheda PG: ${ent.pcSheet.name} (Liv. ${ent.pcSheet.level || 1})`;
+            } else {
+                btnPc.innerHTML = `<span>🧙 Scheda PG</span>`;
+                btnPc.style.background = '#6a1b9a';
+                btnPc.style.borderColor = '#ab47bc';
+                btnPc.title = 'Apri o Importa Scheda Personaggio (PG)';
+            }
         }
     }
 
@@ -3210,6 +3831,12 @@ window.updateSelectedTokenControls = function(ent) {
         auraDur.value = (aura.roundsLeft !== undefined) ? aura.roundsLeft : (aura.durationRounds || '');
     }
 
+    const tokDur = document.getElementById('token-duration');
+    if (tokDur) {
+        const dLeft = (ent.roundsLeft !== undefined && ent.roundsLeft !== null) ? ent.roundsLeft : ent.durationRounds;
+        tokDur.value = (dLeft !== undefined && dLeft !== null && Number(dLeft) > 0) ? dLeft : '';
+    }
+
     if (typeof window.renderConditionsList === 'function') {
         window.renderConditionsList();
     }
@@ -3249,12 +3876,65 @@ function duplicateSelectedTokens() {
         const nextNum = maxNum + 1;
         const newName = `${baseName} ${nextNum}`;
         
-        let newX = sourceToken.x + gridSize;
-        let newY = sourceToken.y + gridSize;
         const effOffsetX = (engine.grid.offsetX || 0) % gridSize;
         const effOffsetY = (engine.grid.offsetY || 0) % gridSize;
-        newX = Math.round((newX - effOffsetX) / gridSize) * gridSize + effOffsetX;
-        newY = Math.round((newY - effOffsetY) / gridSize) * gridSize + effOffsetY;
+        const tokW = sourceToken.width || gridSize;
+        const tokH = sourceToken.height || gridSize;
+        const stepX = Math.max(gridSize, tokW);
+        const stepY = Math.max(gridSize, tokH);
+        const baseSnapX = Math.round((sourceToken.x - effOffsetX) / gridSize) * gridSize + effOffsetX;
+        const baseSnapY = Math.round((sourceToken.y - effOffsetY) / gridSize) * gridSize + effOffsetY;
+
+        const isCellOccupied = (cx, cy) => {
+            return engine.tokens.some(other => {
+                const ox = other.x;
+                const oy = other.y;
+                const ow = other.width || gridSize;
+                const oh = other.height || gridSize;
+                return (cx < ox + ow - 4) && (cx + tokW > ox + 4) && (cy < oy + oh - 4) && (cy + tokH > oy + 4);
+            });
+        };
+
+        const isWithinMap = (cx, cy) => {
+            if (!engine.mapImage || !engine.mapImage.width || !engine.mapImage.height) return true;
+            return cx >= 0 && cy >= 0 && (cx + tokW) <= engine.mapImage.width && (cy + tokH) <= engine.mapImage.height;
+        };
+
+        let newX = baseSnapX + stepX;
+        let newY = baseSnapY;
+        let foundSpot = false;
+
+        // Cerca la prima casella libera contigua (destra, sinistra, basso, alto, diagonali, e poi anelli successivi)
+        for (let ring = 1; ring <= 8 && !foundSpot; ring++) {
+            const candidates = [
+                { dx: ring, dy: 0 },
+                { dx: -ring, dy: 0 },
+                { dx: 0, dy: ring },
+                { dx: 0, dy: -ring },
+                { dx: ring, dy: ring },
+                { dx: -ring, dy: ring },
+                { dx: ring, dy: -ring },
+                { dx: -ring, dy: -ring }
+            ];
+            for (let s = 1; s < ring; s++) {
+                candidates.push(
+                    { dx: ring, dy: s }, { dx: ring, dy: -s },
+                    { dx: -ring, dy: s }, { dx: -ring, dy: -s },
+                    { dx: s, dy: ring }, { dx: -s, dy: ring },
+                    { dx: s, dy: -ring }, { dx: -s, dy: -ring }
+                );
+            }
+            for (const c of candidates) {
+                const candX = baseSnapX + c.dx * stepX;
+                const candY = baseSnapY + c.dy * stepY;
+                if (isWithinMap(candX, candY) && !isCellOccupied(candX, candY)) {
+                    newX = candX;
+                    newY = candY;
+                    foundSpot = true;
+                    break;
+                }
+            }
+        }
 
         const maxHpVal = sourceToken.hpMax || 0;
         const newToken = {
@@ -3281,6 +3961,10 @@ function duplicateSelectedTokens() {
             pcSheet: sourceToken.pcSheet ? JSON.parse(JSON.stringify(sourceToken.pcSheet)) : null,
             aura: sourceToken.aura ? JSON.parse(JSON.stringify(sourceToken.aura)) : null,
             conditions: sourceToken.conditions ? JSON.parse(JSON.stringify(sourceToken.conditions)) : [],
+            durationRounds: sourceToken.durationRounds > 0 ? sourceToken.durationRounds : undefined,
+            roundsLeft: sourceToken.durationRounds > 0 ? sourceToken.durationRounds : undefined,
+            isEvocation: !!sourceToken.isEvocation,
+            evokerName: sourceToken.evokerName || null,
             owner: sourceToken.owner || '',
             owners: getTokenOwners(sourceToken)
         };
@@ -3307,15 +3991,29 @@ function duplicateSelectedTokens() {
     }
 }
 
-// Scorciatoia da tastiera Ctrl+D per duplicare token selezionati
+// Scorciatoia da tastiera Ctrl+D per duplicare token selezionati + tracciamento tasto Shift
 window.addEventListener('keydown', (e) => {
-    const tag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
-    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (e.key === 'Shift') window._vttShiftDown = true;
 
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'd' || e.key === 'D' || e.code === 'KeyD')) {
+        // Impedisce SEMPRE al browser di aprire il pannello "Aggiungi ai preferiti" con Ctrl+D
         e.preventDefault();
+        e.stopPropagation();
+        // Se l'utente stava modificando il nome del token nell'input, applica il blur così il nome è consolidato
+        if (document.activeElement && document.activeElement.id === 'token-name-edit') {
+            document.activeElement.blur();
+        }
         duplicateSelectedTokens();
+        return;
     }
+}, { capture: true });
+
+window.addEventListener('keyup', (e) => {
+    if (e.key === 'Shift') window._vttShiftDown = false;
+}, { capture: true });
+
+window.addEventListener('blur', () => {
+    window._vttShiftDown = false;
 });
 
 document.getElementById('btn-duplicate-token')?.addEventListener('click', duplicateSelectedTokens);
@@ -3423,12 +4121,21 @@ function addTokenToMap(name, src, explicitHp = null, explicitCategory = null, te
             assignedName = (foundAny || maxNum > 0) ? `${baseName} ${maxNum + 1}` : `${baseName} 1`;
         }
 
+        const defDurInput = document.getElementById('token-default-duration');
+        const defDurVal = defDurInput ? parseInt(defDurInput.value) : 0;
+        const tokDurToAssign = (!isNaN(defDurVal) && defDurVal > 0) ? defDurVal : undefined;
+        let tokSkipFirst = false;
+        if (tokDurToAssign && engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0) {
+            tokSkipFirst = true;
+        }
+
         const token = {
             id: 'token_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
             name: assignedName,
             nameVisibility: nameVisToAssign,
             originalName: name,
             category: categoryToAssign,
+            isEvocation: categoryToAssign === 'evocazioni',
             x: snappedX,
             y: snappedY,
             width: pxSize,
@@ -3444,6 +4151,9 @@ function addTokenToMap(name, src, explicitHp = null, explicitCategory = null, te
             ac: acToAssign,
             statblock: statblockToAssign,
             pcSheet: pcSheetToAssign,
+            durationRounds: tokDurToAssign,
+            roundsLeft: tokDurToAssign,
+            skipFirstDecrement: tokSkipFirst,
             owner: ownerStrToAssign,
             owners: ownersToAssign
         };
@@ -3673,6 +4383,33 @@ document.getElementById('btn-delete-token').addEventListener('click', () => {
     }
 });
 
+// Pulsante esplicito per rimuovere il token direttamente e definitivamente dal Roster della Campagna
+document.getElementById('btn-delete-from-campaign')?.addEventListener('click', () => {
+    const targets = getSelectedTargetTokens();
+    if (targets.length === 0) return;
+    const names = targets.map(t => t.name || 'Token').join(', ');
+    const confirmMsg = typeof window.t === 'function' 
+        ? window.t(`Rimuovere definitivamente ${names} dal Roster della Campagna attiva?`)
+        : `Rimuovere definitivamente ${names} dal Roster della Campagna attiva?`;
+    
+    if (confirm(confirmMsg)) {
+        targets.forEach(tok => {
+            currentCampaignTokens = currentCampaignTokens.filter(x => x.id !== tok.id && x.src !== tok.src);
+            engine.tokens = engine.tokens.filter(t => t.id !== tok.id);
+        });
+        scheduleSaveCampaignTokens();
+        engine.selectedTokenId = null;
+        if (engine.selectedTokens) engine.selectedTokens.clear();
+        engine.renderAll();
+        syncState(true);
+        updateMapTokensGallery();
+        updateTokenControlsVisibility(false);
+        if (typeof showToast === 'function') {
+            showToast(`🗑️ ${names} rimosso dal Roster della Campagna!`);
+        }
+    }
+});
+
 
 function updateTokenHP(e) {
     const targetTokens = getSelectedTargetTokens();
@@ -3690,12 +4427,34 @@ function updateTokenHP(e) {
         return;
     }
 
+    // Se è stato modificato SOLO il campo PV Temporanei (#token-hp-temp)
+    if (e && e.target && e.target.id === 'token-hp-temp') {
+        const tempVal = Math.max(0, parseInt(e.target.value) || 0);
+        targetTokens.forEach(token => {
+            token.hpTemp = tempVal;
+            if (token.pcSheet) token.pcSheet.hpTemp = tempVal;
+            upsertTokenInCampaign(token);
+            if (engine.initiative && engine.initiative.participants) {
+                const pItem = engine.initiative.participants.find(p => p.tokenId === token.id);
+                if (pItem) pItem.hpTemp = tempVal;
+            }
+        });
+        if (engine.initiative && engine.initiative.participants && typeof renderTrackerList === 'function') {
+            renderTrackerList();
+        }
+        engine.renderAll();
+        syncState(true);
+        return;
+    }
+
     const maxInput = document.getElementById('token-hp-max');
     const currInput = document.getElementById('token-hp-current');
+    const tempInput = document.getElementById('token-hp-temp');
     if (!maxInput || !currInput) return;
 
     let maxVal = parseInt(maxInput.value) || 0;
     let currVal = parseInt(currInput.value);
+    let tempVal = tempInput ? Math.max(0, parseInt(tempInput.value) || 0) : 0;
 
     const isEditingMax = e && e.target && e.target.id === 'token-hp-max';
     // Se modifichiamo Max e l'attuale era vuoto o 0, porta subito a Full Vita!
@@ -3712,6 +4471,12 @@ function updateTokenHP(e) {
     targetTokens.forEach(token => {
         token.hpMax = maxVal;
         token.hpCurrent = currVal;
+        token.hpTemp = tempVal;
+        if (token.pcSheet) {
+            token.pcSheet.hpMax = maxVal;
+            token.pcSheet.hpCurrent = currVal;
+            token.pcSheet.hpTemp = tempVal;
+        }
         token.hpVisibleToPlayers = isVisible;
         upsertTokenInCampaign(token);
         if (engine.initiative && engine.initiative.participants) {
@@ -3719,6 +4484,7 @@ function updateTokenHP(e) {
             if (pItem) {
                 pItem.hpCurrent = token.hpCurrent;
                 pItem.hpMax = token.hpMax;
+                pItem.hpTemp = token.hpTemp;
             }
         }
     });
@@ -3769,8 +4535,10 @@ document.getElementById('token-owner').addEventListener('change', (e) => {
 
 document.getElementById('token-hp-current').addEventListener('input', updateTokenHP);
 document.getElementById('token-hp-max').addEventListener('input', updateTokenHP);
+document.getElementById('token-hp-temp')?.addEventListener('input', updateTokenHP);
 document.getElementById('token-hp-current').addEventListener('change', updateTokenHP);
 document.getElementById('token-hp-max').addEventListener('change', updateTokenHP);
+document.getElementById('token-hp-temp')?.addEventListener('change', updateTokenHP);
 document.getElementById('token-hp-visible').addEventListener('change', updateTokenHP);
 
 // Listener CA (Classe Armatura)
@@ -3812,28 +4580,53 @@ function applyHpMod(isHeal) {
     const modInput = document.getElementById('token-hp-mod');
     let modVal = parseInt(modInput.value);
     if (!isNaN(modVal)) {
-        modVal = Math.abs(modVal);
-        if (!isHeal) modVal = -modVal;
+        const absVal = Math.abs(modVal);
         
         const targetTokens = getSelectedTargetTokens();
         if (targetTokens.length === 0) return;
 
         targetTokens.forEach(token => {
             let curr = token.hpCurrent !== undefined ? token.hpCurrent : (token.hpMax || 0);
-            let newHp = curr + modVal;
             const maxHp = token.hpMax || 0;
-            if (newHp > maxHp && maxHp > 0) newHp = maxHp;
-            if (newHp < 0) newHp = 0;
-            token.hpCurrent = newHp;
+            let tempHp = Math.max(0, parseInt(token.hpTemp) || (token.pcSheet && parseInt(token.pcSheet.hpTemp)) || 0);
+
+            if (isHeal) {
+                let newHp = curr + absVal;
+                if (newHp > maxHp && maxHp > 0) newHp = maxHp;
+                token.hpCurrent = newHp;
+            } else {
+                let dmg = absVal;
+                if (tempHp > 0) {
+                    const absorbed = Math.min(tempHp, dmg);
+                    tempHp -= absorbed;
+                    dmg -= absorbed;
+                    token.hpTemp = tempHp;
+                    if (token.pcSheet) token.pcSheet.hpTemp = tempHp;
+                }
+                let newHp = Math.max(0, curr - dmg);
+                token.hpCurrent = newHp;
+            }
+            if (token.pcSheet) {
+                token.pcSheet.hpCurrent = token.hpCurrent;
+            }
+            upsertTokenInCampaign(token);
             if (engine.initiative && engine.initiative.participants) {
                 const pItem = engine.initiative.participants.find(p => p.tokenId === token.id);
-                if (pItem) pItem.hpCurrent = token.hpCurrent;
+                if (pItem) {
+                    pItem.hpCurrent = token.hpCurrent;
+                    pItem.hpTemp = token.hpTemp || 0;
+                }
             }
         });
 
         const primToken = targetTokens[targetTokens.length - 1];
         if (primToken) {
             document.getElementById('token-hp-current').value = primToken.hpCurrent !== undefined ? primToken.hpCurrent : '';
+            const tempInput = document.getElementById('token-hp-temp');
+            if (tempInput) {
+                const tVal = primToken.hpTemp || 0;
+                tempInput.value = tVal > 0 ? tVal : '';
+            }
         }
 
         modInput.value = '';
@@ -3893,6 +4686,52 @@ document.getElementById('token-aura-active').addEventListener('change', updateTo
 document.getElementById('token-aura-highlight')?.addEventListener('change', updateTokenAuraCond);
 document.getElementById('token-aura-size').addEventListener('input', updateTokenAuraCond);
 document.getElementById('token-aura-duration')?.addEventListener('input', updateTokenAuraCond);
+
+document.getElementById('token-duration')?.addEventListener('input', (e) => {
+    const targets = getSelectedTargetTokens();
+    if (targets.length === 0) return;
+    const rawVal = parseInt(e.target.value);
+    const durVal = (!isNaN(rawVal) && rawVal > 0) ? rawVal : 0;
+
+    let skipFirst = false;
+    let curInitId = null;
+    if (durVal > 0 && engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0) {
+        const curP = engine.initiative.participants[engine.initiative.currentTurnIndex];
+        if (curP) {
+            const curName = (curP.name || '').trim().toLowerCase();
+            const isMatch = targets.some(t => {
+                if (String(t.id) === String(curP.tokenId)) return true;
+                if (t.name && curName && t.name.trim().toLowerCase() === curName) return true;
+                if (t.evokerName && curName && (curName === t.evokerName.trim().toLowerCase() || curName.startsWith(t.evokerName.trim().toLowerCase() + ' '))) return true;
+                if (isTokenOwnedBy(t, curP.name)) return true;
+                return false;
+            });
+            if (isMatch) {
+                skipFirst = true;
+                curInitId = curP.id;
+            }
+        }
+    }
+
+    targets.forEach(token => {
+        if (durVal > 0) {
+            token.durationRounds = durVal;
+            token.roundsLeft = durVal;
+            token.skipFirstDecrement = skipFirst;
+            token._lastDecrementedRound = undefined;
+            if (curInitId && !token.casterInitiativeId) token.casterInitiativeId = curInitId;
+        } else {
+            delete token.durationRounds;
+            delete token.roundsLeft;
+            delete token.skipFirstDecrement;
+            delete token._lastDecrementedRound;
+            delete token.casterInitiativeId;
+        }
+    });
+
+    engine.renderAll();
+    syncState(true);
+});
 document.getElementById('token-aura-unit').addEventListener('change', (e) => {
     const input = document.getElementById('token-aura-size');
     let oldVal = parseFloat(input.value); if(isNaN(oldVal)) oldVal = 0;
@@ -3945,11 +4784,15 @@ window.renderConditionsList = function() {
         d.style.padding = '2px 5px';
         d.style.borderRadius = '3px';
         d.style.borderLeft = '4px solid ' + cond.color;
+        d.style.gap = '4px';
         
         const span = document.createElement('span');
         span.style.fontSize = '12px';
+        span.style.flex = '1';
         const suffix = (targets.length > 1 && entry.count < targets.length) ? ` (${entry.count}/${targets.length})` : '';
-        span.innerText = cond.text + suffix;
+        const rLeft = cond.roundsLeft !== undefined ? cond.roundsLeft : cond.durationRounds;
+        const durText = (rLeft !== undefined && rLeft !== null && Number(rLeft) > 0) ? ` ⏳ ${rLeft} rnd` : '';
+        span.innerText = cond.text + durText + suffix;
         
         const btn = document.createElement('button');
         btn.innerText = 'X';
@@ -3963,6 +4806,7 @@ window.renderConditionsList = function() {
             targets.forEach(token => {
                 if (Array.isArray(token.conditions)) {
                     token.conditions = token.conditions.filter(c => (c.text || c.type || '').trim() !== key);
+                    token._condRingCacheKey = null;
                 }
             });
             renderConditionsList();
@@ -3976,6 +4820,35 @@ window.renderConditionsList = function() {
     });
 };
 
+document.getElementById('token-condition-type')?.addEventListener('change', (e) => {
+    const val = (e.target.value || '').toLowerCase();
+    const colorInput = document.getElementById('token-condition-color');
+    if (!colorInput) return;
+    const defaultColors = {
+        'paralizzato': '#ffb300',
+        'avvelenato': '#4caf50',
+        'accecato': '#9e9e9e',
+        'affascinato': '#e91e63',
+        'afferrato': '#ff7043',
+        'assordato': '#78909c',
+        'inabile': '#ef5350',
+        'invisibile': '#80deea',
+        'pietrificato': '#8d6e63',
+        'privo di sensi': '#b71c1c',
+        'prono': '#ffa726',
+        'spaventato': '#ab47bc',
+        'stordito': '#ffee58',
+        'trattenuto': '#ff8a65',
+        'sfinimento': '#5c6bc0'
+    };
+    for (const [k, hex] of Object.entries(defaultColors)) {
+        if (val.startsWith(k)) {
+            colorInput.value = hex;
+            break;
+        }
+    }
+});
+
 document.getElementById('btn-add-condition').addEventListener('click', () => {
     const targets = getSelectedTargetTokens();
     if (targets.length === 0) return;
@@ -3985,6 +4858,17 @@ document.getElementById('btn-add-condition').addEventListener('click', () => {
     const parts = cType.split(',');
     const text = cLang === 'it' ? parts[0] : parts[1];
     const color = document.getElementById('token-condition-color').value;
+    const durInput = document.getElementById('token-condition-duration');
+    let durVal = durInput ? parseInt(durInput.value) : 0;
+    if (isNaN(durVal) || durVal <= 0) durVal = 0;
+
+    let skipFirst = false;
+    if (durVal > 0 && engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0) {
+        const curP = engine.initiative.participants[engine.initiative.currentTurnIndex];
+        if (curP && targets.some(t => t.id === curP.tokenId || (t.name && curP.name && t.name.trim().toLowerCase() === curP.name.trim().toLowerCase()))) {
+            skipFirst = true;
+        }
+    }
     
     targets.forEach(token => {
         if (!token.conditions) {
@@ -3995,16 +4879,25 @@ document.getElementById('btn-add-condition').addEventListener('click', () => {
         const existingIdx = token.conditions.findIndex(c => (c.text || '') === text);
         if (existingIdx >= 0) {
             token.conditions[existingIdx].color = color;
+            token.conditions[existingIdx].durationRounds = durVal > 0 ? durVal : undefined;
+            token.conditions[existingIdx].roundsLeft = durVal > 0 ? durVal : undefined;
+            token.conditions[existingIdx].skipFirstDecrement = skipFirst;
         } else {
             token.conditions.push({
                 type: cType,
                 lang: cLang,
                 color: color,
-                text: text
+                text: text,
+                durationRounds: durVal > 0 ? durVal : undefined,
+                roundsLeft: durVal > 0 ? durVal : undefined,
+                skipFirstDecrement: skipFirst
             });
         }
+        token._condRingCacheKey = null;
+        upsertTokenInCampaign(token);
     });
     
+    if (durInput) durInput.value = '';
     renderConditionsList();
     engine.renderAll();
     syncState(true);
@@ -4061,9 +4954,13 @@ document.getElementById('btn-add-aoe').addEventListener('click', () => {
     let _w = parseFloat(document.getElementById('aoe-width').value); if(isNaN(_w)) _w = 5; _w = Math.max(0.1, _w);
     const widthFt = unit === 'm' ? (_w / 1.5) * 5 : _w;
     const color = document.getElementById('aoe-color').value;
-    const centerWorld = engine.screenToWorld(engine.layers.ui.width/2, engine.layers.ui.height/2);
+    const centerWorld = engine.getSafeAoESpawnPosition 
+        ? engine.getSafeAoESpawnPosition(type, sizeFt, widthFt)
+        : engine.screenToWorld(engine.layers.ui.width/2, engine.layers.ui.height/2);
 
     const highlightTokens = document.getElementById('aoe-highlight-tokens') ? document.getElementById('aoe-highlight-tokens').checked : true;
+    const aoeVisSelect = document.getElementById('aoe-visibility');
+    const isShapeVisible = aoeVisSelect ? (aoeVisSelect.value !== 'hidden') : true;
 
     const durInput = document.getElementById('aoe-duration');
     let durVal = durInput ? parseInt(durInput.value) : 0;
@@ -4095,8 +4992,9 @@ document.getElementById('btn-add-aoe').addEventListener('click', () => {
         skipFirst = true; // Lanciato durante il suo turno: non scalare alla chiusura di questo stesso turno!
     }
 
-    engine.shapes.push({
-        id: 'aoe_' + Date.now(),
+    const newShapeId = 'aoe_' + Date.now();
+    const newShape = {
+        id: newShapeId,
         type: type,
         x: centerWorld.x,
         y: centerWorld.y,
@@ -4104,7 +5002,7 @@ document.getElementById('btn-add-aoe').addEventListener('click', () => {
         widthFt: widthFt,
         color: color,
         angle: 0,
-        visible: true,
+        visible: isShapeVisible,
         highlightTokens: highlightTokens,
         durationRounds: durVal > 0 ? durVal : undefined,
         roundsLeft: durVal > 0 ? durVal : undefined,
@@ -4112,10 +5010,90 @@ document.getElementById('btn-add-aoe').addEventListener('click', () => {
         casterTokenId: casterTokenId,
         casterName: casterName,
         skipFirstDecrement: skipFirst
-    });
+    };
+    engine.shapes.push(newShape);
+
+    // Auto-seleziona la nuova sagoma creata per permetterne la modifica immediata
+    engine.selectedShapeId = newShapeId;
+    const aoePanelEl = document.getElementById('aoe-panel') || document.getElementById('aoe-controls');
+    if (aoePanelEl) aoePanelEl.style.display = 'flex';
+    const shapeControls = document.getElementById('selected-shape-controls');
+    if (shapeControls) {
+        shapeControls.style.display = 'flex';
+        const wCtrl = document.getElementById('shape-edit-width');
+        if (wCtrl) wCtrl.style.display = type === 'line' ? 'block' : 'none';
+        const unitEl = document.getElementById('shape-edit-unit');
+        if (unitEl) unitEl.value = 'ft';
+        const szEl = document.getElementById('shape-edit-size');
+        if (szEl) { szEl.step = '5'; szEl.value = Math.round(sizeFt * 10) / 10; }
+        const wEl = document.getElementById('shape-edit-width');
+        if (wEl) { wEl.step = '1'; wEl.value = widthFt !== undefined ? Math.round(widthFt * 10) / 10 : 5; }
+        const hlCb = document.getElementById('shape-edit-highlight-tokens');
+        if (hlCb) hlCb.checked = highlightTokens !== false;
+        const durEdit = document.getElementById('shape-edit-duration');
+        if (durEdit) durEdit.value = durVal > 0 ? durVal : '';
+        updateShapeVisibilityUI(newShape);
+    }
+
     engine.renderAll();
-    syncState();
+    syncState(true);
 });
+
+function updateShapeVisibilityUI(shape) {
+    if (!shape) return;
+    const isVis = shape.visible !== false;
+    const visSelect = document.getElementById('shape-edit-visibility');
+    if (visSelect) {
+        visSelect.value = isVis ? 'visible' : 'hidden';
+    }
+    const visBtn = document.getElementById('btn-shape-toggle-visibility');
+    if (visBtn) {
+        if (isVis) {
+            visBtn.innerHTML = '👁️ Visibile';
+            visBtn.style.background = '#2e7d32';
+            visBtn.style.borderColor = '#66bb6a';
+            visBtn.title = 'Clicca per nascondere questa sagoma ai giocatori';
+        } else {
+            visBtn.innerHTML = '🙈 Nascosta';
+            visBtn.style.background = '#6a1b9a';
+            visBtn.style.borderColor = '#ba68c8';
+            visBtn.title = 'Clicca per rendere questa sagoma visibile ai giocatori';
+        }
+    }
+}
+window.updateShapeVisibilityUI = updateShapeVisibilityUI;
+
+const shapeEditVisibility = document.getElementById('shape-edit-visibility');
+if (shapeEditVisibility) {
+    shapeEditVisibility.addEventListener('change', (e) => {
+        const shape = engine.shapes.find(s => s.id === engine.selectedShapeId);
+        if (shape) {
+            shape.visible = (e.target.value !== 'hidden');
+            updateShapeVisibilityUI(shape);
+            engine.renderTokensLayer();
+            syncState(true);
+            if (typeof showToast === 'function') {
+                showToast(shape.visible ? '👁️ Sagoma AoE visibile ai giocatori' : '🙈 Sagoma AoE nascosta ai giocatori (visibile solo al DM)');
+            }
+        }
+    });
+}
+
+const btnShapeToggleVisibility = document.getElementById('btn-shape-toggle-visibility');
+if (btnShapeToggleVisibility) {
+    btnShapeToggleVisibility.addEventListener('click', () => {
+        const shape = engine.shapes.find(s => s.id === engine.selectedShapeId);
+        if (shape) {
+            shape.visible = (shape.visible === false);
+            updateShapeVisibilityUI(shape);
+            engine.renderTokensLayer();
+            syncState(true);
+            if (typeof showToast === 'function') {
+                showToast(shape.visible ? '👁️ Sagoma AoE visibile ai giocatori' : '🙈 Sagoma AoE nascosta ai giocatori (visibile solo al DM)');
+            }
+        }
+    });
+}
 
 const shapeEditDuration = document.getElementById('shape-edit-duration');
 if (shapeEditDuration) {
@@ -4240,9 +5218,21 @@ document.getElementById('btn-delete-shape').addEventListener('click', () => {
 
 // Canvas Interactions
 const uiLayer = engine.layers.ui;
+let _cachedUiRect = null;
+let _cachedUiRectTime = 0;
+window.addEventListener('resize', () => { _cachedUiRect = null; });
+
+function getUiLayerRect() {
+    const now = performance.now();
+    if (!_cachedUiRect || (now - _cachedUiRectTime > 250)) {
+        _cachedUiRect = uiLayer.getBoundingClientRect();
+        _cachedUiRectTime = now;
+    }
+    return _cachedUiRect;
+}
 
 function getEventPos(e) {
-    const rect = uiLayer.getBoundingClientRect();
+    const rect = getUiLayerRect();
     if (e && e.touches && e.touches.length > 0) {
         return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
     }
@@ -4261,7 +5251,10 @@ function openTokenStatblock(token) {
     if (now - lastStatblockOpenTime < 350) return;
     lastStatblockOpenTime = now;
 
-    if (token.pcSheet || (inferTokenCategory(token) === 'personaggi' && !token.statblock)) {
+    const isEvoc = token.isEvocation || token.category === 'evocazioni';
+    // Non aprire MAI la scheda PG per evocazioni, mostri o token senza scheda PG!
+    const isRealPc = !isEvoc && (token.pcSheet || (inferTokenCategory(token) === 'personaggi' && (token.pcSheet || token.hasPcSheet)));
+    if (isRealPc) {
         if (window.pcSheetManager) {
             window.pcSheetManager.open(token);
             return;
@@ -4314,6 +5307,9 @@ uiLayer.addEventListener('dblclick', handleDoubleClick);
 
 uiLayer.addEventListener('wheel', (e) => {
     e.preventDefault();
+    if (document.activeElement && document.activeElement !== document.body && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+    }
     const pos = getEventPos(e);
     const worldPosBefore = engine.screenToWorld(pos.x, pos.y);
     
@@ -4325,8 +5321,11 @@ uiLayer.addEventListener('wheel', (e) => {
     engine.offsetX += (worldPosAfter.x - worldPosBefore.x) * engine.scale;
     engine.offsetY += (worldPosAfter.y - worldPosBefore.y) * engine.scale;
 
-    engine.renderAll();
-    syncState();
+    engine.renderViewport();
+    if (isViewSyncActive) {
+        sendViewSync();
+    }
+    if (currentMapBase64) markMapDirty(true);
 });
 
 let isPinching = false;
@@ -4366,6 +5365,9 @@ function handleStart(e) {
     }
 
     e.preventDefault();
+    if (document.activeElement && document.activeElement !== document.body && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+    }
     const pos = getEventPos(e);
     
     if (e.button === 1 || e.button === 2) {
@@ -4405,6 +5407,9 @@ function handleStart(e) {
             updateToolControlsVisibility();
             activeStroke = clickedToken;
             activeStrokeType = 'token';
+            activeStroke._hasMovedDuringDrag = false;
+            activeStroke._freeMoveShift = !!(e.shiftKey || window._vttShiftDown);
+            activeStroke._shiftTogglePending = false;
             engine.selectedTokenId = clickedToken.id;
             if (engine.selectedTokens.size > 1) {
                 activeStroke._groupDragOffsets = engine.tokens
@@ -4501,15 +5506,30 @@ function handleStart(e) {
             }
         }
 
-        // Fallback per click su sagoma AoE (raggio fino a ~24px)
+        // Fallback per click su sagoma AoE (maniglia o corpo della sagoma)
         if (!clickedEntity && engine.shapes && engine.shapes.length > 0) {
+            const handleRadius = Math.max(28, 28 / Math.min(1, engine.scale || 1));
+            const handleRadiusSq = handleRadius * handleRadius;
+
+            // 1. Priorità al badge / maniglia centrale
             for (let i = engine.shapes.length - 1; i >= 0; i--) {
                 const s = engine.shapes[i];
                 const dx = worldPos.x - s.x;
                 const dy = worldPos.y - s.y;
-                if (dx*dx + dy*dy < 600) {
+                if (dx*dx + dy*dy <= handleRadiusSq) {
                     clickedEntity = { type: 'shape', ref: s };
                     break;
+                }
+            }
+
+            // 2. Se non ha cliccato la maniglia, verifica se ha cliccato sul corpo della sagoma
+            if (!clickedEntity && engine.isPointInShape) {
+                for (let i = engine.shapes.length - 1; i >= 0; i--) {
+                    const s = engine.shapes[i];
+                    if (engine.isPointInShape(worldPos.x, worldPos.y, s)) {
+                        clickedEntity = { type: 'shape', ref: s };
+                        break;
+                    }
                 }
             }
         }
@@ -4547,17 +5567,21 @@ function handleStart(e) {
             } else if (clickedEntity.type === 'token') {
                 if (e.shiftKey) {
                     if (engine.selectedTokens.has(ent.id)) {
-                        engine.selectedTokens.delete(ent.id);
-                        engine.selectedTokenId = engine.selectedTokens.size > 0 ? Array.from(engine.selectedTokens).pop() : null;
-                        activeStroke = null;
-                        activeStrokeType = null;
+                        // Non deselezionare subito al mousedown: se l'utente trascina col mouse tenendo premuto Shift,
+                        // serve per il movimento fluido senza calamita (grid snap). Se invece rilascia senza muovere, fa toggle selezione!
+                        ent._shiftTogglePending = true;
+                        engine.selectedTokenId = ent.id;
+                        activeStroke = ent;
+                        activeStrokeType = 'token';
                     } else {
+                        ent._shiftTogglePending = false;
                         engine.selectedTokens.add(ent.id);
                         engine.selectedTokenId = ent.id;
                         activeStroke = ent;
                         activeStrokeType = 'token';
                     }
                 } else {
+                    ent._shiftTogglePending = false;
                     if (!engine.selectedTokens.has(ent.id)) {
                         engine.selectedTokens.clear();
                         engine.selectedTokens.add(ent.id);
@@ -4565,6 +5589,10 @@ function handleStart(e) {
                     engine.selectedTokenId = ent.id;
                     activeStroke = ent;
                     activeStrokeType = 'token';
+                }
+                if (activeStroke) {
+                    activeStroke._hasMovedDuringDrag = false;
+                    activeStroke._freeMoveShift = !!(e.shiftKey || window._vttShiftDown);
                 }
 
                 // Se stiamo trascinando un token che fa parte di una selezione multipla, prepara gli offset del gruppo!
@@ -4676,14 +5704,23 @@ function handleStart(e) {
         engine.lasers.push(activeLaser);
         
         engine.renderUI();
+        return;
     } else if (currentTool.startsWith('fog-')) {
         const shape = document.getElementById('fog-brush-shape').value;
         const size = parseInt(document.getElementById('fog-brush-size').value) || 150;
         activeStroke = [worldPos];
         engine.drawFogStroke([worldPos, {x: worldPos.x+0.1, y: worldPos.y}], currentTool === 'fog-erase', shape, size);
+        engine.renderUI();
+        return;
+    } else if (currentTool === 'ruler') {
+        engine.renderUI();
+        return;
     }
     
-    engine.renderAll();
+    if (isPanning && !activeStroke) {
+        return;
+    }
+    engine.renderTokensLayer();
 }
 
 function handleMove(e) {
@@ -4693,7 +5730,7 @@ function handleMove(e) {
             clearTimeout(pingTimeout);
             pingTimeout = null;
         }
-        const rect = uiLayer.getBoundingClientRect();
+        const rect = getUiLayerRect();
         const t0 = e.touches[0];
         const t1 = e.touches[1];
         const curDist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
@@ -4709,7 +5746,7 @@ function handleMove(e) {
             engine.offsetX = curMidX - pinchStartWorldPos.x * engine.scale;
             engine.offsetY = curMidY - pinchStartWorldPos.y * engine.scale;
 
-            engine.renderAll();
+            engine.renderViewport();
             if (isViewSyncActive && (Date.now() - (window.lastPinchSyncSend || 0) > 40)) {
                 window.lastPinchSyncSend = Date.now();
                 sendViewSync();
@@ -4803,6 +5840,13 @@ function handleMove(e) {
         const isShape = !isToken && (activeStrokeType === 'shape' || (activeStroke && ((activeStroke.id && String(activeStroke.id).startsWith('aoe_')) || engine.shapes.some(s => s === activeStroke || (activeStroke.id && s.id === activeStroke.id)))));
 
         if (isToken) {
+            if (!activeStroke._hasMovedDuringDrag && Math.hypot(pos.x - startMouseX, pos.y - startMouseY) < 4) {
+                return;
+            }
+            activeStroke._hasMovedDuringDrag = true;
+            activeStroke._shiftTogglePending = false;
+            activeStroke._freeMoveShift = !!(e.shiftKey || window._vttShiftDown);
+
             activeStroke.x = worldPos.x - activeStroke.width/2;
             activeStroke.y = worldPos.y - activeStroke.height/2;
             if (activeStroke._groupDragOffsets && activeStroke._groupDragOffsets.length > 0) {
@@ -4844,7 +5888,8 @@ function handleMove(e) {
         } else if (isShape) {
             activeStroke.x = worldPos.x;
             activeStroke.y = worldPos.y;
-            if (Date.now() - (window.lastGmShapeMoveSend || 0) > 35) {
+            if (engine.clampShapePosition) engine.clampShapePosition(activeStroke);
+            if (activeStroke.visible !== false && Date.now() - (window.lastGmShapeMoveSend || 0) > 35) {
                 window.lastGmShapeMoveSend = Date.now();
                 network.send({
                     type: 'REMOTE_SHAPE_MOVE',
@@ -4903,7 +5948,7 @@ function handleMove(e) {
     } else if (currentTool === 'ruler') {
         engine.ruler.endX = worldPos.x;
         engine.ruler.endY = worldPos.y;
-        engine.renderAll();
+        engine.renderUI();
     } else if (currentTool === 'laser' && activeLaser) {
         activeLaser.points.push({x: worldPos.x, y: worldPos.y, t: Date.now()});
         if (Date.now() - lastLaserSync > 40) {
@@ -4946,11 +5991,11 @@ function handleEnd(e) {
             pingTimeout = null;
         }
         document.body.classList.remove('vtt-dragging');
-        engine.renderAll();
+        engine.renderViewport();
         if (isViewSyncActive) {
             sendViewSync(true);
         }
-        syncState();
+        if (currentMapBase64) markMapDirty(true);
         return;
     }
 
@@ -4967,7 +6012,7 @@ function handleEnd(e) {
         engine.selectedTokens.clear();
         engine.selectedTokenId = null;
         updateTokenControlsVisibility(false);
-        engine.renderAll();
+        engine.renderTokensLayer();
     }
 
     if (currentTool === 'select-lasso' && engine.lasso) {
@@ -5048,7 +6093,7 @@ function handleEnd(e) {
         } else {
             updateTokenControlsVisibility(false);
         }
-        engine.renderAll();
+        engine.renderTokensLayer();
         return;
     }
 
@@ -5066,55 +6111,101 @@ function handleEnd(e) {
         return;
     }
 
+    let needsFullRender = false;
+    let needsTokenLayerRender = false;
+    let needsUiRender = false;
+
     if (currentTool === 'move' && typeof activeStroke === 'object' && activeStroke !== null) {
         const isToken = activeStrokeType === 'token' || (activeStroke && engine.tokens.some(t => t === activeStroke || (activeStroke.id && t.id === activeStroke.id)));
         const isShape = !isToken && (activeStrokeType === 'shape' || (activeStroke && ((activeStroke.id && String(activeStroke.id).startsWith('aoe_')) || engine.shapes.some(s => s === activeStroke || (activeStroke.id && s.id === activeStroke.id)))));
 
-        // Snap per i token. Le AoE si muovono liberamente e non si "snappano".
+        // Snap per i token (salvo Shift premuto per movimento fluido libero). Le AoE si muovono liberamente e non si "snappano".
         if (isToken) {
-            const effOffsetX = (engine.grid.offsetX || 0) % engine.grid.size;
-            const effOffsetY = (engine.grid.offsetY || 0) % engine.grid.size;
-            
-            activeStroke.x = Math.round((activeStroke.x - effOffsetX) / engine.grid.size) * engine.grid.size + effOffsetX;
-            activeStroke.y = Math.round((activeStroke.y - effOffsetY) / engine.grid.size) * engine.grid.size + effOffsetY;
-            if (activeStroke._groupDragOffsets && activeStroke._groupDragOffsets.length > 0) {
-                const batch = [];
-                if (activeStroke.visible !== false) {
-                    batch.push({ id: activeStroke.id, x: activeStroke.x, y: activeStroke.y });
+            if (activeStroke._hasMovedDuringDrag) {
+                const isFreeMove = !!(e && e.shiftKey) || !!window._vttShiftDown || !!activeStroke._freeMoveShift;
+                const gSize = (engine.grid && engine.grid.size) ? engine.grid.size : 50;
+                const effOffsetX = ((engine.grid && engine.grid.offsetX) || 0) % gSize;
+                const effOffsetY = ((engine.grid && engine.grid.offsetY) || 0) % gSize;
+                
+                if (!isFreeMove && gSize > 0) {
+                    activeStroke.x = Math.round((activeStroke.x - effOffsetX) / gSize) * gSize + effOffsetX;
+                    activeStroke.y = Math.round((activeStroke.y - effOffsetY) / gSize) * gSize + effOffsetY;
                 }
-                activeStroke._groupDragOffsets.forEach(item => {
-                    item.token.x = Math.round(((activeStroke.x + item.dx) - effOffsetX) / engine.grid.size) * engine.grid.size + effOffsetX;
-                    item.token.y = Math.round(((activeStroke.y + item.dy) - effOffsetY) / engine.grid.size) * engine.grid.size + effOffsetY;
-                    if (item.token.visible !== false) {
-                        batch.push({ id: item.token.id, x: item.token.x, y: item.token.y });
+                activeStroke._baseMapX = activeStroke.x;
+                activeStroke._baseMapY = activeStroke.y;
+                activeStroke._lastGridResizeX = activeStroke.x;
+                activeStroke._lastGridResizeY = activeStroke.y;
+                if (activeStroke._groupDragOffsets && activeStroke._groupDragOffsets.length > 0) {
+                    const batch = [];
+                    if (activeStroke.visible !== false) {
+                        batch.push({ id: activeStroke.id, x: activeStroke.x, y: activeStroke.y });
                     }
-                });
-                network.send({
-                    type: 'REMOTE_TOKENS_MOVE_BATCH',
-                    final: true,
-                    payload: batch
-                });
-                activeStroke._groupDragOffsets = null;
-            } else {
-                if (activeStroke.visible !== false) {
-                    network.send({
-                        type: 'REMOTE_TOKEN_MOVE',
-                        final: true,
-                        payload: { id: activeStroke.id, x: activeStroke.x, y: activeStroke.y }
+                    activeStroke._groupDragOffsets.forEach(item => {
+                        if (!isFreeMove && gSize > 0) {
+                            item.token.x = Math.round(((activeStroke.x + item.dx) - effOffsetX) / gSize) * gSize + effOffsetX;
+                            item.token.y = Math.round(((activeStroke.y + item.dy) - effOffsetY) / gSize) * gSize + effOffsetY;
+                        } else {
+                            item.token.x = activeStroke.x + item.dx;
+                            item.token.y = activeStroke.y + item.dy;
+                        }
+                        item.token._baseMapX = item.token.x;
+                        item.token._baseMapY = item.token.y;
+                        item.token._lastGridResizeX = item.token.x;
+                        item.token._lastGridResizeY = item.token.y;
+                        if (item.token.visible !== false) {
+                            batch.push({ id: item.token.id, x: item.token.x, y: item.token.y });
+                        }
                     });
+                    network.send({
+                        type: 'REMOTE_TOKENS_MOVE_BATCH',
+                        final: true,
+                        payload: batch
+                    });
+                    activeStroke._groupDragOffsets = null;
+                } else {
+                    if (activeStroke.visible !== false) {
+                        network.send({
+                            type: 'REMOTE_TOKEN_MOVE',
+                            final: true,
+                            payload: { id: activeStroke.id, x: activeStroke.x, y: activeStroke.y }
+                        });
+                    }
                 }
+                if (currentMapBase64) markMapDirty(true);
+                needsTokenLayerRender = true;
+            } else {
+                if (activeStroke._shiftTogglePending) {
+                    engine.selectedTokens.delete(activeStroke.id);
+                    if (engine.selectedTokenId === activeStroke.id) {
+                        engine.selectedTokenId = engine.selectedTokens.size > 0 ? Array.from(engine.selectedTokens).pop() : null;
+                    }
+                    if (engine.selectedTokenId) {
+                        const prim = engine.tokens.find(t => t.id === engine.selectedTokenId);
+                        if (prim && window.updateSelectedTokenControls) window.updateSelectedTokenControls(prim);
+                    } else {
+                        updateTokenControlsVisibility(false);
+                    }
+                    needsTokenLayerRender = true;
+                }
+                activeStroke._groupDragOffsets = null;
+            }
+            activeStroke._hasMovedDuringDrag = false;
+            activeStroke._freeMoveShift = false;
+            activeStroke._shiftTogglePending = false;
+        } else if (isShape) {
+            if (engine.clampShapePosition) engine.clampShapePosition(activeStroke);
+            if (activeStroke.visible !== false) {
+                network.send({
+                    type: 'REMOTE_SHAPE_MOVE',
+                    final: true,
+                    payload: { id: activeStroke.id, x: activeStroke.x, y: activeStroke.y }
+                });
             }
             if (currentMapBase64) markMapDirty(true);
-            engine.renderTokensLayer();
-        } else if (isShape) {
-            network.send({
-                type: 'REMOTE_SHAPE_MOVE',
-                final: true,
-                payload: { id: activeStroke.id, x: activeStroke.x, y: activeStroke.y }
-            });
-            if (currentMapBase64) markMapDirty(true);
+            needsTokenLayerRender = true;
         } else {
             syncState(true);
+            needsFullRender = true;
         }
     } else if (currentTool === 'move-grid') {
         const isAnchor = document.getElementById('grid-anchor-objects')?.checked !== false;
@@ -5124,30 +6215,45 @@ function handleEnd(e) {
             engine.tokens.forEach(t => {
                 t.x = Math.round((t.x - effOffsetX) / engine.grid.size) * engine.grid.size + effOffsetX;
                 t.y = Math.round((t.y - effOffsetY) / engine.grid.size) * engine.grid.size + effOffsetY;
+                t._baseMapX = t.x;
+                t._baseMapY = t.y;
+                t._lastGridResizeX = t.x;
+                t._lastGridResizeY = t.y;
             });
         }
         if (currentMapBase64) markMapDirty(true);
         syncState(true);
+        needsFullRender = true;
     } else if (currentTool === 'ruler') {
         engine.ruler = null;
+        needsUiRender = true;
     } else if (currentTool === 'laser') {
         if (activeLaser) {
             activeLaser.active = false;
             network.send({ type: 'LASER_SYNC', payload: activeLaser });
             activeLaser = null;
         }
+        needsUiRender = true;
     } else if (currentTool.startsWith('draw-')) {
         syncState(true);
         markMapDirty(true);
+        needsFullRender = true;
     } else if (currentTool.startsWith('fog-')) {
         syncFog();
         markMapDirty(true);
+        needsUiRender = true;
     }
 
     isDragging = false;
     activeStroke = null;
     activeStrokeType = null;
-    engine.renderAll();
+    if (needsFullRender) {
+        engine.renderAll();
+    } else if (needsTokenLayerRender) {
+        engine.renderTokensLayer();
+    } else if (needsUiRender) {
+        engine.renderUI();
+    }
 
     // Rilevamento rapido doppio click / doppio tap per aprire la scheda
     if (clickedTokenForInteraction) {
@@ -5198,6 +6304,7 @@ function handleEnd(e) {
             if (durEdit) {
                 durEdit.value = (ent.roundsLeft !== undefined) ? ent.roundsLeft : (ent.durationRounds || '');
             }
+            updateShapeVisibilityUI(ent);
             engine.renderTokensLayer();
         } else {
             // È stato un TRASCINAMENTO (spostamento): NON aprire il pannello di modifica!

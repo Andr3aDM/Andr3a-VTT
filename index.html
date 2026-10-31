@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DM Dashboard - VTT (Beta 1.4)</title>
-    <link rel="stylesheet" href="css/style.css?v=3">
+    <title>DM Dashboard - VTT (Beta 1.5)</title>
+    <link rel="stylesheet" href="css/style.css?v=4">
 <style>
         .section h3 { cursor: pointer; user-select: none; }
         .section h3::after { content: ' ▼'; font-size: 12px; float: right; }
@@ -14,7 +14,18 @@
 </head>
 <body>
     <div id="sidebar">
-        <h2>Andr3a VTT <span style="font-size: 11px; background: #263238; color: #4dd0e1; border: 1px solid #00acc1; padding: 1px 6px; border-radius: 10px; vertical-align: middle; font-weight: bold;">Beta 1.4</span><br><span style="font-size: 14px; color: #ffcc00; font-weight: normal;">DM Console</span></h2>
+        <h2>Andr3a VTT <span style="font-size: 11px; background: #263238; color: #4dd0e1; border: 1px solid #00acc1; padding: 1px 6px; border-radius: 10px; vertical-align: middle; font-weight: bold;">Beta 1.5</span><br><span style="font-size: 14px; color: #ffcc00; font-weight: normal;">DM Console</span></h2>
+        <div id="kofi-slot">
+            <script type='text/javascript' src='https://storage.ko-fi.com/cdn/widget/Widget_2.js'></script>
+            <script type='text/javascript'>
+                if (typeof kofiwidget2 !== 'undefined') {
+                    kofiwidget2.init('Support me on Ko-fi', '#72a4f2', 'Q6Q129FXSU');
+                    kofiwidget2.draw();
+                } else {
+                    document.write('<div class="btn-container"><a title="Support me on ko-fi.com" class="kofi-button" style="background-color:#72a4f2;" href="https://ko-fi.com/Q6Q129FXSU" target="_blank"><span class="kofitext">☕ Support me on Ko-fi</span></a></div>');
+                }
+            </script>
+        </div>
         <div style="margin-top: 10px; margin-bottom: 10px;">
             <button id="btn-toggle-tracker" style="width: 100%; background: #ffcc00; color: black; font-weight: bold; padding: 7px; cursor: pointer; border-radius: 4px; border: none; font-size: 13px;">⚔️ Tracker Iniziativa</button>
         </div>
@@ -98,22 +109,35 @@
                 <div id="token-owners-chips" style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; min-height: 18px; align-items: center;"></div>
 
                 <!-- Riga 2B: Cartella Token & Salva in Libreria -->
-                <div style="display: flex; gap: 5px; margin-bottom: 6px; align-items: center;">
+                <div style="display: flex; gap: 5px; margin-bottom: 5px; align-items: center;">
                     <select id="token-edit-category" style="flex: 1.3; min-width: 0; padding: 4px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px;" title="Assegna cartella nella Libreria Token">
                         <option value="mostri">📁 Cartella: Mostri</option>
                         <option value="png">📁 Cartella: PNG</option>
                         <option value="personaggi">📁 Cartella: Personaggi</option>
                         <option value="vari">📁 Cartella: Vari</option>
+                        <option value="evocazioni">✨ Cartella: Evocazioni</option>
                     </select>
                     <button id="btn-save-token-to-lib" type="button" style="flex: 1; padding: 4px 5px; font-size: 10.5px; white-space: nowrap; background: #37474f; color: #80cbc4; border: 1px solid #00897b; border-radius: 3px; cursor: pointer; font-weight: bold;" title="Salva questo token nella Libreria permanente sotto la cartella scelta">💾 In Libreria</button>
                 </div>
 
-                <!-- Riga 3: 4 Azioni Rapide Token (Duplica, Visibilità, Iniziativa, Elimina) -->
-                <div style="display: flex; gap: 4px; margin-bottom: 8px;">
-                    <button id="btn-duplicate-token" style="flex:1.1; padding: 5px 2px; font-size: 11px; white-space: nowrap; background: #00897b; color: white; font-weight: bold; border-radius: 3px; border:none; cursor:pointer;" title="Duplica Token (Ctrl+D)">📋 Duplica</button>
-                    <button id="btn-toggle-visibility" style="flex:1; padding: 5px 2px; font-size: 11px; white-space: nowrap; cursor: pointer; background: #3a3a3a; color: white; border: 1px solid #555; border-radius: 3px;" title="Mostra/Nascondi ai Giocatori">👁️ Visib.</button>
-                    <button id="btn-add-to-init" style="flex:1.1; padding: 5px 2px; font-size: 11px; white-space: nowrap; background: #e65100; color: white; font-weight: bold; border-radius: 3px; border:none; cursor:pointer;" title="Aggiungi al Tracker di Iniziativa">⚔️ + Iniz.</button>
-                    <button id="btn-delete-token" style="flex:0.8; padding: 5px 2px; font-size: 11px; white-space: nowrap; background: #c62828; color: white; border-radius: 3px; border:none; cursor:pointer;" title="Elimina Token">🗑️ Del</button>
+                <!-- Riga 2C: Durata Token / Evocazione in Round (Default: Permanente) -->
+                <div style="display: flex; gap: 5px; margin-bottom: 6px; align-items: center; justify-content: space-between; background: #222; padding: 3px 6px; border-radius: 4px; border: 1px solid #3a3a3a;" title="Durata del Token/Evocazione in round. Al termine dei round il token scompare automaticamente (lascia vuoto o 0 per permanente)">
+                    <label for="token-duration" style="font-size: 11px; font-weight: bold; color: #b388ff; display: flex; align-items: center; gap: 4px; white-space: nowrap; cursor: pointer;">
+                        <span>⏳ Durata Token:</span>
+                    </label>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        <input type="number" id="token-duration" min="0" placeholder="∞" style="width: 46px; padding: 2px 3px; background: #161616; color: #fff; border: 1px solid #5a4b7c; border-radius: 3px; font-size: 11.5px; text-align: center; font-weight: bold;" title="Round rimanenti prima che il token/evocazione svanisca (vuoto o 0 = Permanente)">
+                        <span style="font-size: 10px; color: #aaa;">rnd (∞ = Perm.)</span>
+                    </div>
+                </div>
+
+                <!-- Riga 3: 5 Azioni Rapide Token (Duplica, Visibilità, Iniziativa, Elimina Mappa, Elimina Campagna) -->
+                <div style="display: flex; gap: 3px; margin-bottom: 8px; width: 100%; box-sizing: border-box;">
+                    <button id="btn-duplicate-token" style="flex: 1; min-width: 0; padding: 5px 1px; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #00897b; color: white; font-weight: bold; border-radius: 3px; border: none; cursor: pointer;" title="Duplica Token (Ctrl+D)">📋 Duplica</button>
+                    <button id="btn-toggle-visibility" style="flex: 0.95; min-width: 0; padding: 5px 1px; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; background: #3a3a3a; color: white; border: 1px solid #555; border-radius: 3px;" title="Mostra/Nascondi ai Giocatori">👁️ Visib.</button>
+                    <button id="btn-add-to-init" style="flex: 1; min-width: 0; padding: 5px 1px; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #e65100; color: white; font-weight: bold; border-radius: 3px; border: none; cursor: pointer;" title="Aggiungi al Tracker di Iniziativa">⚔️ + Iniz.</button>
+                    <button id="btn-delete-token" style="flex: 0.9; min-width: 0; padding: 5px 1px; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #c62828; color: white; border-radius: 3px; border: none; cursor: pointer;" title="Rimuovi Token dalla Mappa attuale">🗑️ Mappa</button>
+                    <button id="btn-delete-from-campaign" style="flex: 1.15; min-width: 0; padding: 5px 1px; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #880e4f; color: white; border-radius: 3px; border: none; cursor: pointer;" title="Rimuovi definitivamente questo token dal Roster salvato della Campagna">🗑️ Campagna</button>
                 </div>
                 
                 <!-- Riga 4: Punti Ferita (HP) Header + Checkbox -->
@@ -125,7 +149,7 @@
                     </label>
                 </div>
                 <!-- Riga 4B: Controlli HP unificati in una riga -->
-                <div style="display: flex; gap: 4px; margin-bottom: 6px; align-items:center;">
+                <div style="display: flex; gap: 4px; margin-bottom: 5px; align-items:center;">
                     <input type="number" id="token-hp-current" placeholder="Att" style="width: 44px; padding: 3px 2px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 12px; text-align: center;" title="HP Attuali">
                     <span style="font-weight:bold; color: #888;">/</span>
                     <input type="number" id="token-hp-max" placeholder="Max" style="width: 44px; padding: 3px 2px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 12px; text-align: center;" title="HP Massimi (0=Off)">
@@ -133,6 +157,22 @@
                     <input type="number" id="token-hp-mod" placeholder="± Danno" style="flex:1; min-width: 40px; padding: 3px 4px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px;" title="Valore Danno (-) o Cura (+)">
                     <button id="btn-apply-hp-dmg" style="width: 25px; height: 25px; background:#c62828; color:white; font-weight:bold; border:none; border-radius:3px; cursor:pointer;" title="Applica Danno">-</button>
                     <button id="btn-apply-hp-heal" style="width: 25px; height: 25px; background:#2e7d32; color:white; font-weight:bold; border:none; border-radius:3px; cursor:pointer;" title="Applica Cura">+</button>
+                </div>
+
+                <!-- Riga 4B-bis: PV Temporanei & Stile Barra -->
+                <div style="display: flex; gap: 6px; margin-bottom: 6px; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 4px;" title="Punti Ferita Temporanei (indicatore blu; assorbono i danni prima dei PV normali)">
+                        <span style="font-size: 11px; font-weight: bold; color: #29b6f6; white-space: nowrap;">💙 PV Temp:</span>
+                        <input type="number" id="token-hp-temp" placeholder="0" min="0" style="width: 46px; padding: 3px 2px; background: #1c1c1c; color: #29b6f6; font-weight: bold; border: 1px solid #0288d1; border-radius: 3px; font-size: 12px; text-align: center;" title="PV Temporanei">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px; flex: 1; justify-content: flex-end;" title="Stile visualizzazione salute (Barra, Aura o Entrambi)">
+                        <span style="font-size: 10.5px; color: #aaa; white-space: nowrap;">Stile:</span>
+                        <select id="token-hp-style-quick" style="background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; padding: 2px 4px; font-size: 11px;">
+                            <option value="bar">Barra</option>
+                            <option value="aura">Aura</option>
+                            <option value="both">Entrambi</option>
+                        </select>
+                    </div>
                 </div>
 
                 <!-- Riga 4C: CA, Scheda Mostro e Scheda PG -->
@@ -178,7 +218,7 @@
 
                 <!-- Riga 6: Stato / Condizione -->
                 <div style="border-top: 1px solid #444; padding-top: 5px;">
-                    <div style="display: flex; gap: 4px; margin-bottom: 5px; align-items:center;">
+                    <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items:center;">
                         <select id="token-condition-type" style="flex:1; min-width:0; padding: 3px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px;" title="Seleziona Condizione">
                             <option value="Accecato,Blinded">Accecato / Blinded</option>
                             <option value="Affascinato,Charmed">Affascinato / Charmed</option>
@@ -201,7 +241,16 @@
                             <option value="en">EN</option>
                         </select>
                         <input type="color" id="token-condition-color" value="#ff0000" style="width: 25px; height: 24px; border:none; border-radius: 3px; cursor: pointer; background: transparent; padding: 0;" title="Colore Condizione">
-                        <button id="btn-add-condition" class="action-btn" style="padding: 3px 8px; font-size: 11px; font-weight: bold; background: #00bcd4; color: white; border: none; border-radius: 3px; cursor: pointer;" title="Aggiungi Condizione">+ Aggiungi</button>
+                    </div>
+                    <div style="display: flex; gap: 5px; margin-bottom: 5px; align-items:center; justify-content: space-between;">
+                        <div style="display: flex; gap: 4px; align-items: center;" title="Durata Condizione in round (lascia vuoto o 0 per permanente)">
+                            <label for="token-condition-duration" style="font-size: 10.5px; color: #00bcd4; display:flex; align-items:center; gap:3px; white-space:nowrap;">
+                                ⏳ Durata:
+                            </label>
+                            <input type="number" id="token-condition-duration" min="0" placeholder="∞" style="width: 40px; padding: 2px 3px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px; text-align: center;" title="Round di durata della condizione (0 o vuoto = permanente)">
+                            <span style="font-size: 10px; color: #888;">rnd</span>
+                        </div>
+                        <button id="btn-add-condition" class="action-btn" style="flex: 1; max-width: 115px; padding: 3px 8px; font-size: 11px; font-weight: bold; background: #00bcd4; color: white; border: none; border-radius: 3px; cursor: pointer;" title="Aggiungi Condizione">+ Aggiungi</button>
                     </div>
                     <div id="active-conditions-list" style="display:flex; flex-direction:column; gap:2px; max-height:75px; overflow-y:auto;">
                     </div>
@@ -412,9 +461,10 @@
                         <span id="tracker-count-badge" style="color: #aaa; font-size: 10.5px;">0 entità</span>
                     </div>
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #383838; padding-top: 3px;">
-                    <span style="color: #b0bec5; font-size: 10.5px; font-weight: bold;">Tiro Mostri (DEX):</span>
-                    <select id="tracker-monster-roll-mode" style="background: #181818; color: #ffca28; border: 1px solid #555; border-radius: 3px; font-size: 10px; padding: 1px 4px; cursor: pointer;" title="Scegli se un tiro DEX dal compendio assegna l'iniziativa a tutto il gruppo o a ciascuno singolarmente">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #383838; padding-top: 4px; gap: 5px;">
+                    <button id="btn-tracker-autoroll" type="button" style="flex: 1; background: #ff9800; color: #111; font-weight: bold; border: none; border-radius: 3px; padding: 4px 4px; font-size: 10.5px; cursor: pointer; white-space: nowrap;" title="Tira automaticamente l'iniziativa (1d20 + Mod. Destrezza/Iniziativa) per Mostri e PNG, escludendo i PG">🎲 Auto-Roll (Escludi PG)</button>
+                    <button id="btn-tracker-autoroll-all" type="button" style="flex: 1; background: #00897b; color: white; font-weight: bold; border: none; border-radius: 3px; padding: 4px 4px; font-size: 10.5px; cursor: pointer; white-space: nowrap;" title="Tira automaticamente l'iniziativa (1d20 + Mod. Destrezza/Iniziativa) per TUTTI i partecipanti, inclusi i PG">🎲 Auto-Roll (Includi PG)</button>
+                    <select id="tracker-monster-roll-mode" style="display: none;">
                         <option value="group">Condivisa (Gruppo)</option>
                         <option value="individual">Singola (Uno per volta)</option>
                     </select>
@@ -535,9 +585,13 @@
 
         <!-- Sezione 1: Multiplayer P2P -->
         <div style="background: #222; padding: 8px; border-radius: 5px; border-left: 3px solid #ffcc00; font-size: 12px;">
-            <strong style="color: #ffcc00; font-size: 13px;">🌐 Multiplayer Online (P2P)</strong>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <strong style="color: #ffcc00; font-size: 13px;">🌐 Multiplayer Online (P2P)</strong>
+                <span id="campaign-lock-badge" style="display:none; font-size:10px; background:#c62828; color:white; padding:1px 6px; border-radius:8px; font-weight:bold;" title="Selezione Campagna bloccata durante la sessione online">🔒 Campagna Bloccata</span>
+            </div>
             <div style="display: flex; gap: 6px; margin: 6px 0 6px 0;">
                 <button id="btn-host-online" style="flex: 1; background: #ffcc00; color: black; font-weight: bold; padding: 6px 4px; border: none; border-radius: 4px; cursor: pointer; font-size: 11.5px; transition: 0.2s;">Avvia Stanza</button>
+                <button id="btn-close-room" style="display: none; flex: 1; background: #c62828; color: white; font-weight: bold; padding: 6px 4px; border: none; border-radius: 4px; cursor: pointer; font-size: 11.5px; transition: 0.2s;" title="Termina sessione online e disconnetti i giocatori">🔴 Chiudi Stanza</button>
                 <button id="btn-open-player-online" style="flex: 1; background: #0288d1; color: white; font-weight: bold; padding: 6px 4px; border: none; border-radius: 4px; cursor: pointer; font-size: 11.5px; transition: 0.2s;" title="Apri Schermo Giocatore per test o accesso con codice stanza">Apri Schermo Online</button>
             </div>
             <div id="online-status" style="font-size: 12px; text-align: center; color: #aaa;">Stato: Offline (Locale)</div>
@@ -681,6 +735,16 @@
                     </select>
                 </div>
             </div>
+            <div style="margin-top: 2px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <label>Opacità Griglia (%):</label>
+                    <span id="grid-opacity-val" style="color: #ffcc00; font-weight: bold; font-size: 11px;">100%</span>
+                </div>
+                <div style="display: flex; gap: 5px; align-items: center; margin-top: 3px;">
+                    <input type="range" id="grid-opacity-slider" min="0" max="100" value="100" style="flex: 2; cursor: pointer;">
+                    <input type="number" id="grid-opacity" min="0" max="100" value="100" style="flex: 1; background: #111; color: white; border: 1px solid #555; padding: 3px; border-radius: 3px; text-align: center;">
+                </div>
+            </div>
         </div>
     </div>
 
@@ -716,6 +780,13 @@
                 <input type="number" id="aoe-duration" min="0" placeholder="∞ Perman." style="flex: 1; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px; font-size: 11px;" title="Numero di round di permanenza (lascia vuoto per permanente)">
                 <span style="font-size: 10.5px; color: #888;">round</span>
             </div>
+            <div style="display: flex; width: 100%; gap: 6px; align-items: center;">
+                <label for="aoe-visibility" style="font-size: 11.5px; color: #ffab91; white-space:nowrap;">👁️ Visibilità:</label>
+                <select id="aoe-visibility" style="flex: 1; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px; font-size: 11.5px;" title="Scegli se la sagoma sarà visibile ai giocatori o nascosta (Solo DM)">
+                    <option value="visible">👁️ Visibile ai Giocatori</option>
+                    <option value="hidden">🙈 Nascosta (Solo DM)</option>
+                </select>
+            </div>
             <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer; color: #ddd; margin: 2px 0;">
                 <input type="checkbox" id="aoe-highlight-tokens" checked style="cursor: pointer;">
                 <span data-i18n="Evidenzia token nell'area">🎯 Evidenzia token nell'area</span>
@@ -738,6 +809,14 @@
                     <option value="m">m</option>
                 </select>
                 <button id="btn-delete-shape" style="background-color: #d32f2f; color: white; border: none; padding: 5px 8px; border-radius: 3px; cursor: pointer; font-weight: bold; flex:1.5;">Elimina</button>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+                <label for="shape-edit-visibility" style="font-size: 11.5px; color: #80deea; white-space:nowrap;">👁️ Visibilità:</label>
+                <select id="shape-edit-visibility" style="flex: 1; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px; font-size: 11.5px;" title="Modifica la visibilità della sagoma per i giocatori">
+                    <option value="visible">👁️ Visibile ai Giocatori</option>
+                    <option value="hidden">🙈 Nascosta (Solo DM)</option>
+                </select>
+                <button id="btn-shape-toggle-visibility" type="button" style="background: #00695c; color: white; border: 1px solid #26a69a; padding: 4px 7px; border-radius: 3px; cursor: pointer; font-size: 11px; font-weight: bold; white-space: nowrap;" title="Inverti rapidamente Visibile / Nascosta">👁️ Visibile</button>
             </div>
             <div style="display: flex; gap: 6px; align-items: center;">
                 <label style="font-size: 11.5px; color: #80deea; display:flex; align-items:center; gap:4px; white-space:nowrap;">
@@ -841,7 +920,7 @@
     <!-- Fine Dadi e Audio -->
 
     <!-- Pannello Libreria Token DM (Flottante) -->
-    <div id="token-panel" style="display:none; position: absolute; bottom: 80px; right: 80px; background: rgba(26, 26, 26, 0.96); border: 2px solid #00897b; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 6px 16px rgba(0,0,0,0.65); z-index: 1000; width: 340px; max-height: 580px; flex-direction: column; gap: 8px; font-family: sans-serif; box-sizing: border-box;">
+    <div id="token-panel" style="display:none; position: absolute; bottom: 80px; right: 80px; background: rgba(26, 26, 26, 0.98); border: 2px solid #00897b; border-radius: 8px; padding: 10px; color: white; box-shadow: 0 6px 20px rgba(0,0,0,0.75); z-index: 1000; width: 350px; max-height: calc(100vh - 100px); flex-direction: column; gap: 7px; font-family: sans-serif; box-sizing: border-box; overflow-y: auto; overflow-x: hidden;">
         <div id="token-panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 5px; cursor: move; user-select: none;">
             <strong style="color: #4db6ac; font-size: 14px; display: flex; align-items: center; gap: 5px;">♟️ Libreria Token</strong>
             <button id="btn-close-token-panel" type="button" style="background: none; border: none; color: #aaa; cursor: pointer; font-size: 16px; padding: 0 4px;" title="Chiudi">✕</button>
@@ -902,7 +981,7 @@
         <input type="text" id="token-search" placeholder="🔍 Cerca token per nome..." style="background: #111; color: white; border: 1px solid #555; padding: 5px 8px; border-radius: 4px; font-size: 12px; width: 100%; box-sizing: border-box;">
 
         <!-- Area Gallerie con Scroll (max-height ~240px) -->
-        <div id="token-gallery-scroll" style="position: relative; flex: 1; min-height: 180px; max-height: 250px; overflow-y: auto; overflow-x: hidden; background: #141414; border: 1px solid #333; border-radius: 4px; padding: 6px; box-sizing: border-box;">
+        <div id="token-gallery-scroll" style="position: relative; flex: 1 1 auto; min-height: 110px; max-height: 200px; overflow-y: auto; overflow-x: hidden; background: #141414; border: 1px solid #333; border-radius: 4px; padding: 6px; box-sizing: border-box;">
             <!-- Galleria 1: Token della Campagna -->
             <div id="token-gallery-map" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; width: 100%; box-sizing: border-box;"></div>
             <!-- Galleria 2: Libreria Globale -->
@@ -919,7 +998,7 @@
         </div>
 
         <!-- Impostazioni Rapide & Visualizzazione Token -->
-        <div style="background: #202020; border: 1px solid #383838; border-radius: 4px; padding: 6px 8px; display: flex; flex-direction: column; gap: 5px;">
+        <div style="background: #202020; border: 1px solid #383838; border-radius: 4px; padding: 6px 8px; display: flex; flex-direction: column; gap: 5px; flex-shrink: 0; box-sizing: border-box;">
             <div style="font-size: 11px; color: #4db6ac; font-weight: bold;">Piazzamento nuovi token:</div>
             <div style="display: flex; gap: 6px; align-items: center;">
                 <select id="token-size-select" style="flex: 1.2; background: #111; color: white; border: 1px solid #555; border-radius: 3px; padding: 3px; font-size: 11px;">
@@ -935,6 +1014,10 @@
                 <div style="display: flex; align-items: center; gap: 3px; flex: 0.9;" title="Punti Ferita predefiniti a piena vita (lascia vuoto per disattivare la barra dei PV)">
                     <span style="font-size: 11px; color: #ef5350; font-weight: bold;">❤️</span>
                     <input type="number" id="token-default-hp" placeholder="PV Full" min="0" style="width: 100%; background: #111; color: white; border: 1px solid #555; border-radius: 3px; padding: 3px 4px; font-size: 11px; text-align: center;">
+                </div>
+                <div style="display: flex; align-items: center; gap: 3px; flex: 0.85;" title="Durata in round dei nuovi token/evocazioni piazzati (lascia vuoto o 0 per permanente)">
+                    <span style="font-size: 11px; color: #b388ff; font-weight: bold;">⏳</span>
+                    <input type="number" id="token-default-duration" placeholder="∞ Rnd" min="0" style="width: 100%; background: #111; color: white; border: 1px solid #5a4b7c; border-radius: 3px; padding: 3px 4px; font-size: 11px; text-align: center;">
                 </div>
             </div>
 
@@ -960,15 +1043,15 @@
         </div>
     </div>
 
-    <script src="js/network.js?v=8"></script>
-    <script src="js/engine.js?v=139"></script>
+    <script src="js/network.js?v=10"></script>
+    <script src="js/engine.js?v=153"></script>
 
     <script src="js/dice.js?v=127"></script>
     <script src="js/audio.js?v=117"></script>
-    <script src="js/dm.js?v=169"></script>
-    <script src="js/compendium.js?v=20"></script>
-    <script src="js/pcsheet.js?v=7"></script>
-    <script src="js/initiative.js?v=35"></script>
+    <script src="js/dm.js?v=181"></script>
+    <script src="js/compendium.js?v=24"></script>
+    <script src="js/pcsheet.js?v=9"></script>
+    <script src="js/initiative.js?v=37"></script>
 <script>
     document.querySelectorAll('.section h3').forEach(h3 => {
         h3.addEventListener('click', () => {
@@ -976,7 +1059,7 @@
         });
     });
 </script>
-<script src="js/lang.js?v=13"></script>
+<script src="js/lang.js?v=15"></script>
 
     
 

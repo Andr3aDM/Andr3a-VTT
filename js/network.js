@@ -14,6 +14,7 @@ class NetworkManager {
         this.onMessageCallback = null;
         this.onConnectCallback = null;
         this.onDisconnectCallback = null;
+        this.onGetCharactersCallback = null;
         this.listeners = [];
         this._incomingChunks = {}; // chunkId -> { total, received, parts }
         this._chunkSeq = 0;
@@ -31,6 +32,7 @@ class NetworkManager {
     onMessage(cb) { this.onMessageCallback = cb; }
     onConnect(cb) { this.onConnectCallback = cb; }
     onDisconnect(cb) { this.onDisconnectCallback = cb; }
+    onGetCharacters(cb) { this.onGetCharactersCallback = cb; }
     addListener(cb) {
         if (!this.listeners) this.listeners = [];
         this.listeners.push(cb);
@@ -38,13 +40,23 @@ class NetworkManager {
 
     _handleRawData(data, peerId) {
         if (!data) return;
+        const now = Date.now();
+        if (!this._lastChunkCleanup || now - this._lastChunkCleanup > 10000) {
+            this._lastChunkCleanup = now;
+            for (let id in this._incomingChunks) {
+                if (this._incomingChunks[id].createdAt && now - this._incomingChunks[id].createdAt > 20000) {
+                    delete this._incomingChunks[id];
+                }
+            }
+        }
         if (data.__chunked) {
             const cid = data.id;
             if (!this._incomingChunks[cid]) {
                 this._incomingChunks[cid] = {
                     total: data.total,
                     count: 0,
-                    parts: new Array(data.total)
+                    parts: new Array(data.total),
+                    createdAt: now
                 };
             }
             const entry = this._incomingChunks[cid];
@@ -190,6 +202,23 @@ class NetworkManager {
 
                     if (this.connections[conn.peer]) {
                         this.connections[conn.peer].lastSeen = Date.now();
+                    }
+
+                    if (data && data.type === 'GET_ROOM_CHARACTERS') {
+                        let chars = [];
+                        try {
+                            if (typeof this.onGetCharactersCallback === 'function') {
+                                chars = this.onGetCharactersCallback() || [];
+                            }
+                        } catch (e) {
+                            console.error("Errore in onGetCharactersCallback:", e);
+                        }
+                        conn.send({
+                            type: 'ROOM_CHARACTERS_RESPONSE',
+                            payload: { characters: chars, roomId: this.roomId }
+                        });
+                        setTimeout(() => { try { conn.close(); } catch (e) {} }, 500);
+                        return;
                     }
 
                     if (data && data.type === 'PLAYER_JOIN') {
@@ -345,10 +374,121 @@ class NetworkManager {
         });
     }
 
+    closeRoom() {
+        if (this._heartbeatTimer) {
+            clearInterval(this._heartbeatTimer);
+            this._heartbeatTimer = null;
+        }
+        for (let pid in this.connections) {
+            const entry = this.connections[pid];
+            if (entry && entry.conn) {
+                try {
+                    entry.conn.send({ type: 'ROOM_CLOSED', payload: { reason: 'Il Master ha terminato la sessione.' } });
+                    entry.conn.close();
+                } catch (e) {}
+            }
+        }
+        this.connections = {};
+        if (this.peer) {
+            try { this.peer.destroy(); } catch (e) {}
+            this.peer = null;
+        }
+        this.mode = 'offline';
+        this.roomId = null;
+    }
+
+    kickPlayer(identifier) {
+        if (this.mode !== 'host') return false;
+        let targetPid = null;
+        if (this.connections[identifier]) {
+            targetPid = identifier;
+        } else {
+            for (let pid in this.connections) {
+                if (this.connections[pid] && this.connections[pid].name && this.connections[pid].name.toLowerCase() === String(identifier).toLowerCase()) {
+                    targetPid = pid;
+                    break;
+                }
+            }
+        }
+        if (!targetPid || !this.connections[targetPid]) return false;
+        const entry = this.connections[targetPid];
+        const pName = entry.name;
+        try {
+            entry.conn.send({ type: 'KICKED', payload: { reason: 'Sei stato espulso dalla stanza dal Master.' } });
+            entry.conn.close();
+        } catch (e) {}
+        delete this.connections[targetPid];
+        if (this.onDisconnectCallback) this.onDisconnectCallback(pName, targetPid);
+        return true;
+    }
+
+    async queryRoomCharacters(roomId) {
+        return new Promise((resolve) => {
+            const cleanRoom = (roomId || '').trim().toUpperCase();
+            if (!cleanRoom) return resolve([]);
+            if (typeof Peer === 'undefined') return resolve([]);
+
+            const tempPeerId = 'query_' + Math.random().toString(36).substring(2, 8);
+            let tempPeer = null;
+            let timer = null;
+            let done = false;
+
+            const cleanup = () => {
+                if (done) return;
+                done = true;
+                if (timer) clearTimeout(timer);
+                try { if (tempPeer) tempPeer.destroy(); } catch (e) {}
+            };
+
+            timer = setTimeout(() => {
+                cleanup();
+                resolve([]);
+            }, 3500);
+
+            try {
+                tempPeer = new Peer(tempPeerId);
+                tempPeer.on('open', () => {
+                    let conn = null;
+                    try {
+                        conn = tempPeer.connect(cleanRoom, { reliable: true });
+                    } catch (e) {
+                        cleanup();
+                        return resolve([]);
+                    }
+                    conn.on('open', () => {
+                        conn.send({ type: 'GET_ROOM_CHARACTERS' });
+                    });
+                    conn.on('data', (data) => {
+                        if (data && data.type === 'ROOM_CHARACTERS_RESPONSE') {
+                            const list = (data.payload && Array.isArray(data.payload.characters)) ? data.payload.characters : [];
+                            cleanup();
+                            resolve(list);
+                        }
+                    });
+                    conn.on('error', () => {
+                        cleanup();
+                        resolve([]);
+                    });
+                });
+                tempPeer.on('error', () => {
+                    cleanup();
+                    resolve([]);
+                });
+            } catch (e) {
+                cleanup();
+                resolve([]);
+            }
+        });
+    }
+
     _canSendToConn(conn, isEphemeral) {
         if (!conn || !conn.open) return false;
-        if (isEphemeral && conn.dataChannel && typeof conn.dataChannel.bufferedAmount === 'number') {
-            if (conn.dataChannel.bufferedAmount > 32768) {
+        const dc = conn.dataChannel;
+        if (dc && typeof dc.bufferedAmount === 'number') {
+            if (isEphemeral && dc.bufferedAmount > 32768) {
+                return false;
+            }
+            if (!isEphemeral && dc.bufferedAmount > 131072) {
                 return false;
             }
         }

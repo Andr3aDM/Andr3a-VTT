@@ -1,3 +1,14 @@
+function escapeHTML(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>'"]/g, c => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+    }[c] || c));
+}
+
 let wasViewSyncActive = false;
 const engine = new VTTEngine('main-canvas-container', false); // isDM = false
 window.engine = engine;
@@ -13,9 +24,11 @@ let startPanX = 0;
 let startPanY = 0;
 let isMapLocked = false;
 let startMouseY = 0;
-window.VTT_VERSION = 'Beta 1.4';
+window.VTT_VERSION = 'Beta 1.5';
 const tokenImageCache = new Map();
 const tokenPcSheetCache = new Map();
+const tokenStatblockCache = new Map();
+window.tokenStatblockCache = tokenStatblockCache;
 let lastPlayerClickedTokenId = null;
 let lastPlayerClickedTokenTime = 0;
 let isHandoutControlledByDm = false;
@@ -101,7 +114,45 @@ function isTokenOwnedByLocalPlayer(token) {
 }
 window.isTokenOwnedByLocalPlayer = isTokenOwnedByLocalPlayer;
 
+function isSpectatorMode() {
+    if (urlParams.get('mode') === 'tv') return false; // La TV non è spettatore
+    if (!network || !network.playerName) return false;
+    const owned = (engine.tokens || []).filter(t => isTokenOwnedByLocalPlayer(t));
+    return owned.length === 0;
+}
+window.isSpectatorMode = isSpectatorMode;
+
+function updatePlayerRoleAndUI() {
+    const isSpec = isSpectatorMode();
+    const specBadge = document.getElementById('player-spectator-badge');
+    const toggleBtn = document.getElementById('btn-toggle-toolbar');
+    const toolbar = document.getElementById('player-toolbar');
+
+    if (isSpec) {
+        if (typeof togglePlayerToolbar === 'function') togglePlayerToolbar(false);
+        if (toggleBtn) toggleBtn.style.display = 'none';
+        if (toolbar) toolbar.style.display = 'none';
+        if (specBadge) specBadge.style.display = 'block';
+
+        const tp = document.getElementById('player-token-panel');
+        if (tp) tp.style.display = 'none';
+        const sp = document.getElementById('player-shape-panel');
+        if (sp) sp.style.display = 'none';
+        const dp = document.getElementById('dice-panel');
+        if (dp) dp.style.display = 'none';
+    } else {
+        if (toggleBtn) toggleBtn.style.display = 'block';
+        if (specBadge) specBadge.style.display = 'none';
+    }
+}
+window.updatePlayerRoleAndUI = updatePlayerRoleAndUI;
+
+const fallbackBadgeCache = new Map();
 function createFallbackTokenBadge(name) {
+    const key = (name || '?').charAt(0).toUpperCase();
+    if (fallbackBadgeCache.has(key)) {
+        return fallbackBadgeCache.get(key);
+    }
     const fbCanvas = document.createElement('canvas');
     fbCanvas.width = 64;
     fbCanvas.height = 64;
@@ -117,9 +168,10 @@ function createFallbackTokenBadge(name) {
     fctx.font = 'bold 28px sans-serif';
     fctx.textAlign = 'center';
     fctx.textBaseline = 'middle';
-    fctx.fillText((name || '?').charAt(0).toUpperCase(), 32, 32);
+    fctx.fillText(key, 32, 32);
     const fbImg = new Image();
     fbImg.src = fbCanvas.toDataURL();
+    fallbackBadgeCache.set(key, fbImg);
     return fbImg;
 }
 
@@ -159,11 +211,107 @@ if (urlParams.get('mode') === 'local' && nameParam) {
     network.send({ type: 'PLAYER_READY' });
 }
 
-// Prefill codice stanza se passato come parametro URL (?room=...)
+let isQueryingRoomChars = false;
+let lastQueriedRoom = '';
+
+async function queryAndPopulateCharacters(roomCode) {
+    const cleanRoom = (roomCode || '').trim().toUpperCase();
+    if (!cleanRoom || cleanRoom.length < 4) return;
+    if (cleanRoom === lastQueriedRoom && isQueryingRoomChars) return;
+    lastQueriedRoom = cleanRoom;
+    isQueryingRoomChars = true;
+
+    const charContainer = document.getElementById('login-char-container');
+    const charSelect = document.getElementById('login-character-select');
+    const manualContainer = document.getElementById('login-manual-container');
+    const nameInput = document.getElementById('login-name');
+    if (!charSelect || !charContainer) return;
+
+    try {
+        const chars = await network.queryRoomCharacters(cleanRoom);
+        if (Array.isArray(chars) && chars.length > 0) {
+            charSelect.innerHTML = '<option value="">-- Seleziona Personaggio --</option>';
+            chars.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.name;
+                if (c.isTaken) {
+                    opt.disabled = true;
+                    opt.textContent = `🔒 ${c.name} (Già presente in stanza)`;
+                } else {
+                    opt.textContent = `🧙 ${c.name}`;
+                }
+                charSelect.appendChild(opt);
+            });
+            const manualOpt = document.createElement('option');
+            manualOpt.value = '__manual__';
+            manualOpt.textContent = '✍️ Altro nome / Spettatore (Manuale)';
+            charSelect.appendChild(manualOpt);
+
+            charContainer.style.display = 'block';
+            if (nameInput && nameInput.value) {
+                const matchOpt = Array.from(charSelect.options).find(o => o.value.toLowerCase() === nameInput.value.toLowerCase());
+                if (matchOpt && !matchOpt.disabled) {
+                    charSelect.value = matchOpt.value;
+                    if (manualContainer) manualContainer.style.display = 'none';
+                }
+            }
+        } else {
+            charContainer.style.display = 'none';
+            if (manualContainer) manualContainer.style.display = 'block';
+        }
+    } catch (e) {
+        console.warn("Query room characters:", e);
+    } finally {
+        isQueryingRoomChars = false;
+    }
+}
+
+const charSelectEl = document.getElementById('login-character-select');
+if (charSelectEl) {
+    charSelectEl.addEventListener('change', () => {
+        const val = charSelectEl.value;
+        const nameInput = document.getElementById('login-name');
+        const manualContainer = document.getElementById('login-manual-container');
+        if (!val || val === '__manual__') {
+            if (manualContainer) manualContainer.style.display = 'block';
+            if (val === '__manual__' && nameInput) {
+                nameInput.value = '';
+                nameInput.placeholder = 'Il tuo Nome o Spettatore';
+                nameInput.focus();
+            }
+        } else {
+            if (nameInput) nameInput.value = val;
+            if (manualContainer) manualContainer.style.display = 'none';
+        }
+    });
+}
+
+// Prefill codice stanza se passato come parametro URL (?room=...) o memorizzato
 const roomParam = urlParams.get('room');
-if (roomParam) {
-    const roomInput = document.getElementById('login-room');
-    if (roomInput) roomInput.value = roomParam;
+const roomInput = document.getElementById('login-room');
+if (roomInput) {
+    const savedRoom = localStorage.getItem('vtt_last_room_code') || '';
+    if (roomParam) {
+        roomInput.value = roomParam;
+    } else if (savedRoom) {
+        roomInput.value = savedRoom;
+    }
+
+    let roomDebounce = null;
+    roomInput.addEventListener('input', () => {
+        if (roomDebounce) clearTimeout(roomDebounce);
+        roomDebounce = setTimeout(() => {
+            const val = roomInput.value.trim().toUpperCase();
+            if (val.length >= 6) {
+                queryAndPopulateCharacters(val);
+            }
+        }, 350);
+    });
+
+    const initRoom = roomInput.value.trim();
+    if (initRoom && initRoom.length >= 4) {
+        setTimeout(() => queryAndPopulateCharacters(initRoom), 300);
+    }
 }
 
 if (urlParams.get('autojoin') === 'true' && roomParam && nameParam) {
@@ -195,7 +343,9 @@ document.getElementById('btn-login-online').addEventListener('click', () => {
         network.joinRoom(room, name).then(() => {
             console.log("Connesso con successo");
             engine.localPlayerName = name; // FONDAMENTALE PER LA VISIBILITA DEL MANIGLIONE!
+            try { localStorage.setItem('vtt_last_room_code', room); } catch (e) {}
             document.getElementById('login-overlay').style.display = 'none';
+            updatePlayerRoleAndUI();
             network.send({ type: 'PLAYER_READY' });
         }).catch(err => {
             const msg = (err && err.message) ? err.message : "Errore di connessione. Verifica il codice stanza.";
@@ -257,6 +407,17 @@ if (typeof network.onDisconnect === 'function') {
 }
 
 network.onMessage((data, peerId) => {
+    if (data.type === 'ROOM_CLOSED') {
+        const msg = (data.payload && data.payload.reason) ? data.payload.reason : (typeof window.t === 'function' ? window.t('Il Master ha terminato la sessione.') : 'Il Master ha terminato la sessione.');
+        alert(msg);
+        window.location.reload();
+        return;
+    } else if (data.type === 'KICKED') {
+        const msg = (data.payload && data.payload.reason) ? data.payload.reason : (typeof window.t === 'function' ? window.t('Sei stato espulso dalla stanza dal Master.') : 'Sei stato espulso dalla stanza dal Master.');
+        alert(msg);
+        window.location.reload();
+        return;
+    }
 
     if (data.type === 'PLAYER_DISCONNECTED_NOTICE') {
         const left = data.payload?.name;
@@ -376,6 +537,8 @@ network.onMessage((data, peerId) => {
         engine.renderAll();
     } else if (data.type === 'LIVE_DRAW_POINT') {
         const p = data.payload;
+        if (engine.ensureLayerSize) engine.ensureLayerSize('drawPublic');
+        engine._lastDrawSig = null;
         const ctx = engine.ctx.drawPublic;
         if (ctx && p && p.point) {
             ctx.beginPath();
@@ -419,7 +582,7 @@ network.onMessage((data, peerId) => {
                 engine.tokens.forEach(tok => {
                     if (tok.imgKey === p.imgKey) {
                         tok.imageObj = img;
-                        tok.src = p.src;
+                        tok.src = null; // Rilascia la stringa base64 dalla memoria RAM
                         tokenImageCache.set('id_' + tok.id, img);
                         updated = true;
                     }
@@ -456,6 +619,29 @@ network.onMessage((data, peerId) => {
             }
             if (window.pcSheetManager && window.pcSheetManager.refreshIfOpen) {
                 window.pcSheetManager.refreshIfOpen(p.tokenId);
+            }
+        }
+    } else if (data.type === 'TOKEN_STATBLOCK_SYNC') {
+        const p = data.payload;
+        if (p && p.tokenId && p.statblock) {
+            tokenStatblockCache.set(p.tokenId, p.statblock);
+            const tok = engine.tokens.find(t => t.id === p.tokenId);
+            if (tok) {
+                tok.statblock = p.statblock;
+                tok.hasStatblock = true;
+                if (p.statblock.name) tok.statblockName = p.statblock.name;
+            }
+            if (window.compendium && window.compendium._activeTargetTokenId === p.tokenId) {
+                const statWin = document.getElementById('dm-statblock-window');
+                if (statWin && statWin.style.display !== 'none') {
+                    window.compendium.loadMonster(p.statblock);
+                }
+            }
+            const btnStat = document.getElementById('pbtn-open-statblock');
+            if (btnStat && p.statblock.name && window.editingPlayerToken && window.editingPlayerToken.id === p.tokenId) {
+                btnStat.innerHTML = `<span>📜 ${escapeHTML(p.statblock.name)}</span>`;
+                btnStat.style.background = '#00897b';
+                btnStat.style.borderColor = '#80cbc4';
             }
         }
     } else if (data.type === 'SHARED_IMAGE_DATA') {
@@ -722,6 +908,39 @@ network.onMessage((data, peerId) => {
         const finalTokens = state.tokens.map(t => {
             const existing = engine.tokens.find(et => et.id === t.id);
 
+            // Preserva proprietà di evocazione e scheda se presenti localmente
+            if (t.isEvocation === undefined && existing && existing.isEvocation) {
+                t.isEvocation = existing.isEvocation;
+            }
+            if (!t.category && existing && existing.category) {
+                t.category = existing.category;
+            }
+            // Ripristina lo statblock dalla cache locale se disponibile
+            if (tokenStatblockCache.has(t.id)) {
+                t.statblock = tokenStatblockCache.get(t.id);
+            } else if (existing && existing.statblock) {
+                t.statblock = existing.statblock;
+                tokenStatblockCache.set(t.id, existing.statblock);
+            }
+            if (t.hasStatblock === undefined) {
+                t.hasStatblock = !!t.statblock || (existing && existing.hasStatblock);
+            }
+            if (!t.statblockName && existing && existing.statblockName) {
+                t.statblockName = existing.statblockName;
+            }
+            if (t.evokerName === undefined && existing && existing.evokerName !== undefined) {
+                t.evokerName = existing.evokerName;
+            }
+            if (t.durationRounds === undefined && existing && existing.durationRounds !== undefined) {
+                t.durationRounds = existing.durationRounds;
+            }
+            if (t.roundsLeft === undefined && existing && existing.roundsLeft !== undefined) {
+                t.roundsLeft = existing.roundsLeft;
+            }
+            if (t.color === undefined && existing && existing.color !== undefined) {
+                t.color = existing.color;
+            }
+
             // Ripristina la scheda PG dalla cache locale o richiedila se aggiornata
             if (tokenPcSheetCache.has(t.id)) {
                 t.pcSheet = tokenPcSheetCache.get(t.id);
@@ -817,6 +1036,7 @@ network.onMessage((data, peerId) => {
         } else {
             engine.tokens = finalTokens;
         }
+        updatePlayerRoleAndUI();
         engine.renderAll();
         if (window.pcSheetManager) {
             window.pcSheetManager.refreshIfOpen();
@@ -858,7 +1078,10 @@ document.querySelectorAll('.ptool-btn').forEach(b => b.style.opacity = b.classLi
 
 // Shape spawners
 function spawnShape(type) {
-    const centerPos = engine.screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
+    const normType = type === 'sphere' ? 'circle' : type;
+    const centerPos = (engine.getSafeAoESpawnPosition) 
+        ? engine.getSafeAoESpawnPosition(normType, 15, 5) 
+        : engine.screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
     const highlight = document.getElementById('pshape-highlight') ? document.getElementById('pshape-highlight').checked : true;
     let casterTokenId = null;
     let casterName = network.playerName || 'Giocatore';
@@ -927,6 +1150,17 @@ function spawnShape(type) {
         color: document.getElementById('player-color').value
     };
     network.send({ type: 'PLAYER_ADD_SHAPE', payload: shape });
+    window.editingPlayerShape = shape;
+    const pPanel = document.getElementById('player-shape-panel');
+    if (pPanel) {
+        pPanel.style.display = 'block';
+        const pWidth = document.getElementById('pshape-width');
+        if (pWidth) pWidth.style.display = shape.type === 'line' ? 'block' : 'none';
+        const pSize = document.getElementById('pshape-size');
+        if (pSize) pSize.value = shape.sizeFt || 15;
+        const pAngle = document.getElementById('pshape-angle');
+        if (pAngle) pAngle.value = shape.angle || 0;
+    }
 }
 document.getElementById('pbtn-cone').addEventListener('click', () => spawnShape('cone'));
 document.getElementById('pbtn-sphere').addEventListener('click', () => spawnShape('sphere'));
@@ -957,6 +1191,11 @@ const btnCloseToolbar = document.getElementById('pbtn-close-toolbar');
 
 function togglePlayerToolbar(forceState) {
     if (!ptb) return;
+    if (isSpectatorMode()) {
+        ptb.style.display = 'none';
+        if (btnToggleToolbar) btnToggleToolbar.style.display = 'none';
+        return;
+    }
     const isCurrentlyOpen = ptb.style.display === 'flex';
     const nextState = typeof forceState === 'boolean' ? forceState : !isCurrentlyOpen;
     ptb.style.display = nextState ? 'flex' : 'none';
@@ -989,21 +1228,39 @@ if (btnCloseToolbar) {
     });
 }
 
-// Scorciatoia da tastiera 'H' per mostrare/nascondere la barra strumenti
+// Scorciatoia da tastiera 'H' per mostrare/nascondere la barra strumenti + tracciamento tasto Shift
 window.addEventListener('keydown', (e) => {
+    if (e.key === 'Shift') window._vttShiftDown = true;
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT')) return;
     if (e.key === 'h' || e.key === 'H') {
-        if (isToolbarHiddenByDm) return; // Disabilitato se il Master ha forzato la modalità TV
+        if (isToolbarHiddenByDm || isSpectatorMode()) return;
         togglePlayerToolbar();
     }
+});
+window.addEventListener('keyup', (e) => {
+    if (e.key === 'Shift') window._vttShiftDown = false;
+});
+window.addEventListener('blur', () => {
+    window._vttShiftDown = false;
 });
 
 
 // --- PLAYER INPUT LOGIC ---
 const uiLayer = document.getElementById('main-canvas-container');
+let _cachedPlayerUiRect = null;
+let _cachedPlayerUiRectTime = 0;
+window.addEventListener('resize', () => { _cachedPlayerUiRect = null; });
+function getPlayerUiRect() {
+    const now = performance.now();
+    if (!_cachedPlayerUiRect || (now - _cachedPlayerUiRectTime > 250)) {
+        _cachedPlayerUiRect = uiLayer.getBoundingClientRect();
+        _cachedPlayerUiRectTime = now;
+    }
+    return _cachedPlayerUiRect;
+}
 
 function getEventPos(e) {
-    const rect = uiLayer.getBoundingClientRect();
+    const rect = getPlayerUiRect();
     if (e && e.touches && e.touches.length > 0) {
         return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
     }
@@ -1037,7 +1294,7 @@ function pHandleStart(e) {
         activeLaser = null;
         activeStroke = null;
 
-        const rect = uiLayer.getBoundingClientRect();
+        const rect = getPlayerUiRect();
         const t0 = e.touches[0];
         const t1 = e.touches[1];
         pPinchStartDist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
@@ -1071,6 +1328,11 @@ function pHandleStart(e) {
     }
     
     const worldPos = engine.screenToWorld(pos.x, pos.y);
+    
+    if (isSpectatorMode()) {
+        // In modalità Spettatore, sono consentiti solo pan (spostamento visuale) e zoom
+        return;
+    }
     
     if (currentTool === 'laser') {
         isDragging = true;
@@ -1155,7 +1417,12 @@ function pHandleStart(e) {
                     worldPos.x >= t.x - pad && worldPos.x <= t.x + t.width + pad &&
                     worldPos.y >= t.y - pad && worldPos.y <= t.y + t.height + pad) {
                     
-                    activeToken = { type: 'token', ref: t };
+                    activeToken = {
+                        type: 'token',
+                        ref: t,
+                        _hasMovedDuringDrag: false,
+                        _freeMoveShift: !!(e && e.shiftKey) || !!window._vttShiftDown
+                    };
                     isDragging = true;
                     hitEntity = true;
                     clickedTok = t;
@@ -1164,8 +1431,11 @@ function pHandleStart(e) {
             }
         }
         
-        // 3. Fallback ricerca forma (fino a 24px)
+        // 3. Fallback ricerca forma (maniglia o corpo della forma)
         if (!hitEntity && engine.shapes && engine.shapes.length > 0) {
+            const handleRadius = Math.max(28, 28 / Math.min(1, engine.scale || 1));
+
+            // 3.1 Cerca prima maniglia
             for (let i = engine.shapes.length - 1; i >= 0; i--) {
                 const s = engine.shapes[i];
                 if (!s.visible) continue;
@@ -1173,11 +1443,28 @@ function pHandleStart(e) {
                 if (engine.isPointInFog && engine.isPointInFog(s.x, s.y)) continue;
 
                 const dist = Math.hypot(worldPos.x - s.x, worldPos.y - s.y);
-                if (dist <= 24 / Math.min(1, engine.scale)) {
+                if (dist <= handleRadius) {
                     activeToken = { type: 'shape', ref: s };
                     isDragging = true;
                     hitEntity = true;
                     break;
+                }
+            }
+
+            // 3.2 Se non ha preso la maniglia, cerca corpo della sagoma
+            if (!hitEntity && engine.isPointInShape) {
+                for (let i = engine.shapes.length - 1; i >= 0; i--) {
+                    const s = engine.shapes[i];
+                    if (!s.visible) continue;
+                    if (s.owner !== network.playerName) continue;
+                    if (engine.isPointInFog && engine.isPointInFog(worldPos.x, worldPos.y)) continue;
+
+                    if (engine.isPointInShape(worldPos.x, worldPos.y, s)) {
+                        activeToken = { type: 'shape', ref: s };
+                        isDragging = true;
+                        hitEntity = true;
+                        break;
+                    }
                 }
             }
         }
@@ -1235,7 +1522,7 @@ function pHandleMove(e) {
             clearTimeout(pingTimeout);
             pingTimeout = null;
         }
-        const rect = uiLayer.getBoundingClientRect();
+        const rect = getPlayerUiRect();
         const t0 = e.touches[0];
         const t1 = e.touches[1];
         const curDist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
@@ -1295,6 +1582,12 @@ function pHandleMove(e) {
     
     if (currentTool === 'move' && activeToken) {
         if (activeToken.type === 'token') {
+            if (!activeToken._hasMovedDuringDrag && Math.hypot(moveRawX - startMouseX, moveRawY - startMouseY) < 4) {
+                return;
+            }
+            activeToken._hasMovedDuringDrag = true;
+            activeToken._freeMoveShift = !!(e.shiftKey || window._vttShiftDown);
+
             activeToken.ref.x = worldPos.x - activeToken.ref.width / 2;
             activeToken.ref.y = worldPos.y - activeToken.ref.height / 2;
             activeToken.ref._lastLocalEdit = Date.now();
@@ -1310,6 +1603,7 @@ function pHandleMove(e) {
         } else if (activeToken.type === 'shape') {
             activeToken.ref.x = worldPos.x;
             activeToken.ref.y = worldPos.y;
+            if (engine.clampShapePosition) engine.clampShapePosition(activeToken.ref);
             activeToken.ref._lastLocalEdit = Date.now();
             engine.requestTokenLayerRender();
             
@@ -1334,6 +1628,8 @@ function pHandleMove(e) {
         engine.renderAll();
         
         // Render locale temporaneo
+        if (engine.ensureLayerSize) engine.ensureLayerSize('drawPublic');
+        engine._lastDrawSig = null;
         const ctx = engine.ctx.drawPublic;
         ctx.beginPath();
         ctx.strokeStyle = activeStroke.color;
@@ -1383,26 +1679,36 @@ function pHandleEnd(e) {
     isDragging = false;
     
     if (currentTool === 'move' && activeToken) {
-        const effOffsetX = (engine.grid.offsetX || 0) % engine.grid.size;
-        const effOffsetY = (engine.grid.offsetY || 0) % engine.grid.size;
+        const gSize = (engine.grid && engine.grid.size) ? engine.grid.size : 50;
+        const effOffsetX = ((engine.grid && engine.grid.offsetX) || 0) % gSize;
+        const effOffsetY = ((engine.grid && engine.grid.offsetY) || 0) % gSize;
         
         if (activeToken.type === 'token') {
-            const targetX = Math.round((activeToken.ref.x - effOffsetX) / engine.grid.size) * engine.grid.size + effOffsetX;
-            const targetY = Math.round((activeToken.ref.y - effOffsetY) / engine.grid.size) * engine.grid.size + effOffsetY;
-            activeToken.ref.x = targetX;
-            activeToken.ref.y = targetY;
-            activeToken.ref._lastLocalEdit = Date.now();
-            const localTok = engine.tokens.find(t => t.id === activeToken.ref.id);
-            if (localTok) {
-                localTok.x = targetX;
-                localTok.y = targetY;
-                localTok._lastLocalEdit = Date.now();
+            if (activeToken._hasMovedDuringDrag) {
+                const isFreeMove = !!(e && e.shiftKey) || !!window._vttShiftDown || !!activeToken._freeMoveShift;
+                const targetX = (!isFreeMove && gSize > 0)
+                    ? (Math.round((activeToken.ref.x - effOffsetX) / gSize) * gSize + effOffsetX)
+                    : activeToken.ref.x;
+                const targetY = (!isFreeMove && gSize > 0)
+                    ? (Math.round((activeToken.ref.y - effOffsetY) / gSize) * gSize + effOffsetY)
+                    : activeToken.ref.y;
+                activeToken.ref.x = targetX;
+                activeToken.ref.y = targetY;
+                activeToken.ref._lastLocalEdit = Date.now();
+                const localTok = engine.tokens.find(t => t.id === activeToken.ref.id);
+                if (localTok) {
+                    localTok.x = targetX;
+                    localTok.y = targetY;
+                    localTok._lastLocalEdit = Date.now();
+                }
+                engine.renderAll();
+                network.send({
+                    type: 'PLAYER_END_TOKEN',
+                    payload: { id: activeToken.ref.id, x: targetX, y: targetY, player: network.playerName }
+                });
+            } else {
+                engine.renderAll();
             }
-            engine.renderAll();
-            network.send({
-                type: 'PLAYER_END_TOKEN',
-                payload: { id: activeToken.ref.id, x: targetX, y: targetY, player: network.playerName }
-            });
             
             // Controlla se è stato solo un click (senza drag)
             let endX = (e && e.clientX !== undefined) ? e.clientX : startMouseX;
@@ -1420,16 +1726,51 @@ function pHandleEnd(e) {
                 engine.selectedTokenId = clickedTok.id;
 
                 const nowClick = Date.now();
+                const isRealPc = (clickedTok.category === 'personaggi' || clickedTok.pcSheet || clickedTok.hasPcSheet) && !clickedTok.isEvocation && clickedTok.category !== 'evocazioni';
                 if (lastPlayerClickedTokenId === clickedTok.id && (nowClick - lastPlayerClickedTokenTime) < maxInterval) {
                     lastPlayerClickedTokenId = null;
                     lastPlayerClickedTokenTime = 0;
-                    if (window.pcSheetManager) {
-                        window.pcSheetManager.open(clickedTok);
+                    if (!isRealPc) {
+                        if (window.compendium) {
+                            if (!clickedTok.statblock && (clickedTok.hasStatblock || clickedTok.statblockName)) {
+                                network.send({ type: 'REQUEST_TOKEN_STATBLOCK', tokenId: clickedTok.id });
+                            }
+                            window.compendium.open(clickedTok.statblock || null);
+                        }
+                    } else {
+                        if (window.pcSheetManager) {
+                            window.pcSheetManager.open(clickedTok);
+                        }
                     }
                 } else {
                     lastPlayerClickedTokenId = clickedTok.id;
                     lastPlayerClickedTokenTime = nowClick;
                     document.getElementById('player-token-panel').style.display = 'block';
+                    const btnStat = document.getElementById('pbtn-open-statblock');
+                    const btnPc = document.getElementById('pbtn-open-pcsheet');
+                    if (btnStat && btnPc) {
+                        if (!isRealPc) {
+                            btnStat.style.display = 'flex';
+                            btnPc.style.display = 'none';
+                            const stName = (clickedTok.statblock && clickedTok.statblock.name) || clickedTok.statblockName;
+                            if (stName) {
+                                btnStat.innerHTML = `<span>📜 ${escapeHTML(stName)}</span>`;
+                                btnStat.style.background = '#00897b';
+                                btnStat.style.borderColor = '#80cbc4';
+                            } else {
+                                btnStat.innerHTML = `<span>🐉 Scheda Creatura / Mostro</span>`;
+                                btnStat.style.background = '#0277bd';
+                                btnStat.style.borderColor = '#4fc3f7';
+                            }
+                        } else {
+                            btnStat.style.display = 'none';
+                            btnPc.style.display = 'flex';
+                        }
+                    }
+                    const dismissBtn = document.getElementById('pbtn-dismiss-token');
+                    if (dismissBtn) {
+                        dismissBtn.style.display = (clickedTok && clickedTok.isEvocation && isTokenOwnedByLocalPlayer(clickedTok)) ? 'block' : 'none';
+                    }
                     const aura = clickedTok.aura || {};
                     document.getElementById('ptoken-aura-active').checked = aura.active || false;
                     document.getElementById('ptoken-aura-size').value = aura.sizeRaw || 15;
@@ -1440,8 +1781,14 @@ function pHandleEnd(e) {
                     if (pAuraDur) {
                         pAuraDur.value = (aura.roundsLeft !== undefined) ? aura.roundsLeft : (aura.durationRounds || '');
                     }
+                    const pTokDur = document.getElementById('ptoken-duration');
+                    if (pTokDur) {
+                        const tLeft = (clickedTok.roundsLeft !== undefined && clickedTok.roundsLeft !== null) ? clickedTok.roundsLeft : clickedTok.durationRounds;
+                        pTokDur.value = (tLeft !== undefined && tLeft !== null && Number(tLeft) > 0) ? tLeft : '';
+                    }
                 }
             }        } else if (activeToken.type === 'shape') {
+            if (engine.clampShapePosition) engine.clampShapePosition(activeToken.ref);
             activeToken.ref._lastLocalEdit = Date.now();
             engine.renderAll();
             
@@ -1703,11 +2050,25 @@ function updatePlayerTokenAura() {
         return;
     }
     // Manda l'aggiornamento al DM
+    const tokDurEl = document.getElementById('ptoken-duration');
+    let tokDurVal = tokDurEl ? parseInt(tokDurEl.value) : 0;
+    if (isNaN(tokDurVal) || tokDurVal <= 0) tokDurVal = 0;
+    if (tokDurVal > 0) {
+        window.editingPlayerToken.durationRounds = tokDurVal;
+        window.editingPlayerToken.roundsLeft = tokDurVal;
+        window.editingPlayerToken.skipFirstDecrement = skipFirst;
+    } else {
+        delete window.editingPlayerToken.durationRounds;
+        delete window.editingPlayerToken.roundsLeft;
+        delete window.editingPlayerToken.skipFirstDecrement;
+    }
+
     network.send({
         type: 'PLAYER_UPDATE_TOKEN_AURA',
         payload: {
             id: window.editingPlayerToken.id,
             auraObj: window.editingPlayerToken.aura,
+            durationRounds: tokDurVal,
             player: network.playerName
         }
     });
@@ -1716,6 +2077,7 @@ document.getElementById('ptoken-aura-active').addEventListener('change', updateP
 document.getElementById('ptoken-aura-highlight')?.addEventListener('change', updatePlayerTokenAura);
 document.getElementById('ptoken-aura-size').addEventListener('input', updatePlayerTokenAura);
 document.getElementById('ptoken-aura-duration')?.addEventListener('input', updatePlayerTokenAura);
+document.getElementById('ptoken-duration')?.addEventListener('input', updatePlayerTokenAura);
 document.getElementById('ptoken-aura-unit').addEventListener('change', (e) => {
     const input = document.getElementById('ptoken-aura-size');
     let oldVal = parseFloat(input.value); if(isNaN(oldVal)) oldVal = 0;
@@ -1737,9 +2099,9 @@ document.getElementById('pbtn-close-token').addEventListener('click', () => {
 
 function openLocalPlayerPcSheet() {
     let targetTok = window.editingPlayerToken;
-    if (!targetTok || !isTokenOwnedByLocalPlayer(targetTok)) {
+    if (!targetTok || !isTokenOwnedByLocalPlayer(targetTok) || targetTok.isEvocation) {
         const ownedList = engine.tokens.filter(t => isTokenOwnedByLocalPlayer(t));
-        targetTok = ownedList.find(t => t.pcSheet || t.hasPcSheet) || ownedList[0] || null;
+        targetTok = ownedList.find(t => (t.pcSheet || t.hasPcSheet) && !t.isEvocation) || ownedList.find(t => !t.isEvocation) || null;
     }
     if (!targetTok) {
         alert(typeof window.t === 'function' ? window.t('Nessun token ti è ancora stato assegnato dal Master sulla mappa!') : 'Nessun token ti è ancora stato assegnato dal Master sulla mappa!');
@@ -1753,6 +2115,15 @@ function openLocalPlayerPcSheet() {
 
 document.getElementById('pbtn-open-pcsheet')?.addEventListener('click', openLocalPlayerPcSheet);
 document.getElementById('pbtn-toolbar-pcsheet')?.addEventListener('click', openLocalPlayerPcSheet);
+document.getElementById('pbtn-open-statblock')?.addEventListener('click', () => {
+    const tok = window.editingPlayerToken || (engine.selectedTokenId ? engine.tokens.find(t => t.id === engine.selectedTokenId) : null);
+    if (tok && window.compendium) {
+        if (!tok.statblock && (tok.hasStatblock || tok.statblockName)) {
+            network.send({ type: 'REQUEST_TOKEN_STATBLOCK', tokenId: tok.id });
+        }
+        window.compendium.open(tok.statblock || null);
+    }
+});
 
 
 
@@ -1853,4 +2224,608 @@ if (window.setupDiceSystem) {
 // Inizializza Sistema Audio & Soundboard
 if (window.setupAudioSystem) {
     window.setupAudioSystem(false, network);
+}
+
+
+// =========================================================================
+// EVOCATION & SUMMON TOKEN LOGIC (Zero-Memory Procedural Tokens & Presets)
+// =========================================================================
+
+function createEvocationTokenDataUrl(name, color = '#b388ff', evokerName = '') {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    const cx = 64, cy = 64, r = 58;
+
+    // Sfondo gradiente radiale dark-fantasy profondo
+    const grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, r);
+    grad.addColorStop(0, '#1c1b29');
+    grad.addColorStop(0.7, '#11101a');
+    grad.addColorStop(1, '#0a0912');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Sottile alone/glow interno
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.25;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r - 5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // Motivo geometrico arcano di sfondo (glifo e cerchio runico interno)
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r - 16, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - (r - 16));
+    ctx.lineTo(cx + (r - 16), cy);
+    ctx.lineTo(cx, cy + (r - 16));
+    ctx.lineTo(cx - (r - 16), cy);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+
+    // Bordo esterno brillante con il colore scelto
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 5;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // Rifinitura bianca sottile
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Monogramma centrale elegante (2 lettere maiuscole)
+    const words = (name || 'Evocazione').trim().split(/\s+/);
+    let initials = '';
+    if (words.length >= 2) {
+        initials = (words[0][0] + words[1][0]).toUpperCase();
+    } else if (words[0].length >= 2) {
+        initials = words[0].substring(0, 2).toUpperCase();
+    } else {
+        initials = words[0].toUpperCase();
+    }
+
+    ctx.save();
+    ctx.font = 'bold 36px "Cinzel", "Times New Roman", Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'black';
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 4;
+    ctx.strokeText(initials, cx, cy);
+    ctx.fillText(initials, cx, cy);
+    ctx.restore();
+
+    return canvas.toDataURL('image/png');
+}
+
+function findFreeAdjacentCell(baseToken, sizeMultiplier = 1) {
+    if (!engine || !baseToken) return null;
+    const gridSize = engine.grid.size || 50;
+    const tokenSize = gridSize * sizeMultiplier;
+    const mapW = engine.mapImage ? engine.mapImage.width : 2000;
+    const mapH = engine.mapImage ? engine.mapImage.height : 2000;
+
+    const effOffsetX = (engine.grid.offsetX || 0) % gridSize;
+    const effOffsetY = (engine.grid.offsetY || 0) % gridSize;
+
+    const baseGridX = Math.round((baseToken.x - effOffsetX) / gridSize);
+    const baseGridY = Math.round((baseToken.y - effOffsetY) / gridSize);
+
+    // Spirale adiacente r = 1 (8 caselle), poi r = 2
+    for (let r = 1; r <= 3; r++) {
+        const offsets = [];
+        for (let dx = -r; dx <= r; dx++) {
+            for (let dy = -r; dy <= r; dy++) {
+                if (Math.max(Math.abs(dx), Math.abs(dy)) === r) {
+                    offsets.push({ dx, dy });
+                }
+            }
+        }
+        for (const { dx, dy } of offsets) {
+            const candX = (baseGridX + dx) * gridSize + effOffsetX;
+            const candY = (baseGridY + dy) * gridSize + effOffsetY;
+
+            if (candX < 0 || candX + tokenSize > mapW || candY < 0 || candY + tokenSize > mapH) {
+                continue;
+            }
+
+            const isColliding = (engine.tokens || []).some(t => {
+                if (!t.visible && !engine.isDM) return false;
+                return !(candX + tokenSize <= t.x || candX >= t.x + t.width ||
+                         candY + tokenSize <= t.y || candY >= t.y + t.height);
+            });
+
+            if (!isColliding) {
+                return { x: candX, y: candY };
+            }
+        }
+    }
+
+    return {
+        x: Math.max(0, Math.min(mapW - tokenSize, baseToken.x + gridSize)),
+        y: Math.max(0, Math.min(mapH - tokenSize, baseToken.y))
+    };
+}
+
+function getLocalPlayerMainToken() {
+    if (window.editingPlayerToken && isTokenOwnedByLocalPlayer(window.editingPlayerToken) && !window.editingPlayerToken.isEvocation) {
+        return window.editingPlayerToken;
+    }
+    if (engine.tokens && engine.tokens.length > 0) {
+        // Cerca prima token principale di categoria 'personaggi'
+        const pcTok = engine.tokens.find(t => isTokenOwnedByLocalPlayer(t) && !t.isEvocation && t.category === 'personaggi');
+        if (pcTok) return pcTok;
+        // Altrimenti qualsiasi token non evocazione posseduto
+        const nonEvoke = engine.tokens.find(t => isTokenOwnedByLocalPlayer(t) && !t.isEvocation);
+        if (nonEvoke) return nonEvoke;
+        // Fallback qualsiasi token posseduto
+        return engine.tokens.find(t => isTokenOwnedByLocalPlayer(t));
+    }
+    return null;
+}
+
+function getPlayerEvocationPresets() {
+    const mainTok = getLocalPlayerMainToken();
+    let presets = [];
+    if (mainTok && Array.isArray(mainTok.evocationPresets) && mainTok.evocationPresets.length > 0) {
+        presets = mainTok.evocationPresets;
+    } else {
+        const pName = (network && network.playerName) ? network.playerName.trim().toLowerCase() : 'default';
+        try {
+            const raw = localStorage.getItem('vtt_evocation_presets_' + pName);
+            if (raw) presets = JSON.parse(raw);
+        } catch (e) {}
+    }
+    return Array.isArray(presets) ? presets : [];
+}
+
+function savePlayerEvocationPresets(presets) {
+    const pName = (network && network.playerName) ? network.playerName.trim().toLowerCase() : 'default';
+    try {
+        localStorage.setItem('vtt_evocation_presets_' + pName, JSON.stringify(presets));
+    } catch (e) {}
+
+    const mainTok = getLocalPlayerMainToken();
+    if (mainTok) {
+        mainTok.evocationPresets = presets;
+        if (window.pcSheetManager && typeof window.pcSheetManager.commitSheetChanges === 'function') {
+            window.pcSheetManager.commitSheetChanges(mainTok, false);
+        }
+    }
+}
+
+function populateEvocationPresetsDropdown() {
+    const select = document.getElementById('pevoke-preset-select');
+    const group = document.getElementById('pevoke-custom-presets-group');
+    const delBtn = document.getElementById('pevoke-btn-delete-preset');
+    if (!select || !group) return;
+
+    group.innerHTML = '';
+    const presets = getPlayerEvocationPresets();
+    presets.forEach((p, idx) => {
+        const opt = document.createElement('option');
+        opt.value = 'custom_' + (p.id || idx);
+        const durTag = (p.durationRounds && Number(p.durationRounds) > 0) ? ` - ⏳${p.durationRounds}r` : '';
+        opt.textContent = `✦ ${p.name} (${p.sizeMultiplier === 2 ? 'Grande' : (p.sizeMultiplier === 3 ? 'Enorme' : 'Media')}${p.hp ? ' - ' + p.hp + ' PF' : ''}${durTag})`;
+        opt.dataset.presetJson = JSON.stringify(p);
+        group.appendChild(opt);
+    });
+
+    if (delBtn) delBtn.style.display = 'none';
+}
+
+// Preset selection change
+const pevokeSelect = document.getElementById('pevoke-preset-select');
+if (pevokeSelect) {
+    pevokeSelect.addEventListener('change', () => {
+        const val = pevokeSelect.value;
+        const delBtn = document.getElementById('pevoke-btn-delete-preset');
+        const nameInput = document.getElementById('pevoke-name');
+        const sizeSelect = document.getElementById('pevoke-size');
+        const colorInput = document.getElementById('pevoke-color');
+        const hpInput = document.getElementById('pevoke-hp');
+        const durInput = document.getElementById('pevoke-duration');
+
+        if (delBtn) delBtn.style.display = val.startsWith('custom_') ? 'inline-block' : 'none';
+
+        if (val === '__builtin_arma_spirituale') {
+            nameInput.value = 'Arma Spirituale';
+            sizeSelect.value = '1';
+            colorInput.value = '#00e5ff';
+            hpInput.value = '';
+            if (durInput) durInput.value = '';
+            window._pendingEvocationStatblock = JSON.parse(JSON.stringify(SPIRITUAL_WEAPON_STATBLOCK));
+        } else if (val === '__builtin_mano_magica') {
+            nameInput.value = 'Mano Magica';
+            sizeSelect.value = '1';
+            colorInput.value = '#b388ff';
+            hpInput.value = '1';
+            if (durInput) durInput.value = '';
+            window._pendingEvocationStatblock = JSON.parse(JSON.stringify(MAGE_HAND_STATBLOCK));
+        } else if (val === '__builtin_lupo') {
+            nameInput.value = 'Lupo';
+            sizeSelect.value = '1';
+            colorInput.value = '#8d6e63';
+            hpInput.value = '11';
+            if (durInput) durInput.value = '';
+            window._pendingEvocationStatblock = JSON.parse(JSON.stringify(WOLF_STATBLOCK));
+        } else if (val.startsWith('custom_')) {
+            const opt = pevokeSelect.options[pevokeSelect.selectedIndex];
+            if (opt && opt.dataset.presetJson) {
+                try {
+                    const p = JSON.parse(opt.dataset.presetJson);
+                    if (p.name) nameInput.value = p.name;
+                    if (p.sizeMultiplier) sizeSelect.value = String(p.sizeMultiplier);
+                    if (p.color) colorInput.value = p.color;
+                    hpInput.value = (p.hp !== undefined && p.hp !== null) ? p.hp : '';
+                    if (durInput) durInput.value = (p.durationRounds !== undefined && p.durationRounds !== null && Number(p.durationRounds) > 0) ? p.durationRounds : '';
+                    window._pendingEvocationStatblock = p.statblock ? JSON.parse(JSON.stringify(p.statblock)) : null;
+                } catch(e) {}
+            }
+        } else {
+            if (durInput) durInput.value = '';
+            window._pendingEvocationStatblock = null;
+        }
+        if (typeof window.updateEvocationStatblockBadge === 'function') {
+            window.updateEvocationStatblockBadge();
+        }
+    });
+}
+
+// Delete custom preset button
+const pevokeDeleteBtn = document.getElementById('pevoke-btn-delete-preset');
+if (pevokeDeleteBtn) {
+    pevokeDeleteBtn.addEventListener('click', () => {
+        const select = document.getElementById('pevoke-preset-select');
+        const val = select ? select.value : '';
+        if (!val.startsWith('custom_')) return;
+
+        const opt = select.options[select.selectedIndex];
+        let pId = null;
+        if (opt && opt.dataset.presetJson) {
+            try { pId = JSON.parse(opt.dataset.presetJson).id; } catch(e) {}
+        }
+
+        let presets = getPlayerEvocationPresets();
+        if (pId) {
+            presets = presets.filter(p => p.id !== pId);
+        } else {
+            const idx = parseInt(val.replace('custom_', ''));
+            if (!isNaN(idx)) presets.splice(idx, 1);
+        }
+
+        savePlayerEvocationPresets(presets);
+        populateEvocationPresetsDropdown();
+        select.value = '';
+        pevokeDeleteBtn.style.display = 'none';
+        if (typeof showPlayerToast === 'function') {
+            showPlayerToast('🗑️ Preset eliminato.');
+        }
+    });
+}
+
+// Toggle Evocation Panel button in toolbar
+const pbtnEvoke = document.getElementById('pbtn-evoke');
+const pEvokePanel = document.getElementById('player-evoke-panel');
+if (pbtnEvoke && pEvokePanel) {
+    pbtnEvoke.addEventListener('click', () => {
+        const isHidden = pEvokePanel.style.display === 'none' || !pEvokePanel.style.display;
+        if (isHidden) {
+            populateEvocationPresetsDropdown();
+            const playerCol = document.getElementById('player-color');
+            const evCol = document.getElementById('pevoke-color');
+            if (playerCol && evCol) evCol.value = playerCol.value || '#b388ff';
+            pEvokePanel.style.display = 'block';
+        } else {
+            pEvokePanel.style.display = 'none';
+        }
+    });
+}
+
+const pbtnCloseEvoke = document.getElementById('pbtn-close-evoke');
+if (pbtnCloseEvoke && pEvokePanel) {
+    pbtnCloseEvoke.addEventListener('click', () => {
+        pEvokePanel.style.display = 'none';
+    });
+}
+
+
+const WOLF_STATBLOCK = {
+    name: "Lupo (Wolf)",
+    size: "Media",
+    type: "Bestia, Senza Allineamento",
+    armor_class: 13,
+    hit_points: 11,
+    speed: "40 ft.",
+    strength: 12, dexterity: 15, constitution: 12, intelligence: 3, wisdom: 12, charisma: 6,
+    skills: "Furtività +4, Percezione +3",
+    senses: "Percezione passiva 13",
+    special_abilities: [
+        { name: "Udito e Olfatto Affinati", desc: "Il lupo ha vantaggio alle prove di Saggezza (Percezione) basate sull'udito o sull'olfatto." },
+        { name: "Tattiche di Branco", desc: "Il lupo ha vantaggio ai tiri per colpire contro una creatura se almeno uno dei suoi alleati si trova entro 1,5 metri da essa e non è inabile." }
+    ],
+    actions: [
+        { name: "Morso", desc: "Attacco con Arma da Mischia: +4 per colpire, portata 5 ft., un bersaglio. Colpito: 7 (2d4 + 2) danni perforanti. Se il bersaglio è una creatura, deve superare un tiro salvezza su Forza con CD 11 o cadere a terra prono." }
+    ]
+};
+
+const MAGE_HAND_STATBLOCK = {
+    name: "Mano Magica (Mage Hand)",
+    size: "Piccola",
+    type: "Costrutto spettrale (Invocazione)",
+    armor_class: 10,
+    hit_points: 1,
+    speed: "Volare 30 ft.",
+    strength: 2, dexterity: 14, constitution: 10, intelligence: 10, wisdom: 10, charisma: 1,
+    actions: [
+        { name: "Manipola Oggetto", desc: "La mano spettrale può manipolare un oggetto, aprire una porta o contenitore non sbarrati, riporre o estrarre un oggetto, o versare una fiala (portata 30 ft., max 4.5 kg)." }
+    ]
+};
+
+const SPIRITUAL_WEAPON_STATBLOCK = {
+    name: "Arma Spirituale (Spiritual Weapon)",
+    size: "Media",
+    type: "Forza Magica Spettrale",
+    armor_class: 15,
+    hit_points: 0,
+    speed: "Volare 20 ft.",
+    strength: 10, dexterity: 10, constitution: 10, intelligence: 10, wisdom: 16, charisma: 10,
+    actions: [
+        { name: "Attacco con Arma Spirituale", desc: "Attacco con Incantesimo da Mischia: tiro per colpire da incantesimo del lanciatore, portata 5 ft. Colpito: 1d8 + mod. caratteristica da incantatore danni da forza." }
+    ]
+};
+
+window.updateEvocationStatblockBadge = function() {
+    const badge = document.getElementById('pevoke-statblock-badge');
+    const badgeText = document.getElementById('pevoke-statblock-badge-text');
+    if (!badge || !badgeText) return;
+    if (window._pendingEvocationStatblock && window._pendingEvocationStatblock.name) {
+        const sb = window._pendingEvocationStatblock;
+        const acStr = sb.armor_class ? `CA ${sb.armor_class}` : '';
+        const hpStr = (sb.hit_points !== undefined && sb.hit_points !== null) ? `PF ${sb.hit_points}` : '';
+        const details = [acStr, hpStr].filter(Boolean).join(', ');
+        badgeText.textContent = `🐉 ${sb.name}${details ? ' (' + details + ')' : ''}`;
+        badge.style.display = 'flex';
+    } else {
+        badge.style.display = 'none';
+    }
+};
+
+window.onEvocationStatblockImported = function(normalized) {
+    if (!normalized) return;
+    window._pendingEvocationStatblock = normalized;
+    const nameInput = document.getElementById('pevoke-name');
+    const hpInput = document.getElementById('pevoke-hp');
+    const sizeSelect = document.getElementById('pevoke-size');
+    if (nameInput && normalized.name) nameInput.value = normalized.name;
+    if (hpInput) hpInput.value = (normalized.hit_points !== undefined && normalized.hit_points !== null) ? normalized.hit_points : '';
+    if (sizeSelect && normalized.size) {
+        const s = String(normalized.size).toLowerCase();
+        if (s.includes('large') || s.includes('grande') || s === 'l') sizeSelect.value = '2';
+        else if (s.includes('huge') || s.includes('enorme') || s === 'h') sizeSelect.value = '3';
+        else if (s.includes('gargantuan') || s.includes('mastodontica') || s === 'g') sizeSelect.value = '3';
+        else sizeSelect.value = '1';
+    }
+    if (typeof window.updateEvocationStatblockBadge === 'function') {
+        window.updateEvocationStatblockBadge();
+    }
+    if (typeof showPlayerToast === 'function') {
+        showPlayerToast(`🐉 Scheda "${normalized.name}" pronta per l'evocazione!`);
+    }
+};
+
+document.getElementById('pevoke-btn-paste-statblock')?.addEventListener('click', () => {
+    window._importingForEvocation = true;
+    const modal = document.getElementById('modal-json-import');
+    if (modal) modal.style.display = 'flex';
+});
+
+document.getElementById('pevoke-btn-clear-statblock')?.addEventListener('click', () => {
+    window._pendingEvocationStatblock = null;
+    if (typeof window.updateEvocationStatblockBadge === 'function') {
+        window.updateEvocationStatblockBadge();
+    }
+});
+
+// Spawn evocation button
+const pevokeBtnSpawn = document.getElementById('pevoke-btn-spawn');
+if (pevokeBtnSpawn) {
+    pevokeBtnSpawn.addEventListener('click', () => {
+        const nameInput = document.getElementById('pevoke-name');
+        const sizeSelect = document.getElementById('pevoke-size');
+        const colorInput = document.getElementById('pevoke-color');
+        const hpInput = document.getElementById('pevoke-hp');
+        const durInput = document.getElementById('pevoke-duration');
+        const saveCheck = document.getElementById('pevoke-save-preset');
+
+        const name = (nameInput ? nameInput.value.trim() : '') || 'Evocazione';
+        const sizeMul = parseInt(sizeSelect ? sizeSelect.value : '1') || 1;
+        const color = (colorInput ? colorInput.value : '#b388ff') || '#b388ff';
+        const rawHp = hpInput ? parseInt(hpInput.value) : NaN;
+        const hpVal = (!isNaN(rawHp) && rawHp > 0) ? rawHp : undefined;
+        const rawDur = durInput ? parseInt(durInput.value) : NaN;
+        const durVal = (!isNaN(rawDur) && rawDur > 0) ? rawDur : undefined;
+
+        // Se spuntato "Salva come mio preset"
+        if (saveCheck && saveCheck.checked) {
+            let presets = getPlayerEvocationPresets();
+            const existingIdx = presets.findIndex(p => p.name.trim().toLowerCase() === name.toLowerCase());
+            const newP = {
+                id: 'preset_' + Date.now(),
+                name: name,
+                sizeMultiplier: sizeMul,
+                color: color,
+                hp: hpVal !== undefined ? hpVal : null,
+                durationRounds: durVal !== undefined ? durVal : null,
+                statblock: window._pendingEvocationStatblock ? JSON.parse(JSON.stringify(window._pendingEvocationStatblock)) : null
+            };
+            if (existingIdx >= 0) presets[existingIdx] = newP;
+            else presets.push(newP);
+            savePlayerEvocationPresets(presets);
+            populateEvocationPresetsDropdown();
+            saveCheck.checked = false;
+        }
+
+        // Calcola posizione di spawn nella prima casella adiacente libera
+        const mainTok = getLocalPlayerMainToken();
+        const gridSize = (engine && engine.grid && engine.grid.size) ? engine.grid.size : 50;
+        const sizePx = gridSize * sizeMul;
+
+        let spawnPos = null;
+        if (mainTok) {
+            spawnPos = findFreeAdjacentCell(mainTok, sizeMul);
+        }
+        if (!spawnPos && engine.getSafeAoESpawnPosition) {
+            spawnPos = engine.getSafeAoESpawnPosition('circle', sizeMul * 5, 5);
+        }
+        if (!spawnPos) {
+            spawnPos = engine.screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
+        }
+
+        // Genera token procedurale vettoriale / canvas (0 KB file, ultraleggero)
+        const myName = network.playerName || 'Giocatore';
+        const tokenSrc = createEvocationTokenDataUrl(name, color, myName);
+
+        const st = window._pendingEvocationStatblock ? JSON.parse(JSON.stringify(window._pendingEvocationStatblock)) : null;
+        let finalHp = hpVal;
+        if (finalHp === undefined && st && st.hit_points !== undefined && st.hit_points > 0) {
+            finalHp = st.hit_points;
+        }
+        if (st) {
+            if (finalHp !== undefined) st.hit_points = finalHp;
+            if (name) st.name = name;
+        }
+        const finalAc = (st && st.armor_class !== undefined && st.armor_class !== null) ? st.armor_class : 10;
+
+        let skipFirst = false;
+        let casterInitId = undefined;
+        const casterTokId = mainTok ? mainTok.id : undefined;
+        if (durVal !== undefined && engine.initiative && engine.initiative.active && engine.initiative.participants && engine.initiative.participants.length > 0) {
+            const curP = engine.initiative.participants[engine.initiative.currentTurnIndex];
+            if (curP) {
+                const pNorm = myName.trim().toLowerCase();
+                const curName = (curP.name || '').trim().toLowerCase();
+                const curTok = curP.tokenId && engine.tokens ? engine.tokens.find(t => String(t.id) === String(curP.tokenId)) : null;
+                if ((curTok && isTokenOwnedByLocalPlayer(curTok)) ||
+                    (casterTokId && String(curP.tokenId) === String(casterTokId)) ||
+                    (curName && (curName === pNorm || curName.startsWith(pNorm + ' ') || curName.includes(pNorm)))) {
+                    skipFirst = true;
+                    casterInitId = curP.id;
+                }
+            }
+        }
+
+        const newTok = {
+            id: 'token_evoke_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+            name: name,
+            category: 'evocazioni',
+            isEvocation: true,
+            evokerName: myName,
+            casterTokenId: casterTokId,
+            casterInitiativeId: casterInitId,
+            durationRounds: durVal,
+            roundsLeft: durVal,
+            skipFirstDecrement: skipFirst || undefined,
+            x: spawnPos.x,
+            y: spawnPos.y,
+            width: sizePx,
+            height: sizePx,
+            sizeMultiplier: sizeMul,
+            color: color,
+            src: tokenSrc,
+            visible: true,
+            hpMax: finalHp,
+            hpCurrent: finalHp,
+            hpVisibleToPlayers: true,
+            ac: finalAc,
+            statblock: st,
+            owner: myName,
+            owners: [myName]
+        };
+        window._pendingEvocationStatblock = null;
+        if (typeof window.updateEvocationStatblockBadge === 'function') {
+            window.updateEvocationStatblockBadge();
+        }
+
+        // Invia a host Master (solo dati JSON senza elementi DOM)
+        network.send({
+            type: 'PLAYER_SPAWN_TOKEN',
+            payload: newTok
+        });
+
+        // Carica immagine localmente per render immediato a 0ms di lag
+        const img = new Image();
+        img.onload = () => {
+            newTok.imageObj = img;
+            engine.renderTokensLayer();
+        };
+        img.src = tokenSrc;
+        newTok.imageObj = img;
+
+        // Aggiungi localmente per feedback istantaneo
+        engine.tokens.push(newTok);
+        window.editingPlayerToken = newTok;
+        engine.selectedTokenId = newTok.id;
+        engine.renderTokensLayer();
+
+        if (pEvokePanel) pEvokePanel.style.display = 'none';
+
+        if (typeof showPlayerToast === 'function') {
+            showPlayerToast(`✨ Hai evocato "${name}"!`);
+        }
+    });
+}
+
+// Dismiss evocation button in player-token-panel
+const pbtnDismissToken = document.getElementById('pbtn-dismiss-token');
+if (pbtnDismissToken) {
+    pbtnDismissToken.addEventListener('click', () => {
+        const curTok = window.editingPlayerToken || (engine.selectedTokenId ? engine.tokens.find(t => t.id === engine.selectedTokenId) : null);
+        if (!curTok || !curTok.isEvocation) return;
+
+        network.send({
+            type: 'PLAYER_DISMISS_TOKEN',
+            payload: {
+                id: curTok.id,
+                player: network.playerName || 'local'
+            }
+        });
+
+        // Rimuovi localmente
+        engine.tokens = engine.tokens.filter(t => t.id !== curTok.id);
+        if (engine.selectedTokenId === curTok.id) engine.selectedTokenId = null;
+        window.editingPlayerToken = null;
+
+        const tokenPanel = document.getElementById('player-token-panel');
+        if (tokenPanel) tokenPanel.style.display = 'none';
+
+        engine.renderTokensLayer();
+
+        if (typeof showPlayerToast === 'function') {
+            showPlayerToast(`💨 "${curTok.name}" congedato.`);
+        }
+    });
 }

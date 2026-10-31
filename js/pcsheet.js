@@ -1094,7 +1094,10 @@
         if (syncHpAndAcToToken) {
             token.hpMax = token.pcSheet.hpMax;
             token.hpCurrent = token.pcSheet.hpCurrent;
+            token.hpTemp = token.pcSheet.hpTemp || 0;
             token.ac = token.pcSheet.ac;
+        } else if (token.pcSheet.hpTemp !== undefined) {
+            token.hpTemp = token.pcSheet.hpTemp || 0;
         }
 
         const eng = getEngineRef();
@@ -1134,8 +1137,10 @@
                         tokenId: token.id,
                         pcSheet: token.pcSheet,
                         adventureJournal: token.adventureJournal || '',
+            evocationPresets: token.evocationPresets || [],
                         hpCurrent: token.hpCurrent,
                         hpMax: token.hpMax,
+                        hpTemp: token.hpTemp || 0,
                         ac: token.ac
                     }
                 });
@@ -1869,6 +1874,7 @@
         // Sincronizza PV/CA se sono stati cambiati dal canvas/DM
         if (token.hpCurrent !== undefined && token.hpCurrent !== null) s.hpCurrent = token.hpCurrent;
         if (token.hpMax !== undefined && token.hpMax > 0) s.hpMax = token.hpMax;
+        if (token.hpTemp !== undefined && token.hpTemp !== null) s.hpTemp = token.hpTemp;
         if (token.ac !== undefined && token.ac > 0) s.ac = token.ac;
 
         if (currentTab === 'combat') {
@@ -2337,7 +2343,8 @@
             owners: token.owners || (token.owner ? [token.owner] : []),
             owner: token.owner || '',
             pcSheet: token.pcSheet || null,
-            adventureJournal: token.adventureJournal || ''
+            adventureJournal: token.adventureJournal || '',
+            evocationPresets: token.evocationPresets || []
         };
         const jsonStr = JSON.stringify(exportObj, null, 2);
         const blob = new Blob([jsonStr], { type: 'application/json' });
@@ -2370,6 +2377,7 @@
                     const data = JSON.parse(re.target.result);
                     if (data.pcSheet) token.pcSheet = data.pcSheet;
                     if (data.adventureJournal !== undefined) token.adventureJournal = data.adventureJournal;
+                    if (data.evocationPresets !== undefined) token.evocationPresets = data.evocationPresets;
                     if (data.hpMax !== undefined) token.hpMax = data.hpMax;
                     if (data.hpCurrent !== undefined) token.hpCurrent = data.hpCurrent;
                     if (data.ac !== undefined) token.ac = data.ac;
