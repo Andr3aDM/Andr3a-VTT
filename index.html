@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>DM Dashboard - VTT (Beta 1.5)</title>
     <link rel="stylesheet" href="css/style.css?v=4">
+    <link rel="stylesheet" href="js/systems/7thsea/sheet.css?v=1">
 <style>
         .section h3 { cursor: pointer; user-select: none; }
         .section h3::after { content: ' ▼'; font-size: 12px; float: right; }
@@ -161,7 +162,7 @@
 
                 <!-- Riga 4B-bis: PV Temporanei & Stile Barra -->
                 <div style="display: flex; gap: 6px; margin-bottom: 6px; align-items: center; justify-content: space-between;">
-                    <div style="display: flex; align-items: center; gap: 4px;" title="Punti Ferita Temporanei (indicatore blu; assorbono i danni prima dei PV normali)">
+                    <div id="token-temp-hp-box" style="display: flex; align-items: center; gap: 4px;" title="Punti Ferita Temporanei (indicatore blu; assorbono i danni prima dei PV normali)">
                         <span style="font-size: 11px; font-weight: bold; color: #29b6f6; white-space: nowrap;">💙 PV Temp:</span>
                         <input type="number" id="token-hp-temp" placeholder="0" min="0" style="width: 46px; padding: 3px 2px; background: #1c1c1c; color: #29b6f6; font-weight: bold; border: 1px solid #0288d1; border-radius: 3px; font-size: 12px; text-align: center;" title="PV Temporanei">
                     </div>
@@ -177,7 +178,7 @@
 
                 <!-- Riga 4C: CA, Scheda Mostro e Scheda PG -->
                 <div style="display: flex; gap: 4px; margin-bottom: 6px; align-items: center;">
-                    <div style="display: flex; align-items: center; gap: 2px; flex: 0.75;" title="Classe Armatura (CA)">
+                    <div id="token-ac-box" style="display: flex; align-items: center; gap: 2px; flex: 0.75;" title="Classe Armatura (CA)">
                         <span style="font-size: 11px; font-weight: bold; color: #4fc3f7;">🛡️ CA:</span>
                         <input type="number" id="token-ac" placeholder="CA" min="0" style="width: 38px; padding: 3px 2px; background: #1c1c1c; color: white; border: 1px solid #555; border-radius: 3px; font-size: 12px; text-align: center;">
                     </div>
@@ -600,11 +601,21 @@
 
         <!-- Sezione 2: Campagne & Salvataggi -->
         <div style="background: #222; padding: 8px; border-radius: 5px; border-left: 3px solid #00bcd4; font-size: 12px;">
-            <strong style="color: #00bcd4; font-size: 13px;">📁 Campagne & Salvataggi</strong>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <strong style="color: #00bcd4; font-size: 13px;">📁 Campagne & Salvataggi</strong>
+                <span id="campaign-system-badge" style="font-size: 10px; background: #1b3a4b; color: #4dd0e1; border: 1px solid #00acc1; padding: 1px 6px; border-radius: 8px; font-weight: bold;">⚔️ D&D 5e</span>
+            </div>
             <div id="campaign-manager" style="margin-top: 6px;">
                 <select id="campaign-select" style="width:100%; margin-bottom:5px; background: #111; color: white; border: 1px solid #555; padding: 4px; border-radius: 3px;">
                     <option value="">-- Seleziona Campagna --</option>
                 </select>
+                <div style="display:flex; gap:5px; align-items:center; margin-bottom:5px;">
+                    <label for="campaign-system-select" style="font-size:11px; color:#bbb; white-space:nowrap;">Sistema GDR:</label><span id="campaign-system-lock-badge" style="display:none; font-size:10px; background:#263238; color:#ffb74d; border:1px solid #ff9800; padding:1px 5px; border-radius:4px; font-weight:bold; white-space:nowrap;" title="Il sistema di gioco è bloccato per le campagne già create">🔒 Fisso</span>
+                    <select id="campaign-system-select" style="flex:1; background:#14161f; color:#fcd34d; border:1px solid #555; padding:3px 5px; border-radius:3px; font-size:11px; font-weight:bold; cursor:pointer;" title="Sistema di Regole della Campagna (Fissato alla creazione della campagna)">
+                        <option value="dnd5e">⚔️ D&D 5ª Edizione (Default)</option>
+                        <option value="7thsea">⛵ 7th Sea (2ª Edizione)</option>
+                    </select>
+                </div>
                 <div style="display:flex; gap:5px;">
                     <button id="btn-new-campaign" style="flex:1; background: #4caf50; color: white; border: none; padding: 5px; border-radius: 3px; cursor: pointer; font-weight: bold;">Nuova</button>
                     <button id="btn-delete-campaign" style="flex:1; background-color: #d32f2f; color: white; border: none; padding: 5px; border-radius: 3px; cursor: pointer;">Elimina</button>
@@ -1051,6 +1062,12 @@
     <script src="js/dm.js?v=181"></script>
     <script src="js/compendium.js?v=24"></script>
     <script src="js/pcsheet.js?v=9"></script>
+    <script src="js/systems/system_manager.js?v=1"></script>
+    <script src="js/systems/dnd5e/adapter.js?v=1"></script>
+    <script src="js/systems/7thsea/data.js?v=1"></script>
+    <script src="js/systems/7thsea/rules.js?v=1"></script>
+    <script src="js/systems/7thsea/sheet.js?v=1"></script>
+    <script src="js/systems/7thsea/compendium.js?v=1"></script>
     <script src="js/initiative.js?v=37"></script>
 <script>
     document.querySelectorAll('.section h3').forEach(h3 => {

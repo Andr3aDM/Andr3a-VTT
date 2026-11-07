@@ -1380,6 +1380,7 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
         type: 'STATE_SYNC',
         payload: {
             audioState: window.getAudioState ? window.getAudioState() : null,
+            gameSystem: (window.systemManager ? window.systemManager.getActiveSystemId() : 'dnd5e'),
             hpDisplayStyle: hpDisplayStyle,
             conditionDisplayStyle: conditionDisplayStyle,
             grid: engine.grid,
@@ -1692,13 +1693,120 @@ async function refreshCampaigns(autoSelectLast = false) {
     updateHostOnlineButtonState();
 }
 
-document.getElementById('btn-new-campaign').addEventListener('click', async () => {
-    const name = prompt('Nome della nuova campagna:');
-    if (name) {
-        const newCamp = await vttDB.addCampaign(name);
-        localStorage.setItem('vtt_last_campaign_id', newCamp.id);
-        await refreshCampaigns(true);
+function updateCampaignSystemLockUI(hasActiveCampaign) {
+    const sysSel = document.getElementById('campaign-system-select');
+    const lockBadge = document.getElementById('campaign-system-lock-badge');
+    if (sysSel) {
+        sysSel.disabled = !!hasActiveCampaign;
+        sysSel.style.opacity = hasActiveCampaign ? '0.65' : '1';
+        sysSel.style.cursor = hasActiveCampaign ? 'not-allowed' : 'pointer';
+        sysSel.title = hasActiveCampaign
+            ? '🔒 Il sistema di gioco di una campagna esistente è definitivo e non può essere variato a campagna in corso.'
+            : 'Seleziona il Sistema di Gioco prima di creare una nuova campagna';
     }
+    if (lockBadge) {
+        lockBadge.style.display = hasActiveCampaign ? 'inline-block' : 'none';
+    }
+}
+
+function openNewCampaignModal() {
+    let modal = document.getElementById('modal-new-campaign');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal-new-campaign';
+        modal.style.cssText = 'display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:3500; align-items:center; justify-content:center; padding:15px; font-family:sans-serif;';
+        modal.innerHTML = `
+            <div style="background:#1c1f26; border:2px solid #00bcd4; border-radius:10px; width:420px; max-width:95vw; padding:18px; color:white; box-shadow:0 12px 32px rgba(0,0,0,0.9); display:flex; flex-direction:column; gap:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:8px;">
+                    <strong style="color:#00bcd4; font-size:15px;">📁 Crea Nuova Campagna</strong>
+                    <button type="button" id="btn-cancel-new-campaign-x" style="background:none; border:none; color:#aaa; font-size:16px; cursor:pointer;">✕</button>
+                </div>
+                <div>
+                    <label style="display:block; font-size:12px; color:#ccc; font-weight:bold; margin-bottom:5px;">Nome della Campagna:</label>
+                    <input type="text" id="new-campaign-name-input" placeholder="Es. Cronache di Théah, La Maledizione di Strahd..." style="width:100%; padding:8px 10px; background:#111318; color:white; border:1px solid #444; border-radius:5px; font-size:13px; box-sizing:border-box; outline:none;">
+                </div>
+                <div>
+                    <label style="display:block; font-size:12px; color:#fcd34d; font-weight:bold; margin-bottom:5px;">Sistema di Gioco (Definitivo):</label>
+                    <select id="new-campaign-system-select" style="width:100%; padding:8px 10px; background:#14161f; color:#fcd34d; border:1px solid #d4af37; border-radius:5px; font-size:13px; font-weight:bold; cursor:pointer; box-sizing:border-box;">
+                        <option value="dnd5e">⚔️ D&D 5ª Edizione (Default)</option>
+                        <option value="7thsea">⛵ 7th Sea (2ª Edizione - Need Games)</option>
+                    </select>
+                </div>
+                <div style="background:#261c14; border:1px solid #ff9800; border-radius:6px; padding:8px 10px; font-size:11px; color:#ffcc80; line-height:1.4;">
+                    🔒 <b>Importante:</b> Una volta assegnato un Sistema di Gioco alla campagna, resterà <b>bloccato in modo definitivo</b> per quella campagna per evitare conflitti tra schede e regole.
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
+                    <button type="button" id="btn-cancel-new-campaign" style="background:#333; color:#ddd; border:1px solid #555; padding:7px 14px; border-radius:5px; cursor:pointer; font-size:12px; font-weight:bold;">Annulla</button>
+                    <button type="button" id="btn-confirm-new-campaign" style="background:#4caf50; color:white; border:none; padding:7px 16px; border-radius:5px; cursor:pointer; font-size:12px; font-weight:bold; box-shadow:0 2px 6px rgba(0,0,0,0.4);">➕ Crea Campagna</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        const closeFn = () => { modal.style.display = 'none'; };
+        modal.querySelector('#btn-cancel-new-campaign').addEventListener('click', closeFn);
+        modal.querySelector('#btn-cancel-new-campaign-x').addEventListener('click', closeFn);
+        modal.querySelector('#btn-confirm-new-campaign').addEventListener('click', async () => {
+            const nameInp = modal.querySelector('#new-campaign-name-input');
+            const sysInp = modal.querySelector('#new-campaign-system-select');
+            const name = (nameInp ? nameInp.value : '').trim();
+            if (!name) {
+                alert('Inserisci un nome per la nuova campagna!');
+                return;
+            }
+            const chosenSys = (sysInp && sysInp.value) ? sysInp.value : 'dnd5e';
+            closeFn();
+
+            // Chiudi eventuali schede aperte della campagna precedente
+            if (window.pcSheetManager && typeof window.pcSheetManager.close === 'function') window.pcSheetManager.close();
+            if (window.compendium && typeof window.compendium.close === 'function') window.compendium.close();
+
+            // Svuota il tavolo per la nuova campagna
+            if (engine) {
+                engine.tokens = [];
+                engine.shapes = [];
+                if (engine.initiative) {
+                    engine.initiative.participants = [];
+                    engine.initiative.currentTurnIndex = -1;
+                    engine.initiative.round = 1;
+                }
+                engine.selectedTokenId = null;
+                if (engine.selectedTokens) engine.selectedTokens.clear();
+                engine.mapImage = null;
+                engine.pendingFogImage = null;
+                currentMapBase64 = null;
+                engine.renderAll();
+            }
+            currentLoadedMapId = null;
+            currentLoadedMapName = "";
+            currentCampaignTokens = [];
+
+            const newCamp = await vttDB.addCampaign(name, chosenSys);
+            if (window.systemManager) window.systemManager.setActiveSystem(chosenSys);
+            localStorage.setItem('vtt_last_campaign_id', newCamp.id);
+            const campSel = document.getElementById('campaign-select');
+            if (campSel) campSel.value = '';
+            await refreshCampaigns(true);
+            if (typeof showToast === 'function') {
+                const sysLabel = chosenSys === '7thsea' ? '⛵ 7th Sea 2e' : '⚔️ D&D 5e';
+                showToast(`📁 Campagna "${name}" creata [${sysLabel} - Sistema Bloccato]!`);
+            }
+        });
+    }
+
+    const nameInp = modal.querySelector('#new-campaign-name-input');
+    const sysInp = modal.querySelector('#new-campaign-system-select');
+    const toolbarSys = document.getElementById('campaign-system-select');
+    if (nameInp) nameInp.value = '';
+    if (sysInp && toolbarSys && !toolbarSys.disabled) {
+        sysInp.value = toolbarSys.value || 'dnd5e';
+    }
+    modal.style.display = 'flex';
+    setTimeout(() => { if (nameInp) nameInp.focus(); }, 50);
+}
+
+document.getElementById('btn-new-campaign').addEventListener('click', () => {
+    openNewCampaignModal();
 });
 
 document.getElementById('btn-delete-campaign').addEventListener('click', async () => {
@@ -1774,6 +1882,10 @@ document.getElementById('campaign-select').addEventListener('change', async (e) 
     const id = e.target.value;
     const oldCampaignId = currentCampaignId;
     checkUnsavedMapChanges(async () => {
+        // Chiudi eventuali schede aperte della campagna precedente per evitare qualsiasi contaminazione tra sistemi
+        if (window.pcSheetManager && typeof window.pcSheetManager.close === 'function') window.pcSheetManager.close();
+        if (window.compendium && typeof window.compendium.close === 'function') window.compendium.close();
+
         // AZZERAMENTO DI SICUREZZA TOTALE: Svuota la mappa, i token e le sagome del canvas
         // prima di passare alla nuova campagna. Questo impedisce categoricamente che i token
         // della vecchia campagna vengano salvati o sommati nella nuova campagna!
@@ -2905,11 +3017,30 @@ function upsertTokenInCampaign(token, skipGalleryRefresh = false) {
 }
 window.upsertTokenInCampaign = upsertTokenInCampaign;
 
+document.getElementById('campaign-system-select')?.addEventListener('change', async (e) => {
+    if (currentCampaignId) {
+        const lockedSys = (window.systemManager && window.systemManager.getActiveSystemId()) || 'dnd5e';
+        e.target.value = lockedSys;
+        updateCampaignSystemLockUI(true);
+        if (typeof showToast === 'function') {
+            showToast('🔒 Il sistema di gioco di una campagna esistente è bloccato e non può essere modificato!');
+        }
+        return;
+    }
+    const newSys = e.target.value || 'dnd5e';
+    if (window.systemManager) window.systemManager.setActiveSystem(newSys);
+});
+
 async function loadCampaignTokensFor(campaignId) {
     let loaded = [];
+    updateCampaignSystemLockUI(!!campaignId);
     if (campaignId) {
         try {
             loaded = await vttDB.getCampaignTokens(campaignId) || [];
+            const campObj = await vttDB.getCampaign(campaignId);
+            if (campObj && window.systemManager) {
+                window.systemManager.setActiveSystem(campObj.system || 'dnd5e');
+            }
             // Filtra e assicura il tag di appartenenza campaignId
             loaded = loaded.filter(t => !t.campaignId || t.campaignId === campaignId);
             loaded.forEach(t => { t.campaignId = campaignId; });
@@ -3744,17 +3875,23 @@ window.updateSelectedTokenControls = function(ent) {
     const hpModInput = document.getElementById('token-hp-mod');
     if (hpModInput) hpModInput.value = '';
 
+    const is7thSea = !!(window.systemManager && window.systemManager.getActiveSystemId() === '7thsea');
+    const acBox = document.getElementById('token-ac-box');
+    const tempHpBox = document.getElementById('token-temp-hp-box');
+    if (acBox) acBox.style.display = is7thSea ? 'none' : 'flex';
+    if (tempHpBox) tempHpBox.style.display = is7thSea ? 'none' : 'flex';
+
     // CA (Classe Armatura)
     const acInput = document.getElementById('token-ac');
     if (acInput) acInput.value = (ent.ac !== undefined && ent.ac !== null) ? ent.ac : '';
 
-    // Pulsante Scheda Mostro
+    // Pulsante Scheda Mostro / Antagonista
     const btnStat = document.getElementById('btn-open-statblock');
     const isEvoc = ent.isEvocation || ent.category === 'evocazioni';
     if (btnStat) {
         btnStat.style.display = 'flex';
         if (ent.statblock && ent.statblock.name) {
-            btnStat.innerHTML = `<span>📜 ${escapeHTML(ent.statblock.name)}</span>`;
+            btnStat.innerHTML = `<span>${is7thSea ? '⚔️' : '📜'} ${escapeHTML(ent.statblock.name)}</span>`;
             btnStat.style.background = '#00897b';
             btnStat.title = `Visualizza Scheda: ${ent.statblock.name}`;
         } else if (isEvoc) {
@@ -3762,13 +3899,13 @@ window.updateSelectedTokenControls = function(ent) {
             btnStat.style.background = '#0277bd';
             btnStat.title = 'Assegna o cerca scheda mostro/creatura per questa evocazione';
         } else {
-            btnStat.innerHTML = `<span>📜 Mostro</span>`;
+            btnStat.innerHTML = `<span>${is7thSea ? '⚔️ Antagonista' : '📜 Mostro'}</span>`;
             btnStat.style.background = '#0277bd';
-            btnStat.title = 'Cerca e assegna scheda statistiche mostro';
+            btnStat.title = is7thSea ? 'Apri o Crea Scheda Antagonista / Sgherri 7th Sea' : 'Cerca e assegna scheda statistiche mostro';
         }
     }
 
-    // Pulsante Scheda Personaggio (PG)
+    // Pulsante Scheda Personaggio (PG / Eroe)
     const btnPc = document.getElementById('btn-open-pcsheet');
     if (btnPc) {
         if (isEvoc) {
@@ -3776,15 +3913,17 @@ window.updateSelectedTokenControls = function(ent) {
         } else {
             btnPc.style.display = 'flex';
             if (ent.pcSheet && ent.pcSheet.name) {
-                btnPc.innerHTML = `<span>🧙 ${escapeHTML(ent.pcSheet.name)}</span>`;
+                btnPc.innerHTML = `<span>${is7thSea ? '⚓' : '🧙'} ${escapeHTML(ent.pcSheet.name)}</span>`;
                 btnPc.style.background = '#4a148c';
                 btnPc.style.borderColor = '#ffd54f';
-                btnPc.title = `Apri Scheda PG: ${ent.pcSheet.name} (Liv. ${ent.pcSheet.level || 1})`;
+                btnPc.title = is7thSea
+                    ? `Apri Scheda Eroe 7th Sea: ${ent.pcSheet.name}`
+                    : `Apri Scheda PG: ${ent.pcSheet.name} (Liv. ${ent.pcSheet.level || 1})`;
             } else {
-                btnPc.innerHTML = `<span>🧙 Scheda PG</span>`;
+                btnPc.innerHTML = `<span>${is7thSea ? '⚓ Scheda Eroe' : '🧙 Scheda PG'}</span>`;
                 btnPc.style.background = '#6a1b9a';
                 btnPc.style.borderColor = '#ab47bc';
-                btnPc.title = 'Apri o Importa Scheda Personaggio (PG)';
+                btnPc.title = is7thSea ? 'Apri o Crea Scheda Eroe 7th Sea' : 'Apri o Importa Scheda Personaggio (PG)';
             }
         }
     }
@@ -5253,7 +5392,8 @@ function openTokenStatblock(token) {
 
     const isEvoc = token.isEvocation || token.category === 'evocazioni';
     // Non aprire MAI la scheda PG per evocazioni, mostri o token senza scheda PG!
-    const isRealPc = !isEvoc && (token.pcSheet || (inferTokenCategory(token) === 'personaggi' && (token.pcSheet || token.hasPcSheet)));
+    const is7thSeaCamp = window.systemManager && window.systemManager.getActiveSystemId() === '7thsea';
+    const isRealPc = !isEvoc && !token.statblock && (token.pcSheet || (inferTokenCategory(token) === 'personaggi' && (token.pcSheet || token.hasPcSheet || is7thSeaCamp)));
     if (isRealPc) {
         if (window.pcSheetManager) {
             window.pcSheetManager.open(token);

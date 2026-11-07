@@ -2163,6 +2163,15 @@
         },
 
         renderStatblock(m) {
+            if (typeof window !== 'undefined' && window.seventhSeaCompendium && typeof window.seventhSeaCompendium.syncCompendiumSystemUI === 'function') {
+                window.seventhSeaCompendium.syncCompendiumSystemUI(m);
+            }
+            const isS7 = (m && (m.system === '7thsea' || m.s7Strength !== undefined)) ||
+                         (typeof window !== 'undefined' && window.systemManager && window.systemManager.getActiveSystemId() === '7thsea' && m && !m.strength_save && !m.challenge_rating?.match(/^[0-9\/]+$/));
+            if (isS7 && typeof window !== 'undefined' && window.seventhSeaCompendium && typeof window.seventhSeaCompendium.renderSeventhSeaStatblock === 'function') {
+                window.seventhSeaCompendium.renderSeventhSeaStatblock(m, this);
+                return;
+            }
             const placeholder = document.getElementById('statblock-placeholder');
             const details = document.getElementById('statblock-details');
             if (!details) return;
@@ -3774,6 +3783,9 @@
             if (!win) return;
             win.style.display = 'flex';
             win.style.zIndex = '1150';
+            if (typeof window !== 'undefined' && window.seventhSeaCompendium && typeof window.seventhSeaCompendium.syncCompendiumSystemUI === 'function') {
+                window.seventhSeaCompendium.syncCompendiumSystemUI(statblockToDisplay);
+            }
 
             const eng = getEngine();
             const selectedToken = (eng && eng.selectedTokenId)
@@ -3812,16 +3824,31 @@
                 if (placeholder) {
                     placeholder.style.display = 'block';
                     const tokenName = selectedToken.name || (selectedToken.originalName ? selectedToken.originalName.replace(/\.[^/.]+$/, "") : 'questo token');
-                    placeholder.innerHTML = `
-                        <div style="text-align: center; color: #aaa; padding: 35px 15px;">
-                            <div style="font-size: 32px; margin-bottom: 10px;">📜</div>
-                            <strong style="color: #ef5350; font-size: 15px;">Nessuna scheda associata</strong>
-                            <p style="font-size: 12px; color: #aaa; margin: 8px 0 15px 0;">Il token <b>"${tokenName}"</b> non ha ancora una scheda mostro/PNG assegnata.</p>
-                            <span style="font-size: 11px; color: #888; background: #222; padding: 6px 10px; border-radius: 4px; border: 1px solid #444;">
-                                🔍 Cerca un mostro nella barra in alto oppure usa <b>📥 Incolla JSON / Testo</b> per assegnarlo!
-                            </span>
-                        </div>
-                    `;
+                    const isS7Active = typeof window !== 'undefined' && window.systemManager && window.systemManager.getActiveSystemId() === '7thsea';
+                    if (isS7Active) {
+                        placeholder.innerHTML = `
+                            <div style="text-align: center; color: #ccc; padding: 25px 15px;">
+                                <div style="font-size: 32px; margin-bottom: 8px;">⚓</div>
+                                <strong style="color: #fcd34d; font-size: 15px;">Nessuna Scheda Antagonista 7th Sea</strong>
+                                <p style="font-size: 12px; color: #aaa; margin: 8px 0 14px 0;">Il token <b>"${escapeHTML(tokenName)}"</b> non ha ancora una scheda Squadra di Sgherri, Malvagio o Mostro associata.</p>
+                                <div style="display:flex; justify-content:center; gap:8px; flex-wrap:wrap;">
+                                    <button type="button" onclick="window.seventhSeaCompendium && window.seventhSeaCompendium.openCustomEditor('${escapeHTML(tokenName)}')" style="background:#d97706; color:#111; font-weight:bold; border:1px solid #fbbf24; border-radius:6px; padding:7px 14px; font-size:12px; cursor:pointer;">➕ Crea Antagonista Personalizzato</button>
+                                </div>
+                                <p style="font-size: 11px; color: #888; margin-top: 12px;">Oppure scegli un Antagonista predefinito dal menu <b>⚓ 7th Sea</b> in alto!</p>
+                            </div>
+                        `;
+                    } else {
+                        placeholder.innerHTML = `
+                            <div style="text-align: center; color: #aaa; padding: 35px 15px;">
+                                <div style="font-size: 32px; margin-bottom: 10px;">📜</div>
+                                <strong style="color: #ef5350; font-size: 15px;">Nessuna scheda associata</strong>
+                                <p style="font-size: 12px; color: #aaa; margin: 8px 0 15px 0;">Il token <b>"${tokenName}"</b> non ha ancora una scheda mostro/PNG assegnata.</p>
+                                <span style="font-size: 11px; color: #888; background: #222; padding: 6px 10px; border-radius: 4px; border: 1px solid #444;">
+                                    🔍 Cerca un mostro nella barra in alto oppure usa <b>📥 Incolla JSON / Testo</b> per assegnarlo!
+                                </span>
+                            </div>
+                        `;
+                    }
                 }
                 currentMonster = null;
                 rawMonster = null;

@@ -2453,11 +2453,15 @@
         parseCharacterSheetJSON,
         extractCharacterId,
         exportSingleCharacterJson,
-        importSingleCharacterJson
+        importSingleCharacterJson,
+        commitSheetChanges
     };
 
     if (typeof window !== 'undefined') {
-        window.pcSheetManager = pcSheetManager;
+        window.dnd5eSheetManager = pcSheetManager;
+        if (!window.pcSheetManager || !window.pcSheetManager._isSystemRouter) {
+            window.pcSheetManager = pcSheetManager;
+        }
     }
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = pcSheetManager;

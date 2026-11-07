@@ -651,6 +651,9 @@ network.onMessage((data, peerId) => {
     } else if (data.type === 'STATE_SYNC') {
         window._playerLiveGridStart = null;
         const state = data.payload;
+        if (state.gameSystem && window.systemManager) {
+            window.systemManager.setActiveSystem(state.gameSystem);
+        }
         if (state.audioState && window.syncPlayerAudio) {
             window.syncPlayerAudio(state.audioState);
         }

@@ -49,11 +49,24 @@ class StorageDB {
         });
     }
 
-    async addCampaign(name) {
-        const campaign = { id: 'camp_' + Date.now(), name, folders: [], tokens: [] };
+    async addCampaign(name, system = 'dnd5e') {
+        const campaign = { id: 'camp_' + Date.now(), name, system: system || 'dnd5e', folders: [], tokens: [] };
         return new Promise((resolve, reject) => {
             const tx = this.db.transaction('campaigns', 'readwrite');
             tx.objectStore('campaigns').add(campaign);
+            tx.oncomplete = () => resolve(campaign);
+            tx.onerror = () => reject(tx.error);
+        });
+    }
+
+    async updateCampaignSystem(campaignId, system) {
+        if (!campaignId) return null;
+        const campaign = await this.getCampaign(campaignId);
+        if (!campaign) return null;
+        campaign.system = (system === '7thsea') ? '7thsea' : 'dnd5e';
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction('campaigns', 'readwrite');
+            tx.objectStore('campaigns').put(campaign);
             tx.oncomplete = () => resolve(campaign);
             tx.onerror = () => reject(tx.error);
         });
