@@ -835,7 +835,7 @@
             </div>
           </div>
         </div>
-        <textarea id="s7-adventure-journal" oninput="onS7JournalChange(this.value)" rows="10" placeholder="Scrivi qui il diario di bordo del tuo Eroe..." class="w-full bg-[#12141c] border border-[#2e3546] rounded-xl p-3 text-xs md:text-sm text-gray-200 focus:border-amber-500 outline-none leading-relaxed"></textarea>
+        <textarea id="s7-adventure-journal" oninput="onS7JournalChange(this.value)" rows="12" placeholder="Scrivi qui il diario di bordo del tuo Eroe (appunti, indizi, nomi di PNG, cronache)..." style="background-color: #ffffff !important; color: #111111 !important; caret-color: #111111 !important; border: 1.5px solid #d1d5db !important; font-size: 13.5px !important; font-weight: 500 !important; line-height: 1.6 !important; padding: 14px !important; border-radius: 12px !important; width: 100% !important; box-sizing: border-box !important; outline: none !important; resize: vertical;" class="w-full rounded-xl outline-none leading-relaxed shadow-inner"></textarea>
       </div>
     </div>
 
