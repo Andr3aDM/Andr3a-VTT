@@ -631,6 +631,10 @@ class NetworkManager {
             }
         }
     }
+
+    broadcast(data, targetPeerId = null) {
+        return this.send(data, targetPeerId);
+    }
 }
 const network = new NetworkManager();
 window.network = network;

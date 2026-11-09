@@ -428,3 +428,361 @@
     cursor: not-allowed !important;
     border-style: dashed !important;
 }
+
+/* MODIFICATORE MANUALE DADI BONUS / MALUS AL RISCHIO */
+.s7-dice-mod-container {
+    display: inline-flex;
+    align-items: center;
+    background: #181b24;
+    border: 1px solid #3b4356;
+    border-radius: 12px;
+    padding: 3px 8px;
+    gap: 6px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+    user-select: none;
+    height: 34px;
+    box-sizing: border-box;
+}
+
+.s7-dice-mod-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #d1d5db;
+    white-space: nowrap;
+}
+
+.s7-dice-mod-btn {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #252b38;
+    color: #e5e7eb;
+    font-size: 13px;
+    font-weight: 900;
+    border: 1px solid #444d63;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    line-height: 1;
+    padding: 0;
+}
+
+.s7-dice-mod-btn:hover {
+    background: #323b4e;
+    color: #fff;
+    border-color: #f59e0b;
+}
+
+.s7-dice-mod-btn.btn-minus:hover {
+    background: rgba(136, 19, 55, 0.8);
+    color: #fca5a5;
+    border-color: #f43f5e;
+}
+
+.s7-dice-mod-btn.btn-plus:hover {
+    background: rgba(6, 78, 59, 0.8);
+    color: #6ee7b7;
+    border-color: #10b981;
+}
+
+.s7-dice-mod-btn:active {
+    transform: scale(0.9);
+}
+
+.s7-dice-mod-val {
+    font-size: 12px;
+    font-weight: 900;
+    min-width: 28px;
+    text-align: center;
+    padding: 2px 5px;
+    border-radius: 6px;
+    background: #101218;
+    border: 1px solid #2b3240;
+    color: #9ca3af;
+    line-height: 1.2;
+    transition: all 0.15s ease;
+}
+
+.s7-dice-mod-val.positive {
+    color: #34d399 !important;
+    background: rgba(6, 78, 59, 0.5) !important;
+    border-color: rgba(16, 185, 129, 0.6) !important;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.25);
+}
+
+.s7-dice-mod-val.negative {
+    color: #fb7185 !important;
+    background: rgba(136, 19, 55, 0.5) !important;
+    border-color: rgba(244, 63, 94, 0.6) !important;
+    box-shadow: 0 0 8px rgba(244, 63, 94, 0.25);
+}
+
+.s7-dice-mod-reset {
+    font-size: 11px;
+    font-weight: bold;
+    color: #6b7280;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    transition: color 0.15s ease;
+}
+
+.s7-dice-mod-reset:hover {
+    color: #f59e0b;
+}
+
+/* FINESTRINA DADI BONUS NEMICI (SOLO GM) */
+.s7-enemy-bonus-card {
+    background: #141722;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    border-left: 3px solid #f59e0b;
+    border-radius: 10px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.s7-eb-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+}
+
+.s7-eb-title {
+    font-size: 11px;
+    font-weight: 800;
+    color: #fcd34d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.s7-eb-badge-gm {
+    background: #451a1a;
+    color: #fca5a5;
+    border: 1px solid #ef4444;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 9.5px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+}
+
+.s7-eb-desc {
+    font-size: 10.5px;
+    color: #9ca3af;
+    line-height: 1.35;
+}
+
+.s7-eb-targets-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.s7-eb-target-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #1e2433;
+    color: #f3f4f6;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.s7-eb-target-btn:hover {
+    background: #2b354b;
+    border-color: #f59e0b;
+    color: #fef08a;
+    transform: translateY(-1px);
+}
+
+.s7-eb-target-btn.active {
+    background: linear-gradient(135deg, rgba(180, 83, 9, 0.45) 0%, rgba(120, 53, 15, 0.6) 100%);
+    border-color: #f59e0b;
+    color: #fef08a;
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.45);
+}
+
+.s7-eb-bonus-pill {
+    background: #451a03;
+    color: #fde047;
+    border: 1px solid #d97706;
+    border-radius: 4px;
+    padding: 0 5px;
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.s7-eb-target-btn.active .s7-eb-bonus-pill {
+    background: #f59e0b;
+    color: #111;
+    border-color: #fbbf24;
+}
+
+.s7-eb-status-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid #10b981;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: #a7f3d0;
+}
+
+.s7-eb-cancel-btn {
+    background: transparent;
+    border: none;
+    color: #f87171;
+    font-size: 11px;
+    font-weight: bold;
+    cursor: pointer;
+    padding: 0 4px;
+    text-decoration: underline;
+}
+
+.s7-eb-cancel-btn:hover {
+    color: #fca5a5;
+}
+
+/* Protezione lato Player: categoricamente invisibile */
+body.player-page .s7-enemy-bonus-card,
+.player-mode .s7-enemy-bonus-card,
+#player-board .s7-enemy-bonus-card {
+    display: none !important;
+}
+
+/* ==========================================================================
+   DROPDOWN CUSTOM, CATEGORIE & POPUP HOVER (7TH SEA) - Z-INDEX E SCROLL OTTIMIZZATI
+   ========================================================================== */
+
+#seventh-sea-sheet-window #creation-wizard-panel {
+    position: relative !important;
+    z-index: 50 !important;
+}
+
+#seventh-sea-sheet-window #creation-wizard-panel.has-dropdown-open {
+    z-index: 5000 !important;
+}
+
+#seventh-sea-sheet-window .s7-custom-dropdown-panel {
+    position: absolute !important;
+    left: 0 !important;
+    top: calc(100% + 4px) !important;
+    width: 100% !important;
+    min-width: 320px !important;
+    max-width: 480px !important;
+    max-height: 350px !important;
+    height: auto !important;
+    background: #0d0f17 !important;
+    background-color: #0d0f17 !important;
+    border: 1px solid rgba(212, 175, 55, 0.75) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.98), 0 0 25px rgba(212, 175, 55, 0.3) !important;
+    z-index: 99999 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+#seventh-sea-sheet-window .s7-custom-dropdown-panel.hidden {
+    display: none !important;
+}
+
+#seventh-sea-sheet-window .s7-dropdown-scroll-list {
+    max-height: 250px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+#seventh-sea-sheet-window .s7-dropdown-scroll-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+#seventh-sea-sheet-window .s7-dropdown-scroll-list::-webkit-scrollbar-track {
+    background: #0d0e14;
+}
+
+#seventh-sea-sheet-window .s7-dropdown-scroll-list::-webkit-scrollbar-thumb {
+    background: #2a3144;
+    border-radius: 3px;
+}
+
+#seventh-sea-sheet-window .s7-dropdown-scroll-list::-webkit-scrollbar-thumb:hover {
+    background: #d4af37;
+}
+
+#seventh-sea-sheet-window .s7-dropdown-header-divider {
+    padding: 4px 10px;
+    font-size: 10px;
+    font-weight: 800;
+    color: #fcd34d;
+    background: #111420;
+    border-top: 1px solid #232938;
+    border-bottom: 1px solid #232938;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    user-select: none;
+}
+
+#seventh-sea-sheet-window .s7-cat-pill {
+    padding: 2.5px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 6px;
+    background: #141824;
+    color: #9ca3af;
+    border: 1px solid #2a3142;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    user-select: none;
+    line-height: 1.3;
+}
+
+#seventh-sea-sheet-window .s7-cat-pill:hover {
+    background: #1f2638;
+    color: #fcd34d;
+    border-color: #f59e0b;
+}
+
+#seventh-sea-sheet-window .s7-cat-pill.active {
+    background: #d97706 !important;
+    color: #000 !important;
+    border-color: #fbbf24 !important;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.45) !important;
+}
+
+#seventh-sea-sheet-window #bg-hover-popup {
+    z-index: 100000 !important;
+    background-color: #090b11 !important;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.98), 0 0 25px rgba(212, 175, 55, 0.3) !important;
+}
+
+
+

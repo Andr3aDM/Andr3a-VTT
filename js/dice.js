@@ -152,6 +152,14 @@ window.appendRollToChat = function(playerOrData, dice, bonus, result) {
     
     if (typeof playerOrData === 'object' && playerOrData !== null) {
         const data = playerOrData;
+        if (data.customHtml) {
+            const senderName = safeEscape(data.sender || data.player || "Eroe");
+            li.style.borderLeft = '3px solid #10b981';
+            li.innerHTML = `<strong style="color:#38bdf8;">${senderName}:</strong> ${data.customHtml}`;
+            chatLog.appendChild(li);
+            chatLog.scrollTop = chatLog.scrollHeight;
+            return;
+        }
         const pName = safeEscape(data.player || "Giocatore");
         
         if (data.mode === 'each') {

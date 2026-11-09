@@ -323,7 +323,21 @@
             ? `<span style="background:#451a1a;color:#fca5a5;border:1px solid #ef4444;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:bold;margin-left:6px;">💥 ${result.explosionsCount} Esplosioni</span>`
             : '';
 
-        const bonusStr = (result.dwBonus ? ' +1 FD' : '') + (result.extraBonus ? ` +${result.extraBonus} Vant.` : '');
+        const customModTag = (result.customModifier && result.customModifier !== 0)
+            ? (result.customModifier > 0
+                ? `<span style="background:#064e3b;color:#6ee7b7;border:1px solid #059669;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:bold;margin-left:6px;">+${result.customModifier}d10 Bonus</span>`
+                : `<span style="background:#4c0519;color:#fda4af;border:1px solid #e11d48;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:bold;margin-left:6px;">${result.customModifier}d10 Malus</span>`)
+            : '';
+
+        const targetHeroTag = result.targetHeroName
+            ? `<span style="background:#581c87;color:#f3e8ff;border:1px solid #a855f7;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:900;margin-left:6px;">🎯 vs ${result.targetHeroName} (+${result.targetHeroBonus || result.customModifier}d10 Nemici)</span>`
+            : '';
+
+        const customModStr = (result.customModifier && result.customModifier !== 0)
+            ? (result.customModifier > 0 ? ` +${result.customModifier} Bonus` : ` ${result.customModifier} Malus`)
+            : '';
+
+        const bonusStr = (result.dwBonus ? ' +1 FD' : '') + (result.extraBonus ? ` +${result.extraBonus} Vant.` : '') + customModStr;
         const formulaLabel = `${result.traitName} (${result.traitVal}) + ${result.skillName} (${result.skillVal})${bonusStr} = ${result.dice ? result.dice.length : 0}d10`;
 
         const htmlMsg = `
@@ -332,6 +346,8 @@
                     <span>⛵ Rischio 7th Sea: ${formulaLabel}</span>
                     ${instituteTag}
                     ${advBonusTag}
+                    ${customModTag}
+                    ${targetHeroTag}
                     ${rerollTag}
                     ${explodeTag}
                 </div>
@@ -351,21 +367,26 @@
             chatLog.scrollTop = chatLog.scrollHeight;
         }
 
-        const net = (typeof network !== 'undefined' && network) ? network : window.network;
-        if (net && net.mode) {
-            const payload = {
-                sender: heroName || 'Eroe',
-                formula: `Rischio ${formulaLabel}`,
-                result: `${result.totalRaises} Incrementi`,
-                details: (result.sets || []).map(s => `[${s.dice.join('+')}=${s.sum}]`).join(' '),
-                isPublic: true,
-                customHtml: htmlMsg
-            };
-            if (net.mode === 'host') {
-                net.broadcast({ type: 'DICE_ROLL', payload });
-            } else if (net.mode === 'client') {
-                net.send({ type: 'DICE_ROLL', payload });
+        try {
+            const net = (typeof network !== 'undefined' && network) ? network : (typeof window !== 'undefined' ? window.network : null);
+            if (net && net.mode) {
+                const payload = {
+                    id: 'roll_s7_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                    sender: heroName || 'Eroe',
+                    formula: `Rischio ${formulaLabel}`,
+                    result: `${result.totalRaises} Incrementi`,
+                    details: (result.sets || []).map(s => `[${s.dice.join('+')}=${s.sum}]`).join(' '),
+                    isPublic: true,
+                    customHtml: htmlMsg
+                };
+                if (typeof net.send === 'function') {
+                    net.send({ type: 'DICE_ROLL', payload });
+                } else if (typeof net.broadcast === 'function') {
+                    net.broadcast({ type: 'DICE_ROLL', payload });
+                }
             }
+        } catch (netErr) {
+            console.warn('[7thSea] Errore invio DICE_ROLL a rete:', netErr);
         }
     }
 
@@ -393,28 +414,100 @@
             chatLog.scrollTop = chatLog.scrollHeight;
         }
 
-        const net = (typeof network !== 'undefined' && network) ? network : window.network;
-        if (net && net.mode) {
-            const payload = {
-                sender: heroName || 'Eroe',
-                formula: `Vantaggio ${adv.name}`,
-                result: `-1 Punto Eroe`,
-                details: adv.desc || adv.description || '',
-                isPublic: true,
-                customHtml: htmlMsg
-            };
-            if (net.mode === 'host') {
-                net.broadcast({ type: 'DICE_ROLL', payload });
-            } else if (net.mode === 'client') {
-                net.send({ type: 'DICE_ROLL', payload });
+        try {
+            const net = (typeof network !== 'undefined' && network) ? network : (typeof window !== 'undefined' ? window.network : null);
+            if (net && net.mode) {
+                const payload = {
+                    id: 'adv_s7_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                    sender: heroName || 'Eroe',
+                    formula: `Vantaggio ${adv.name}`,
+                    result: `-1 Punto Eroe`,
+                    details: adv.desc || adv.description || '',
+                    isPublic: true,
+                    customHtml: htmlMsg
+                };
+                if (typeof net.send === 'function') {
+                    net.send({ type: 'DICE_ROLL', payload });
+                } else if (typeof net.broadcast === 'function') {
+                    net.broadcast({ type: 'DICE_ROLL', payload });
+                }
             }
+        } catch (netErr) {
+            console.warn('[7thSea] Errore invio DICE_ROLL a rete per vantaggio:', netErr);
+        }
+    }
+
+    // BROADCAST ESECUZIONE MANOVRA DI DUELLO IN CHAT VTT
+    function broadcastDuelManeuverToVttChat(heroName, maneuverInfo) {
+        if (typeof document === 'undefined' || !maneuverInfo) return;
+        const styleBadge = maneuverInfo.styleName && maneuverInfo.styleName !== 'Nessuna'
+            ? `<span style="background:#1e293b;color:#fde047;border:1px solid #f59e0b;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:bold;">🤺 ${maneuverInfo.styleName}</span>`
+            : '';
+        const costBadge = maneuverInfo.costText
+            ? `<span style="background:#064e3b;color:#6ee7b7;border:1px solid #10b981;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:bold;">${maneuverInfo.costText}</span>`
+            : '';
+        const calcBadge = maneuverInfo.calculatedEffect
+            ? `<div style="margin:3px 0;"><span style="background:#451a03;color:#fde68a;font-weight:900;padding:2px 7px;border-radius:5px;border:1px solid #f59e0b;font-size:11.5px;">⚔️ ${maneuverInfo.calculatedEffect}</span></div>`
+            : '';
+
+        const htmlMsg = `
+            <div style="border-left:3px solid #f59e0b;padding-left:8px;margin:3px 0;">
+                <div style="font-size:12px;color:#fcd34d;font-weight:900;display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                    <span>⚔️ Manovra di Duello: ${maneuverInfo.name}</span>
+                    ${styleBadge}
+                    ${costBadge}
+                </div>
+                ${calcBadge}
+                <div style="font-size:11px;color:#cbd5e1;margin-top:2px;line-height:1.4;">
+                    ${maneuverInfo.description || ''}
+                </div>
+            </div>
+        `;
+
+        const chatLog = document.getElementById('chat-log');
+        if (chatLog) {
+            const li = document.createElement('li');
+            li.style.cssText = 'background:#161922;padding:6px 8px;border-radius:6px;border:1px solid #2d3446;margin-bottom:4px;';
+            li.innerHTML = `<strong style="color:#38bdf8;">${heroName || 'Eroe'}:</strong> ${htmlMsg}`;
+            chatLog.appendChild(li);
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        try {
+            const net = (typeof network !== 'undefined' && network) ? network : (typeof window !== 'undefined' ? window.network : null);
+            if (net && net.mode) {
+                const payload = {
+                    id: 'duel_s7_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                    sender: heroName || 'Eroe',
+                    formula: `Manovra: ${maneuverInfo.name}`,
+                    result: maneuverInfo.calculatedEffect || maneuverInfo.costText || 'Eseguita',
+                    details: maneuverInfo.description || '',
+                    isPublic: true,
+                    customHtml: htmlMsg
+                };
+                if (typeof net.send === 'function') {
+                    net.send({ type: 'DICE_ROLL', payload });
+                } else if (typeof net.broadcast === 'function') {
+                    net.broadcast({ type: 'DICE_ROLL', payload });
+                }
+            }
+        } catch (netErr) {
+            console.warn('[7thSea] Errore invio DICE_ROLL a rete per manovra:', netErr);
         }
     }
 
     function hasAdvantage(charObj, name) {
         if (!charObj || !Array.isArray(charObj.advantages)) return false;
         const target = name.toLowerCase().trim();
-        return charObj.advantages.some(a => (a && a.name && a.name.toLowerCase().trim() === target));
+        return charObj.advantages.some(a => {
+            if (!a || !a.name) return false;
+            const n = a.name.toLowerCase().trim();
+            if (n === target) return true;
+            // Supporta varianti con apostrofo tipografico e specificazione tra parentesi es. "Sala d’Armi (De Vore)"
+            const normN = n.replace(/’/g, "'");
+            const normTarget = target.replace(/’/g, "'");
+            return normN === normTarget || normN.startsWith(normTarget + ' (');
+        });
     }
 
     function getActiveInstitute(skillName, charObj) {
@@ -444,7 +537,20 @@
         { name: 'Colosso', icon: '🛡️', bonus: 1, traits: ['Vigore'], skills: ['Rissa', 'Atletica'], label: 'Colosso (+1d10)' },
         { name: 'Minuto', icon: '🐀', bonus: 1, skills: ['Nascondersi', 'Furto', 'Atletica'], label: 'Minuto (+1d10)' },
         { name: 'Vista d\'Aquila', icon: '🦅', bonus: 1, skills: ['Notare', 'Mira'], label: 'Vista (+1d10)' },
-        { name: 'Fama', icon: '👥', bonus: 1, traits: ['Panache'], skills: ['Convincere', 'Intimidire', 'Allettare'], label: 'Fama (+1d10)' }
+        { name: 'Fama', icon: '👥', bonus: 1, traits: ['Panache'], skills: ['Convincere', 'Intimidire', 'Allettare'], label: 'Fama (+1d10)' },
+        { name: 'Gancio', icon: '🪝', bonus: 1, skills: ['Rissa'], label: 'Gancio (+1d10)' },
+        { name: 'Disciplina di Fuoco', icon: '🔫', bonus: 1, skills: ['Mira', 'Intimidire'], label: 'Disciplina Fuoco (+1d10)' },
+        { name: 'Tutto è un’Arma se Usato nel Modo Giusto', icon: '🍺', bonus: 1, skills: ['Mischia', 'Mira'], label: 'Arma Improvv. (+1d10)' },
+        { name: 'Questa è la Mia Città', icon: '🏙️', bonus: 2, skills: ['Allettare', 'Convincere', 'Empatia', 'Intimidire', 'Furto', 'Nascondersi', 'Notare'], label: 'Mia Città (+2d10)' },
+        { name: 'Requisitoria Feroce', icon: '⚖️', bonus: 2, skills: ['Convincere', 'Esibirsi', 'Intimidire'], label: 'Requisitoria (+2d10)' },
+        { name: 'Appello Accorato', icon: '🙏', bonus: 2, skills: ['Convincere'], label: 'Appello (+2d10)' },
+        { name: 'Nato in Sella', icon: '🐎', bonus: 1, skills: ['Cavalcare', 'Empatia', 'Intimidire'], label: 'In Sella (+1d10)' },
+        { name: 'O Capitano, Mio Capitano', icon: '🎖️', bonus: 2, skills: ['A.d. Guerra', 'Convincere', 'Intimidire'], label: 'Capitano (+2d10)' },
+        { name: 'Palla Demolitrice', icon: '💥', bonus: 2, skills: ['Atletica', 'Rissa'], label: 'Demolitrice (+2d10)' },
+        { name: 'Sguardo Imperioso', icon: '👁️', bonus: 1, skills: ['Allettare', 'Intimidire'], label: 'Sguardo (+1d10)' },
+        { name: 'Fiducioso', icon: '🤝', bonus: 2, skills: ['Allettare', 'Convincere', 'Empatia'], label: 'Fiducioso (+2d10)' },
+        { name: 'Amoreggiare con il Pericolo', icon: '💋', bonus: 2, skills: ['Allettare', 'Intimidire'], label: 'Pericolo (+2d10)' },
+        { name: 'Dono Oscuro', icon: '🌑', bonus: 2, skills: ['Istruzione', 'Notare', 'Intimidire', 'Nascondersi'], label: 'Dono Oscuro (+2d10)' }
     ];
 
     function getApplicableBonusAdvantages(traitName, skillName, charObj) {
@@ -457,6 +563,99 @@
         });
     }
 
+    // CALCOLO DADI BONUS AI NEMICI (7TH SEA 2E)
+    // 2ª Ferita Drammatica conferisce +2 dadi a tutti i Malvagi/Nemici che affrontano l'Eroe.
+    // 4ª Ferita Drammatica con il Vantaggio "Duro Da Uccidere" porta il bonus nemici da +2 a +3 (+1 aggiuntivo).
+    function computeEnemyDiceBonus(sheet) {
+        if (!sheet || !Array.isArray(sheet.dramaticWounds)) return 0;
+        const dw = sheet.dramaticWounds;
+        let bonus = 0;
+        if (dw[1]) bonus += 2;
+        const hasDuro = Array.isArray(sheet.advantages) && sheet.advantages.some(a => 
+            (a.name || '').toLowerCase().trim().includes('duro da uccidere')
+        );
+        if (dw[3] && hasDuro) bonus += 1;
+        return bonus;
+    }
+
+    function getEnemyBonusBreakdown(sheet) {
+        if (!sheet || !Array.isArray(sheet.dramaticWounds)) return "";
+        const dw = sheet.dramaticWounds;
+        const hasDuro = Array.isArray(sheet.advantages) && sheet.advantages.some(a => 
+            (a.name || '').toLowerCase().trim().includes('duro da uccidere')
+        );
+        if (dw[3] && hasDuro) return "2ª FD (+2) + 4ª FD Duro da Uccidere (+1)";
+        if (dw[1]) return "2ª FD (+2 Nemici)";
+        return "";
+    }
+
+    function getHeroesGrantingEnemyBonus(currentLoadedHero = null) {
+        const list = [];
+        const seen = new Set();
+
+        // 1. Controlla l'Eroe attualmente caricato in memoria (se passato)
+        if (currentLoadedHero && Array.isArray(currentLoadedHero.dramaticWounds)) {
+            const bonus = computeEnemyDiceBonus(currentLoadedHero);
+            if (bonus > 0) {
+                const hName = (currentLoadedHero.name && currentLoadedHero.name.trim() !== 'Nuovo Eroe')
+                    ? currentLoadedHero.name.trim()
+                    : 'Eroe Attivo';
+                list.push({
+                    name: hName,
+                    bonus: bonus,
+                    breakdown: getEnemyBonusBreakdown(currentLoadedHero),
+                    isCurrentSheet: true
+                });
+                seen.add(hName.toLowerCase());
+            }
+        }
+
+        // 2. Controlla tutti i token presenti sulla mappa VTT
+        const eng = (typeof engine !== 'undefined' && engine) ? engine : (typeof window !== 'undefined' ? window.engine : null);
+        if (eng && Array.isArray(eng.tokens)) {
+            eng.tokens.forEach(tok => {
+                const sheet = tok.pcSheet;
+                if (sheet && Array.isArray(sheet.dramaticWounds)) {
+                    const bonus = computeEnemyDiceBonus(sheet);
+                    const tName = (tok.name || sheet.name || 'Eroe').trim();
+                    if (bonus > 0 && !seen.has(tName.toLowerCase())) {
+                        list.push({
+                            name: tName,
+                            bonus: bonus,
+                            breakdown: getEnemyBonusBreakdown(sheet),
+                            tokenId: tok.id,
+                            isCurrentSheet: false
+                        });
+                        seen.add(tName.toLowerCase());
+                    }
+                }
+            });
+        }
+
+        // 3. Controlla currentCampaignTokens
+        const campTokens = (typeof currentCampaignTokens !== 'undefined') ? currentCampaignTokens : (typeof window !== 'undefined' ? window.currentCampaignTokens : null);
+        if (Array.isArray(campTokens)) {
+            campTokens.forEach(ct => {
+                const sheet = ct.pcSheet;
+                if (sheet && Array.isArray(sheet.dramaticWounds)) {
+                    const bonus = computeEnemyDiceBonus(sheet);
+                    const cName = (ct.name || sheet.name || 'Eroe').trim();
+                    if (bonus > 0 && !seen.has(cName.toLowerCase())) {
+                        list.push({
+                            name: cName,
+                            bonus: bonus,
+                            breakdown: getEnemyBonusBreakdown(sheet),
+                            isCurrentSheet: false
+                        });
+                        seen.add(cName.toLowerCase());
+                    }
+                }
+            });
+        }
+
+        return list;
+    }
+
     const seventhSeaRules = {
         calculateRaisesFromDice,
         findBestRerollCandidateIndex,
@@ -465,10 +664,14 @@
         endSceneHeal,
         broadcastRiskRollToVttChat,
         broadcastAdvantageActivationToVttChat,
+        broadcastDuelManeuverToVttChat,
         hasAdvantage,
         getActiveInstitute,
         CONTEXTUAL_BONUS_ADVANTAGES,
-        getApplicableBonusAdvantages
+        getApplicableBonusAdvantages,
+        computeEnemyDiceBonus,
+        getEnemyBonusBreakdown,
+        getHeroesGrantingEnemyBonus
     };
 
     if (typeof window !== 'undefined') {

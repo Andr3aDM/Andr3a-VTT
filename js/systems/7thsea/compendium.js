@@ -37,7 +37,7 @@
         },
         'malvagio_duellante': {
             traits: 'Vigore 4, Grazia 5, Risolutezza 4, Acume 3, Panache 4 • Scuola di Scherma (Maestro)',
-            ability: 'Maestro della Gilda: Può eseguire tutte le manovre di Scherma (Affondo, Parata, Finta, Ripulita) e spende 1 Punto Pericolo per aggiungere +2d10 a un Rischio Marziale.'
+            ability: 'Maestro della Gilda: Può eseguire tutte le 6 Manovre Base del Duello (Fendente, Parata, Finta, Affondo, Botta, Risposta) e spende 1 Punto Pericolo per aggiungere +2d10 a un Rischio Marziale.'
         },
         'malvagio_stregone': {
             traits: 'Vigore 3, Grazia 4, Risolutezza 5, Acume 5, Panache 4 • Retaggio Stregonesco',
@@ -77,13 +77,15 @@
 
     function convertAntagonistToStatblock(ant) {
         if (!ant) return null;
-        const category = ant.category || (ant.type && ant.type.toLowerCase().includes('malvagio') ? 'villain' : (ant.type && ant.type.toLowerCase().includes('mostro') ? 'monster' : 'brute'));
+        const category = ant.category || (ant.type && ant.type.toLowerCase().includes('malvagio') ? 'villain' : (ant.type && ant.type.toLowerCase().includes('mostro') ? 'monster' : (ant.type && (ant.type.toLowerCase().includes('png') || ant.type.toLowerCase().includes('alleato') || ant.type.toLowerCase().includes('eroe')) ? 'npc' : 'brute')));
         const isBrute = category === 'brute' || (ant.type && ant.type.toLowerCase().includes('sgherri'));
+        const isVillain = category === 'villain';
+        const isNpc = category === 'npc' || category === 'hero';
         const strength = Math.max(1, parseInt(ant.strength || ant.s7Strength) || 6);
         const influence = Math.max(0, parseInt(ant.influence !== undefined ? ant.influence : ant.s7Influence) || 0);
         const villainyRank = parseInt(ant.villainyRank) || (strength + influence);
         const hpVal = parseInt(ant.hp || ant.hit_points) || (isBrute ? strength : 20);
-        const typeLabel = ant.type || (category === 'villain' ? 'Malvagio (Villain)' : (category === 'monster' ? 'Mostro di Théah' : 'Squadra di Sgherri (Brute Squad)'));
+        const typeLabel = ant.type || (isVillain ? 'Malvagio (Villain)' : (category === 'monster' ? 'Mostro di Théah' : (isNpc ? 'PNG / Eroe Alleato' : 'Squadra di Sgherri (Brute Squad)')));
         const nation = ant.nation || ant.s7Nation || 'Théah';
         const traits = ant.traits || ant.s7Traits || 'Mischia, Intimidire, Atletica';
         const ability = ant.ability || ant.s7Ability || 'Agisce a fine round infliggendo Ferite pari alla propria Forza.';
@@ -108,13 +110,16 @@
             s7Traits: traits,
             s7Ability: ability,
             s7Notes: notes,
+            pcData: ant.pcData || undefined,
             tokenSrc: ant.tokenSrc || undefined,
             special_abilities: [
                 {
-                    name: isBrute ? `Squadra di Sgherri (Forza ${strength})` : `Antagonista Maggiore (Forza ${strength}${influence ? `, Influenza ${influence}` : ''})`,
+                    name: isBrute ? `Squadra di Sgherri (Forza ${strength})` : (isNpc ? `PNG / Eroe Alleato (Tratto/Forza ${strength})` : `Antagonista Maggiore (Forza ${strength}${influence ? `, Influenza ${influence}` : ''})`),
                     desc: isBrute
                         ? `Forza ${strength} (= ${hpVal} PV sul token). A fine round infligge ${strength} Ferite agli Eroi se non ostacolata. Ogni Incremento speso da un Eroe riduce la Forza (PV) di 1.`
-                        : `Lancia ${villainyRank}d10 nei Rischi (${strength} Forza${influence ? ` + ${influence} Influenza` : ''}). Possiede 4 Soglie di Ferita Drammatica (${hpVal} Ferite totali).`
+                        : (isNpc
+                            ? `PNG / Eroe Alleato di Théah. Lancia ${strength}d10 nei Rischi e possiede 20 Punti Ferita / Ferite Drammatiche.`
+                            : `Lancia ${villainyRank}d10 nei Rischi (${strength} Forza${influence ? ` + ${influence} Influenza` : ''}). Possiede 4 Soglie di Ferita Drammatica (${hpVal} Ferite totali).`)
                 },
                 {
                     name: 'Competenze & Descrittori',
@@ -179,40 +184,207 @@
         }
     }
 
-    function refreshAntagonistSelectOptions(selectedId = '') {
-        const sel = document.getElementById('s7-antagonist-select');
-        if (!sel) return;
+    function getActiveSelectedAntagonistId() {
+        const brutesSel = document.getElementById('s7-select-brutes');
+        const villainsSel = document.getElementById('s7-select-villains');
+        const monstersSel = document.getElementById('s7-select-monsters');
+        const npcsSel = document.getElementById('s7-select-npcs');
+        const masterSel = document.getElementById('s7-antagonist-select');
+
+        if (brutesSel && brutesSel.value) return brutesSel.value;
+        if (villainsSel && villainsSel.value) return villainsSel.value;
+        if (monstersSel && monstersSel.value) return monstersSel.value;
+        if (npcsSel && npcsSel.value) return npcsSel.value;
+        if (masterSel && masterSel.value) return masterSel.value;
+        return '';
+    }
+
+    function syncSelectorsWithActive(id) {
+        const brutesSel = document.getElementById('s7-select-brutes');
+        const villainsSel = document.getElementById('s7-select-villains');
+        const monstersSel = document.getElementById('s7-select-monsters');
+        const npcsSel = document.getElementById('s7-select-npcs');
+        const masterSel = document.getElementById('s7-antagonist-select');
+
+        if (masterSel && id) masterSel.value = id;
+
         const all = getAllAntagonists();
-        const brutes = all.filter(a => (a.type || '').toLowerCase().includes('sgherri') || a.category === 'brute');
-        const villains = all.filter(a => (a.type || '').toLowerCase().includes('malvagio') || a.category === 'villain');
-        const monsters = all.filter(a => !brutes.includes(a) && !villains.includes(a));
+        const found = all.find(a => a.id === id || a.name === id);
+        if (!found) {
+            if (brutesSel) { brutesSel.value = ''; brutesSel.style.boxShadow = 'none'; }
+            if (villainsSel) { villainsSel.value = ''; villainsSel.style.boxShadow = 'none'; }
+            if (monstersSel) { monstersSel.value = ''; monstersSel.style.boxShadow = 'none'; }
+            if (npcsSel) { npcsSel.value = ''; npcsSel.style.boxShadow = 'none'; }
+            return;
+        }
 
-        let html = '<option value="">-- Scegli Antagonista di Théah --</option>';
-        html += '<option value="__custom__" style="color:#fbbf24;font-weight:bold;">➕ Crea Nuovo Antagonista Personalizzato...</option>';
+        const cat = found.category || ((found.type || '').toLowerCase().includes('sgherri') ? 'brute' : ((found.type || '').toLowerCase().includes('malvagio') ? 'villain' : ((found.type || '').toLowerCase().includes('mostro') ? 'monster' : 'npc')));
 
-        if (brutes.length > 0) {
-            html += '<optgroup label="⚔️ Squadre di Sgherri (Forza = PV)">';
+        if (brutesSel) {
+            brutesSel.value = (cat === 'brute') ? found.id : '';
+            brutesSel.style.boxShadow = (cat === 'brute') ? '0 0 6px rgba(245, 158, 11, 0.5)' : 'none';
+        }
+        if (villainsSel) {
+            villainsSel.value = (cat === 'villain') ? found.id : '';
+            villainsSel.style.boxShadow = (cat === 'villain') ? '0 0 6px rgba(168, 85, 247, 0.5)' : 'none';
+        }
+        if (monstersSel) {
+            monstersSel.value = (cat === 'monster') ? found.id : '';
+            monstersSel.style.boxShadow = (cat === 'monster') ? '0 0 6px rgba(239, 68, 68, 0.5)' : 'none';
+        }
+        if (npcsSel) {
+            npcsSel.value = (cat === 'npc' || cat === 'hero') ? found.id : '';
+            npcsSel.style.boxShadow = (cat === 'npc' || cat === 'hero') ? '0 0 6px rgba(56, 189, 248, 0.5)' : 'none';
+        }
+    }
+
+    function refreshAntagonistSelectOptions(selectedId = '') {
+        const brutesSel = document.getElementById('s7-select-brutes');
+        const villainsSel = document.getElementById('s7-select-villains');
+        const monstersSel = document.getElementById('s7-select-monsters');
+        const npcsSel = document.getElementById('s7-select-npcs');
+        const masterSel = document.getElementById('s7-antagonist-select');
+
+        const all = getAllAntagonists();
+        const brutes = all.filter(a => a.category === 'brute' || (a.type || '').toLowerCase().includes('sgherri'));
+        const villains = all.filter(a => a.category === 'villain' || (a.type || '').toLowerCase().includes('malvagio'));
+        const monsters = all.filter(a => a.category === 'monster' || (a.type || '').toLowerCase().includes('mostro'));
+        const npcs = all.filter(a => a.category === 'npc' || a.category === 'hero' || (a.type || '').toLowerCase().includes('png') || (a.type || '').toLowerCase().includes('alleato') || (a.type || '').toLowerCase().includes('eroe'));
+
+        // Aggiorna contatori visivi nelle etichette
+        const countBrutes = document.getElementById('s7-count-brutes');
+        const countVillains = document.getElementById('s7-count-villains');
+        const countMonsters = document.getElementById('s7-count-monsters');
+        const countNpcs = document.getElementById('s7-count-npcs');
+        if (countBrutes) countBrutes.textContent = `(${brutes.length})`;
+        if (countVillains) countVillains.textContent = `(${villains.length})`;
+        if (countMonsters) countMonsters.textContent = `(${monsters.length})`;
+        if (countNpcs) countNpcs.textContent = `(${npcs.length})`;
+
+        // 1. SELETTORE SQUADRE DI SGHERRI
+        if (brutesSel) {
+            let h = `<option value="">-- ⚔️ Scegli Sgherro (${brutes.length}) --</option>`;
             brutes.forEach(a => {
-                html += `<option value="${escapeHtml(a.id)}">⚔️ ${escapeHtml(a.name)} [Forza ${a.strength || a.s7Strength || 6}]</option>`;
+                const str = a.strength || a.s7Strength || 6;
+                h += `<option value="${escapeHtml(a.id)}">⚔️ ${escapeHtml(a.name)} [Forza ${str}]</option>`;
             });
-            html += '</optgroup>';
+            brutesSel.innerHTML = h;
         }
-        if (villains.length > 0) {
-            html += '<optgroup label="👑 Malvagi (Villains)">';
-            villains.forEach(a => {
-                html += `<option value="${escapeHtml(a.id)}">👑 ${escapeHtml(a.name)} [Forza ${a.strength || a.s7Strength || 10}]</option>`;
+
+        // 2. SELETTORE MALVAGI UFFICIALI DI THÉAH (Suddivisi per Archetipo)
+        if (villainsSel) {
+            let h = `<option value="">-- 👑 Scegli Malvagio (${villains.length}) --</option>`;
+            const archetypes = [
+                { key: 'Malvagi Belva', label: '🐆 Malvagi Belva' },
+                { key: 'Malvagi Camaleontici', label: '🦎 Malvagi Camaleontici' },
+                { key: 'Geni del Male', label: '🧠 Geni del Male' },
+                { key: 'Furie Inarrestabili', label: '⚡ Furie Inarrestabili' },
+                { key: 'Malvagi Folli', label: '🎭 Malvagi Folli' }
+            ];
+
+            const accounted = new Set();
+            archetypes.forEach(arch => {
+                const grp = villains.filter(v => (v.archetype === arch.key || (v.type || '').includes(arch.key)));
+                if (grp.length > 0) {
+                    h += `<optgroup label="${arch.label} (${grp.length})">`;
+                    grp.forEach(a => {
+                        accounted.add(a.id);
+                        const rank = a.villainyRank || ((a.strength || a.s7Strength || 6) + (a.influence || a.s7Influence || 0));
+                        const natStr = a.nation ? `${a.nation} • ` : '';
+                        h += `<option value="${escapeHtml(a.id)}">👑 ${escapeHtml(a.name)} [${escapeHtml(natStr)}Grado ${rank}]</option>`;
+                    });
+                    h += '</optgroup>';
+                }
             });
-            html += '</optgroup>';
+
+            const others = villains.filter(v => !accounted.has(v.id));
+            if (others.length > 0) {
+                h += `<optgroup label="👑 Altri Malvagi di Théah (${others.length})">`;
+                others.forEach(a => {
+                    const rank = a.villainyRank || ((a.strength || a.s7Strength || 6) + (a.influence || a.s7Influence || 0));
+                    const natStr = a.nation ? `${a.nation} • ` : '';
+                    h += `<option value="${escapeHtml(a.id)}">👑 ${escapeHtml(a.name)} [${escapeHtml(natStr)}Grado ${rank}]</option>`;
+                });
+                h += '</optgroup>';
+            }
+            villainsSel.innerHTML = h;
         }
-        if (monsters.length > 0) {
-            html += '<optgroup label="🐙 Mostri di Théah & Syrneth">';
+
+        // 3. SELETTORE MOSTRI DI THÉAH & SYRNETH
+        if (monstersSel) {
+            let h = `<option value="">-- 🐙 Scegli Mostro (${monsters.length}) --</option>`;
             monsters.forEach(a => {
-                html += `<option value="${escapeHtml(a.id)}">🐙 ${escapeHtml(a.name)} [Forza ${a.strength || a.s7Strength || 12}]</option>`;
+                const str = a.strength || a.s7Strength || 12;
+                const icon = (a.id || '').includes('syrneth') ? '⚙️' : ((a.id || '').includes('ragno') ? '🕷️' : '🐙');
+                h += `<option value="${escapeHtml(a.id)}">${icon} ${escapeHtml(a.name)} [Forza ${str}]</option>`;
             });
-            html += '</optgroup>';
+            monstersSel.innerHTML = h;
         }
-        sel.innerHTML = html;
-        if (selectedId) sel.value = selectedId;
+
+        // 4. SELETTORE PNG & EROI ALLEATI (Pronto per Fase 2)
+        if (npcsSel) {
+            let h = `<option value="">-- 👥 Scegli PNG Alleato (${npcs.length}) --</option>`;
+            if (npcs.length === 0) {
+                h += `<option value="" disabled style="color:#6b7280; font-style:italic;">-- Nessun PNG caricato (In arrivo Fase 2) --</option>`;
+            } else {
+                const byNat = {};
+                npcs.forEach(n => {
+                    const nat = n.nation || n.s7Nation || 'Théah';
+                    if (!byNat[nat]) byNat[nat] = [];
+                    byNat[nat].push(n);
+                });
+                Object.keys(byNat).sort().forEach(nat => {
+                    h += `<optgroup label="🏛️ ${escapeHtml(nat)} (${byNat[nat].length})">`;
+                    byNat[nat].forEach(a => {
+                        const archShort = (a.archetype || a.role || a.concept || 'Alleato').replace('Eroi ', '');
+                        h += `<option value="${escapeHtml(a.id)}">👥 ${escapeHtml(a.name)} [${escapeHtml(archShort)}]</option>`;
+                    });
+                    h += '</optgroup>';
+                });
+            }
+            npcsSel.innerHTML = h;
+        }
+
+        // 5. MASTER HIDDEN SELECT (Indice unico per retrocompatibilità e test automatici)
+        if (masterSel) {
+            let h = '<option value="">-- Tutti gli Antagonisti di Théah --</option>';
+            if (brutes.length > 0) {
+                h += '<optgroup label="⚔️ Squadre di Sgherri">';
+                brutes.forEach(a => {
+                    h += `<option value="${escapeHtml(a.id)}">⚔️ ${escapeHtml(a.name)} [Forza ${a.strength || a.s7Strength || 6}]</option>`;
+                });
+                h += '</optgroup>';
+            }
+            if (villains.length > 0) {
+                h += '<optgroup label="👑 Malvagi Ufficiali di Théah">';
+                villains.forEach(a => {
+                    const rank = a.villainyRank || ((a.strength || a.s7Strength || 6) + (a.influence || a.s7Influence || 0));
+                    const natStr = a.nation ? `${a.nation} • ` : '';
+                    h += `<option value="${escapeHtml(a.id)}">👑 ${escapeHtml(a.name)} [${escapeHtml(natStr)}Grado ${rank}]</option>`;
+                });
+                h += '</optgroup>';
+            }
+            if (monsters.length > 0) {
+                h += '<optgroup label="🐙 Mostri & Syrneth">';
+                monsters.forEach(a => {
+                    h += `<option value="${escapeHtml(a.id)}">🐙 ${escapeHtml(a.name)} [Forza ${a.strength || a.s7Strength || 12}]</option>`;
+                });
+                h += '</optgroup>';
+            }
+            if (npcs.length > 0) {
+                h += '<optgroup label="👥 PNG & Alleati">';
+                npcs.forEach(a => {
+                    h += `<option value="${escapeHtml(a.id)}">👥 ${escapeHtml(a.name)}</option>`;
+                });
+                h += '</optgroup>';
+            }
+            masterSel.innerHTML = h;
+            if (selectedId) masterSel.value = selectedId;
+        }
+
+        if (selectedId) {
+            syncSelectorsWithActive(selectedId);
+        }
     }
 
     function injectS7AntagonistBar() {
@@ -225,32 +397,134 @@
 
         const bar = document.createElement('div');
         bar.id = 's7-compendium-bar';
-        bar.style.cssText = 'display:none;gap:6px;align-items:center;flex-wrap:wrap;width:100%;';
+        bar.style.cssText = 'display:none; flex-direction:column; gap:5px; width:100%; box-sizing:border-box;';
 
         bar.innerHTML = `
-            <select id="s7-antagonist-select" style="flex:1;min-width:170px;background:#14161f;color:#fcd34d;border:1px solid #d4af37;border-radius:5px;padding:6px 8px;font-size:11.5px;font-weight:bold;cursor:pointer;">
-            </select>
-            <button type="button" id="s7-btn-new-custom-antagonist" style="background:#d97706;color:#111;border:1px solid #fbbf24;border-radius:5px;padding:6px 10px;font-size:11px;font-weight:bold;cursor:pointer;white-space:nowrap;" title="Crea da zero o personalizza una scheda Squadra di Sgherri, Malvagio o Mostro">➕ Personalizza</button>
-            <button type="button" id="s7-btn-roll-antagonist" style="background:#065f46;color:#6ee7b7;border:1px solid #10b981;border-radius:5px;padding:6px 9px;font-size:11px;font-weight:bold;cursor:pointer;white-space:nowrap;" title="Lancia subito i d10 di Rischio dell'Antagonista">🎲 Rischio</button>
+            <!-- Griglia 2x2 dei 4 Selettori Dedicati -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; width:100%;">
+                <!-- 1. Squadre di Sgherri -->
+                <div style="display:flex; flex-direction:column; gap:2px; min-width:0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; font-weight:bold; color:#fbbf24; text-transform:uppercase; letter-spacing:0.3px; padding:0 2px;">
+                        <span>⚔️ Sgherri</span>
+                        <span id="s7-count-brutes" style="color:#d97706; font-size:9.5px; font-weight:bold;">(5)</span>
+                    </div>
+                    <select id="s7-select-brutes" style="width:100%; background:#13151f; color:#fef3c7; border:1px solid #d97706; border-radius:5px; padding:5px 6px; font-size:11px; font-weight:600; cursor:pointer; text-overflow:ellipsis; outline:none; box-sizing:border-box; transition:border-color 0.15s, box-shadow 0.15s;" title="Seleziona una Squadra di Sgherri">
+                    </select>
+                </div>
+
+                <!-- 2. Malvagi Ufficiali di Théah -->
+                <div style="display:flex; flex-direction:column; gap:2px; min-width:0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; font-weight:bold; color:#d8b4fe; text-transform:uppercase; letter-spacing:0.3px; padding:0 2px;">
+                        <span>👑 Malvagi</span>
+                        <span id="s7-count-villains" style="color:#a855f7; font-size:9.5px; font-weight:bold;">(42)</span>
+                    </div>
+                    <select id="s7-select-villains" style="width:100%; background:#171324; color:#f3e8ff; border:1px solid #9333ea; border-radius:5px; padding:5px 6px; font-size:11px; font-weight:600; cursor:pointer; text-overflow:ellipsis; outline:none; box-sizing:border-box; transition:border-color 0.15s, box-shadow 0.15s;" title="Seleziona un Malvagio Ufficiale di Théah">
+                    </select>
+                </div>
+
+                <!-- 3. Mostri di Théah & Syrneth -->
+                <div style="display:flex; flex-direction:column; gap:2px; min-width:0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; font-weight:bold; color:#fca5a5; text-transform:uppercase; letter-spacing:0.3px; padding:0 2px;">
+                        <span>🐙 Mostri & Syrneth</span>
+                        <span id="s7-count-monsters" style="color:#ef4444; font-size:9.5px; font-weight:bold;">(3)</span>
+                    </div>
+                    <select id="s7-select-monsters" style="width:100%; background:#1c1315; color:#fee2e2; border:1px solid #dc2626; border-radius:5px; padding:5px 6px; font-size:11px; font-weight:600; cursor:pointer; text-overflow:ellipsis; outline:none; box-sizing:border-box; transition:border-color 0.15s, box-shadow 0.15s;" title="Seleziona un Mostro di Théah o Syrneth">
+                    </select>
+                </div>
+
+                <!-- 4. PNG & Alleati di Théah (Pronto per Fase 2) -->
+                <div style="display:flex; flex-direction:column; gap:2px; min-width:0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; font-weight:bold; color:#7dd3fc; text-transform:uppercase; letter-spacing:0.3px; padding:0 2px;">
+                        <span>👥 PNG & Alleati</span>
+                        <span id="s7-count-npcs" style="color:#0284c7; font-size:9.5px; font-weight:bold;">(0)</span>
+                    </div>
+                    <select id="s7-select-npcs" style="width:100%; background:#101923; color:#e0f2fe; border:1px solid #0284c7; border-radius:5px; padding:5px 6px; font-size:11px; font-weight:600; cursor:pointer; text-overflow:ellipsis; outline:none; box-sizing:border-box; transition:border-color 0.15s, box-shadow 0.15s;" title="Seleziona un PNG o Eroe Alleato">
+                    </select>
+                </div>
+            </div>
+
+            <!-- Barra Pulsanti Azione Rapida -->
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-top:2px; padding-top:4px; border-top:1px solid #2d2618;">
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <button type="button" id="s7-btn-new-custom-antagonist" style="background:#262b38; color:#fcd34d; border:1px solid #d4af37; border-radius:4px; padding:3px 8px; font-size:11px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:4px;" title="Crea da zero o personalizza una scheda">
+                        <span>➕</span> <span>Personalizza</span>
+                    </button>
+                    <button type="button" id="s7-btn-clear-selection" style="background:#1f2937; color:#9ca3af; border:1px solid #4b5563; border-radius:4px; padding:3px 8px; font-size:11px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:4px;" title="Deseleziona e svuota la scheda corrente">
+                        <span>🔄</span> <span>Svuota</span>
+                    </button>
+                </div>
+                <button type="button" id="s7-btn-roll-antagonist" style="background:#065f46; color:#6ee7b7; border:1px solid #10b981; border-radius:4px; padding:3px 10px; font-size:11px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:4px;" title="Lancia subito i d10 di Rischio dell'Antagonista con Forza/Grado">
+                    <span>🎲</span> <span>Lancia Rischio</span>
+                </button>
+            </div>
+
+            <!-- Selettore Master Invisibile (Retrocompatibilità e Test Suite) -->
+            <select id="s7-antagonist-select" style="display:none;"></select>
         `;
 
         searchContainer.appendChild(bar);
         refreshAntagonistSelectOptions();
 
-        const sel = bar.querySelector('#s7-antagonist-select');
-        sel.addEventListener('change', () => {
-            const id = sel.value;
+        const brutesSel = bar.querySelector('#s7-select-brutes');
+        const villainsSel = bar.querySelector('#s7-select-villains');
+        const monstersSel = bar.querySelector('#s7-select-monsters');
+        const npcsSel = bar.querySelector('#s7-select-npcs');
+        const allSelectors = [brutesSel, villainsSel, monstersSel, npcsSel].filter(Boolean);
+
+        function handleSelectChange(activeSel) {
+            const id = activeSel.value;
             if (!id) return;
+
+            // Deseleziona visivamente gli altri selettori
+            allSelectors.forEach(s => {
+                if (s !== activeSel) {
+                    s.value = '';
+                    s.style.boxShadow = 'none';
+                }
+            });
+            activeSel.style.boxShadow = '0 0 6px rgba(251, 191, 36, 0.5)';
+
+            const master = document.getElementById('s7-antagonist-select');
+            if (master) master.value = id;
+
             if (id === '__custom__') {
                 openCustomEditor();
                 return;
             }
+
             const found = getAllAntagonists().find(a => a.id === id);
             if (found && window.compendium && typeof window.compendium.loadMonster === 'function') {
                 const sb = convertAntagonistToStatblock(found);
                 window.compendium.loadMonster(sb);
             }
-        });
+        }
+
+        if (brutesSel) brutesSel.addEventListener('change', () => handleSelectChange(brutesSel));
+        if (villainsSel) villainsSel.addEventListener('change', () => handleSelectChange(villainsSel));
+        if (monstersSel) monstersSel.addEventListener('change', () => handleSelectChange(monstersSel));
+        if (npcsSel) npcsSel.addEventListener('change', () => handleSelectChange(npcsSel));
+
+        const clearBtn = bar.querySelector('#s7-btn-clear-selection');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                allSelectors.forEach(s => {
+                    s.value = '';
+                    s.style.boxShadow = 'none';
+                });
+                const master = document.getElementById('s7-antagonist-select');
+                if (master) master.value = '';
+                if (window.compendium) window.compendium.currentMonster = null;
+                activeAntagonistTarget = null;
+                const placeholder = document.getElementById('statblock-placeholder');
+                const details = document.getElementById('statblock-details');
+                if (placeholder) placeholder.style.display = 'block';
+                if (details) {
+                    details.style.display = 'none';
+                    details.innerHTML = '';
+                }
+                renderAntagonistEnemyBonusWidget();
+            });
+        }
 
         const customBtn = bar.querySelector('#s7-btn-new-custom-antagonist');
         customBtn.addEventListener('click', () => {
@@ -265,17 +539,139 @@
         const rollBtn = bar.querySelector('#s7-btn-roll-antagonist');
         rollBtn.addEventListener('click', () => {
             const cur = window.compendium ? window.compendium.currentMonster : null;
-            const id = sel.value;
-            const found = getAllAntagonists().find(a => a.id === id);
+            const activeId = getActiveSelectedAntagonistId();
+            const found = getAllAntagonists().find(a => a.id === activeId);
             const pool = (cur && cur.s7VillainyRank) ? cur.s7VillainyRank
                        : (cur && cur.s7Strength) ? cur.s7Strength
                        : (found ? (found.villainyRank || found.strength || 6) : 6);
             const name = (cur && cur.name) ? cur.name : (found ? found.name : 'Antagonista di Théah');
-            rollAntagonistPool(name, pool, false, false);
+            const targetName = activeAntagonistTarget ? activeAntagonistTarget.name : null;
+            const targetBonus = activeAntagonistTarget ? activeAntagonistTarget.bonus : 0;
+            const originalPool = activeAntagonistTarget ? activeAntagonistTarget.originalPool : null;
+            const poolInp = document.getElementById('s7-ant-dice-pool');
+
+            rollAntagonistPool(name, pool, false, false, targetName, targetBonus);
+
+            if (activeAntagonistTarget && poolInp && originalPool !== null) {
+                poolInp.value = originalPool;
+            }
+            activeAntagonistTarget = null;
+            renderAntagonistEnemyBonusWidget();
         });
     }
 
-    function rollAntagonistPool(name, pool, explodeTens = false, setsOf15 = false) {
+    function isGMClient() {
+        if (typeof window === 'undefined') return false;
+        if (window.isGMOverride !== undefined) return !!window.isGMOverride;
+        if (window.location && window.location.pathname && window.location.pathname.toLowerCase().includes('player.html')) return false;
+        if (typeof document !== 'undefined' && document.body && (document.body.classList.contains('player-page') || document.body.classList.contains('player-mode'))) return false;
+        return true;
+    }
+
+    let activeAntagonistTarget = null; // { name: 'Luca', bonus: 3, originalPool: 6 }
+
+    function renderAntagonistEnemyBonusWidget() {
+        const container = document.getElementById('s7-ant-gm-enemy-bonus-container');
+        if (!container) return;
+
+        // Solo GM (mai su player.html)
+        if (!isGMClient()) {
+            container.style.display = 'none';
+            container.innerHTML = '';
+            return;
+        }
+
+        container.style.display = 'block';
+
+        if (!window.seventhSeaRules || typeof window.seventhSeaRules.getHeroesGrantingEnemyBonus !== 'function') {
+            container.innerHTML = '';
+            return;
+        }
+
+        const heroes = window.seventhSeaRules.getHeroesGrantingEnemyBonus();
+        if (!heroes || heroes.length === 0) {
+            container.innerHTML = `
+                <div class="s7-enemy-bonus-card" style="margin-bottom:8px; padding:6px 9px;">
+                    <div class="s7-eb-header">
+                        <span class="s7-eb-title">⚔️ Dadi Bonus Nemici</span>
+                        <span class="s7-eb-badge-gm">Solo GM</span>
+                    </div>
+                    <div style="font-size:10px; color:#9ca3af; font-style:italic;">
+                        🛡️ Nessun Eroe sulla mappa ha raggiunto la 2ª Ferita Drammatica (+0 Dadi ai Nemici).
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        const btnsHtml = heroes.map(h => {
+            const isActive = activeAntagonistTarget && activeAntagonistTarget.name.toLowerCase() === h.name.toLowerCase();
+            return `
+                <button type="button" class="s7-eb-target-btn ${isActive ? 'active' : ''}" 
+                    onclick="window.seventhSeaCompendium.toggleAntagonistTarget('${escapeHtml(h.name)}', ${h.bonus})"
+                    title="${h.breakdown || ''} - Clicca per applicare +${h.bonus} dadi contro ${escapeHtml(h.name)}">
+                    🎯 ${escapeHtml(h.name)} <span class="s7-eb-bonus-pill">+${h.bonus}</span>
+                    ${isActive ? ' ✔️' : ''}
+                </button>
+            `;
+        }).join(' ');
+
+        const activeBanner = activeAntagonistTarget ? `
+            <div class="s7-eb-status-banner">
+                <span>🎯 Bersaglio attivo: <b>${escapeHtml(activeAntagonistTarget.name)}</b> (+${activeAntagonistTarget.bonus} dadi applicati). Si azzera al termine del tiro.</span>
+                <button type="button" class="s7-eb-cancel-btn" onclick="window.seventhSeaCompendium.cancelAntagonistTarget()">Annulla</button>
+            </div>
+        ` : '';
+
+        container.innerHTML = `
+            <div class="s7-enemy-bonus-card" style="margin-bottom:8px;">
+                <div class="s7-eb-header">
+                    <span class="s7-eb-title">⚔️ Dadi Bonus Nemici (Bersaglio Eroe)</span>
+                    <span class="s7-eb-badge-gm">Solo GM</span>
+                </div>
+                <div class="s7-eb-desc">
+                    Applica i dadi bonus conferiti dalle Ferite Drammatiche dell'Eroe bersaglio. <b>Si azzereranno automaticamente al termine del tiro</b>:
+                </div>
+                <div class="s7-eb-targets-list">
+                    ${btnsHtml}
+                </div>
+                ${activeBanner}
+            </div>
+        `;
+    }
+
+    function toggleAntagonistTarget(heroName, bonus) {
+        const poolInp = document.getElementById('s7-ant-dice-pool');
+        if (!poolInp) return;
+
+        if (activeAntagonistTarget && activeAntagonistTarget.name.toLowerCase() === heroName.toLowerCase()) {
+            poolInp.value = activeAntagonistTarget.originalPool;
+            activeAntagonistTarget = null;
+        } else {
+            if (activeAntagonistTarget) {
+                poolInp.value = activeAntagonistTarget.originalPool;
+            }
+            const currentPool = Math.max(1, parseInt(poolInp.value) || 6);
+            activeAntagonistTarget = {
+                name: heroName,
+                bonus: bonus,
+                originalPool: currentPool
+            };
+            poolInp.value = currentPool + bonus;
+        }
+        renderAntagonistEnemyBonusWidget();
+    }
+
+    function cancelAntagonistTarget() {
+        const poolInp = document.getElementById('s7-ant-dice-pool');
+        if (activeAntagonistTarget && poolInp) {
+            poolInp.value = activeAntagonistTarget.originalPool;
+        }
+        activeAntagonistTarget = null;
+        renderAntagonistEnemyBonusWidget();
+    }
+
+    function rollAntagonistPool(name, pool, explodeTens = false, setsOf15 = false, targetHeroName = null, targetHeroBonus = 0) {
         if (!window.seventhSeaRules) return;
         const res = window.seventhSeaRules.rollSeventhSeaRisk({
             traitName: 'Forza Antagonista',
@@ -285,7 +681,15 @@
             explodeTens: !!explodeTens,
             setsOf15: !!setsOf15
         });
-        window.seventhSeaRules.broadcastRiskRollToVttChat(name, res);
+        if (targetHeroName) {
+            res.targetHeroName = targetHeroName;
+            res.targetHeroBonus = targetHeroBonus;
+        }
+        try {
+            window.seventhSeaRules.broadcastRiskRollToVttChat(name, res);
+        } catch (bErr) {
+            console.warn('[7thSea Compendium] Errore broadcast rischio:', bErr);
+        }
 
         const box = document.getElementById('s7-antagonist-roll-results');
         if (box) {
@@ -304,11 +708,13 @@
                 ? `<div style="font-size:10.5px;color:#9ca3af;margin-top:4px;">Dadi non abbinati: ${res.remaining.join(', ')}</div>`
                 : '';
 
+            const targetBadge = targetHeroName ? `<span style="font-size:10.5px;font-weight:bold;color:#f3e8ff;background:#581c87;border:1px solid #a855f7;padding:1px 6px;border-radius:4px;margin-left:6px;">🎯 vs ${escapeHtml(targetHeroName)} (+${targetHeroBonus} Nemici)</span>` : '';
+
             box.style.display = 'block';
             box.innerHTML = `
                 <div style="background:#111827;border:1px solid #10b981;border-radius:7px;padding:8px 10px;margin-top:8px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                        <span style="font-size:11px;color:#d1d5db;font-weight:bold;">Dadi Tirati (${res.dice.length}d10):</span>
+                        <span style="font-size:11px;color:#d1d5db;font-weight:bold;">Dadi Tirati (${res.dice.length}d10) ${targetBadge}:</span>
                         <span style="font-size:14px;font-weight:900;color:#34d399;background:#064e3b;border:1px solid #10b981;padding:2px 9px;border-radius:6px;">🎯 ${res.totalRaises} Incrementi</span>
                     </div>
                     <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;">${diceBadges}</div>
@@ -327,21 +733,23 @@
         if (placeholder) placeholder.style.display = 'none';
         details.style.display = 'block';
 
-        const category = m.s7Category || ((m.type || '').toLowerCase().includes('malvagio') ? 'villain' : ((m.type || '').toLowerCase().includes('mostro') ? 'monster' : 'brute'));
+        const category = m.s7Category || ((m.type || '').toLowerCase().includes('malvagio') ? 'villain' : ((m.type || '').toLowerCase().includes('mostro') ? 'monster' : ((m.type || '').toLowerCase().includes('png') || (m.type || '').toLowerCase().includes('alleato') || (m.type || '').toLowerCase().includes('eroe')) ? 'npc' : 'brute'));
         const isBrute = category === 'brute';
         const isVillain = category === 'villain';
+        const isMonster = category === 'monster';
+        const isNpc = category === 'npc' || category === 'hero';
         const strength = parseInt(m.s7Strength || m.strength) || 6;
         const influence = parseInt(m.s7Influence !== undefined ? m.s7Influence : (m.influence || 0)) || 0;
         const villainyRank = parseInt(m.s7VillainyRank) || (isVillain ? (strength + influence) : strength);
         const hpVal = parseInt(m.hit_points || m.hp) || (isBrute ? strength : 20);
         const nation = m.s7Nation || 'Théah';
         const traits = m.s7Traits || (m.special_abilities && m.special_abilities[1] ? m.special_abilities[1].desc : 'Mischia, Intimidire, Atletica');
-        const ability = m.s7Ability || (m.actions && m.actions[0] ? m.actions[0].desc : 'Attacca gli Eroi nella scena.');
+        const ability = m.s7Ability || (m.actions && m.actions[0] ? m.actions[0].desc : (isNpc ? 'Supporta gli Eroi nella scena.' : 'Attacca gli Eroi nella scena.'));
         const notes = m.s7Notes || '';
 
-        const catBadgeColor = isVillain ? '#9333ea' : (category === 'monster' ? '#be123c' : '#d97706');
-        const catIcon = isVillain ? '👑' : (category === 'monster' ? '🐙' : '⚔️');
-        const catTitle = isVillain ? 'Malvagio (Villain)' : (category === 'monster' ? 'Mostro di Théah' : 'Squadra di Sgherri');
+        const catBadgeColor = isVillain ? '#9333ea' : (isMonster ? '#be123c' : (isNpc ? '#0284c7' : '#d97706'));
+        const catIcon = isVillain ? '👑' : (isMonster ? '🐙' : (isNpc ? '👥' : '⚔️'));
+        const catTitle = isVillain ? 'Malvagio (Villain)' : (isMonster ? 'Mostro di Théah' : (isNpc ? 'PNG / Eroe Alleato' : 'Squadra di Sgherri'));
 
         const rawAvatar = m.tokenSrc || (compendiumInstance ? compendiumInstance.generateLetterToken(m) : '');
         const tokenAvatarSrc = rawAvatar || '';
@@ -357,8 +765,11 @@
                             <span style="font-size:10.5px; color:#9ca3af;">Taglia: ${escapeHtml(m.size || 'Media')}</span>
                         </div>
                         <div style="font-size:17px; font-weight:900; color:#fcd34d; font-family:Georgia, serif; margin-top:4px; line-height:1.2;">${escapeHtml(m.name)}</div>
-                        <div style="margin-top:5px;">
+                        <div style="margin-top:5px; display:flex; gap:6px; flex-wrap:wrap;">
                             <button type="button" id="s7-btn-edit-current" style="background:#262b38; color:#fcd34d; border:1px solid #d4af37; border-radius:4px; padding:3px 9px; font-size:11px; font-weight:bold; cursor:pointer;">✏️ Modifica / Personalizza Scheda</button>
+                            ${m.pcData ? `
+                            <button type="button" id="s7-btn-load-as-pc" style="background:#0369a1; color:#e0f2fe; border:1px solid #38bdf8; border-radius:4px; padding:3px 9px; font-size:11px; font-weight:bold; cursor:pointer;" title="Carica questo Eroe direttamente nella Scheda Personaggio giocabile">⭐ Carica come Scheda PG</button>
+                            ` : ''}
                         </div>
                     </div>
                     <div id="statblock-avatar-wrapper" style="position:relative; cursor:pointer; margin-left:10px; flex-shrink:0;" title="Clicca per cambiare immagine del Token">
@@ -371,7 +782,7 @@
                 <!-- GRIGLIA PARAMETRI 7TH SEA (NESSUNA STATISTICA D&D!) -->
                 <div style="display:grid; grid-template-columns:repeat(${isVillain ? 3 : 2}, 1fr); gap:8px;">
                     <div style="background:#141720; border:1px solid #374151; border-left:3px solid #f59e0b; border-radius:6px; padding:8px 10px;">
-                        <div style="font-size:10px; color:#9ca3af; text-transform:uppercase; font-weight:bold;">⚔️ Forza ${isBrute ? 'Squadra' : 'Antagonista'}</div>
+                        <div style="font-size:10px; color:#9ca3af; text-transform:uppercase; font-weight:bold;">⚔️ ${isBrute ? 'Forza Squadra' : (isNpc ? 'Dadi Base Tratto' : 'Forza Antagonista')}</div>
                         <div style="display:flex; align-items:center; justify-content:space-between; margin-top:3px;">
                             <span style="font-size:18px; font-weight:900; color:#fcd34d;" id="s7-disp-strength">${strength}</span>
                             <div style="display:flex; gap:3px;">
@@ -379,7 +790,7 @@
                                 <button type="button" class="s7-adj-str" data-delta="1" style="background:#1f2937; color:#86efac; border:1px solid #4b5563; border-radius:4px; width:22px; height:22px; font-weight:bold; cursor:pointer;" title="Aumenta Forza di 1">+1</button>
                             </div>
                         </div>
-                        <div style="font-size:10px; color:#9ca3af; margin-top:2px;">${isBrute ? 'Infligge ' + strength + ' Ferite a fine round' : 'Dadi base di Forza'}</div>
+                        <div style="font-size:10px; color:#9ca3af; margin-top:2px;">${isBrute ? 'Infligge ' + strength + ' Ferite a fine round' : (isNpc ? 'Dadi base dal tratto più alto' : 'Dadi base di Forza')}</div>
                     </div>
 
                     ${isVillain ? `
@@ -399,6 +810,9 @@
 
                 <!-- ROLLER RISCHIO ANTAGONISTA INTEGRATO -->
                 <div style="background:#141824; border:1px solid #d4af37; border-radius:8px; padding:9px 11px;">
+                    <!-- FINESTRINA DADI BONUS NEMICI (SOLO GM) -->
+                    <div id="s7-ant-gm-enemy-bonus-container"></div>
+
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
                         <div style="display:flex; align-items:center; gap:6px;">
                             <span style="font-size:15px;">🎲</span>
@@ -488,9 +902,34 @@
                 const expInp = document.getElementById('s7-ant-explode');
                 const s15Inp = document.getElementById('s7-ant-sets15');
                 const poolVal = poolInp ? (parseInt(poolInp.value) || 6) : villainyRank;
-                rollAntagonistPool(m.name, poolVal, expInp?.checked, s15Inp?.checked);
+                const targetName = activeAntagonistTarget ? activeAntagonistTarget.name : null;
+                const targetBonus = activeAntagonistTarget ? activeAntagonistTarget.bonus : 0;
+                const originalPool = activeAntagonistTarget ? activeAntagonistTarget.originalPool : null;
+
+                rollAntagonistPool(m.name, poolVal, expInp?.checked, s15Inp?.checked, targetName, targetBonus);
+
+                // Auto-reset del pool e del target subito dopo il lancio
+                if (activeAntagonistTarget && poolInp && originalPool !== null) {
+                    poolInp.value = originalPool;
+                }
+                activeAntagonistTarget = null;
+                renderAntagonistEnemyBonusWidget();
             });
         }
+
+        // Tasto per caricare l'Eroe ufficiale direttamente nella Scheda Personaggio (PG)
+        const loadPcBtn = document.getElementById('s7-btn-load-as-pc');
+        if (loadPcBtn && m.pcData) {
+            loadPcBtn.addEventListener('click', () => {
+                if (window.seventhSeaSheetManager && typeof window.seventhSeaSheetManager.loadHeroData === 'function') {
+                    window.seventhSeaSheetManager.loadHeroData(m.pcData);
+                }
+            });
+        }
+
+        // Renderizza la finestrina dadi bonus nemici (solo per GM)
+        renderAntagonistEnemyBonusWidget();
+        syncSelectorsWithActive(m.id || m.name);
     }
 
     // Editor / Costruttore interattivo per creare o personalizzare qualsiasi Antagonista 7th Sea
@@ -530,6 +969,7 @@
                             <option value="brute" ${initCat === 'brute' ? 'selected' : ''}>⚔️ Squadra di Sgherri (Forza = PV)</option>
                             <option value="villain" ${initCat === 'villain' ? 'selected' : ''}>👑 Malvagio (Villain)</option>
                             <option value="monster" ${initCat === 'monster' ? 'selected' : ''}>🐙 Mostro di Théah / Syrneth</option>
+                            <option value="npc" ${initCat === 'npc' ? 'selected' : ''}>👥 PNG / Eroe Alleato</option>
                         </select>
                     </div>
                 </div>
@@ -660,7 +1100,7 @@
                     id: (existing && existing.id) ? existing.id : ('s7_custom_' + Date.now()),
                     name: nameVal,
                     category: catVal,
-                    type: catVal === 'villain' ? 'Malvagio (Villain)' : (catVal === 'monster' ? 'Mostro di Théah' : 'Squadra di Sgherri (Brute Squad)'),
+                    type: catVal === 'villain' ? 'Malvagio (Villain)' : (catVal === 'monster' ? 'Mostro di Théah' : (catVal === 'npc' ? 'PNG / Eroe Alleato' : 'Squadra di Sgherri (Brute Squad)')),
                     nation: natVal,
                     size: sizeVal,
                     strength: strVal,
@@ -693,7 +1133,11 @@
             injectS7AntagonistBar,
             syncCompendiumSystemUI,
             renderSeventhSeaStatblock,
-            openCustomEditor
+            openCustomEditor,
+            toggleAntagonistTarget,
+            cancelAntagonistTarget,
+            refreshEnemyBonusWidget: renderAntagonistEnemyBonusWidget,
+            isGMClient
         };
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {

@@ -3865,6 +3865,7 @@
         },
 
         get currentMonster() { return currentMonster; },
+        set currentMonster(val) { currentMonster = val; },
         get rawMonster() { return rawMonster; },
         get isItalianMode() { return isItalianMode; }
     };
