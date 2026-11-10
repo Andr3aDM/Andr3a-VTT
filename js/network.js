@@ -1,3 +1,39 @@
+// Configurazione ad alta affidabilità per PeerJS / WebRTC
+// Include STUN multipli e relay TURN per oltrepassare NAT simmetrici, reti cellulari 4G/5G mobile e firewall
+const PEER_CONFIG = {
+    debug: 1,
+    config: {
+        iceServers: [
+            // STUN Primari ad alta affidabilità
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:stun.cloudflare.com:3478' },
+            { urls: 'stun:openrelay.metered.ca:80' },
+            // TURN Relay OpenRelay (UDP + TCP porta 80 e 443) per superare CGNAT 4G/5G mobile e firewall restrittivi
+            {
+                urls: 'turn:openrelay.metered.ca:80',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            },
+            {
+                urls: 'turn:openrelay.metered.ca:443',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            },
+            {
+                urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            }
+        ],
+        iceCandidatePoolSize: 10
+    }
+};
+if (typeof window !== 'undefined') window.PEER_CONFIG = PEER_CONFIG;
+
 class NetworkManager {
     constructor(role) {
         this.role = role; // 'dm' or 'player'
@@ -10,6 +46,8 @@ class NetworkManager {
         this.playerId = null;
         this._heartbeatTimer = null;
         this._leaveListenersAttached = false;
+        this._activeQueryPeer = null;
+        this._activeQueryRoom = null;
         
         this.onMessageCallback = null;
         this.onConnectCallback = null;
@@ -114,8 +152,19 @@ class NetworkManager {
             for(let i=0; i<4; i++) id += getRandomChar(numbers);
             
             this.roomId = id;
-            this.peer = new Peer(id);
+            this.peer = new Peer(id, PEER_CONFIG);
             
+            this.peer.on('disconnected', () => {
+                console.warn("PeerJS Host: Disconnessione temporanea dal server broker di segnalazione, tentativo di riconnessione automatica...");
+                try {
+                    if (this.peer && !this.peer.destroyed) {
+                        this.peer.reconnect();
+                    }
+                } catch (e) {
+                    console.error("Errore durante peer.reconnect():", e);
+                }
+            });
+
             const handleConnClose = (targetPid) => {
                 const pidToClose = targetPid || null;
                 if (!pidToClose) return;
@@ -130,7 +179,9 @@ class NetworkManager {
                 }
             };
 
+            let hostResolved = false;
             this.peer.on('open', (id) => {
+                hostResolved = true;
                 this.mode = 'host';
                 console.log('Stanza online creata con ID:', id);
 
@@ -157,7 +208,10 @@ class NetworkManager {
                 resolve(id);
             });
             
-            this.peer.on('error', (err) => reject(err));
+            this.peer.on('error', (err) => {
+                console.error("PeerJS Host Error:", err);
+                if (!hostResolved) reject(err);
+            });
             
             this.peer.on('connection', (conn) => {
                 console.log("Nuovo giocatore in connessione...");
@@ -217,7 +271,8 @@ class NetworkManager {
                             type: 'ROOM_CHARACTERS_RESPONSE',
                             payload: { characters: chars, roomId: this.roomId }
                         });
-                        setTimeout(() => { try { conn.close(); } catch (e) {} }, 500);
+                        // 1500ms di margine per garantire il flush del data channel su connessioni mobili
+                        setTimeout(() => { try { conn.close(); } catch (e) {} }, 1500);
                         return;
                     }
 
@@ -263,6 +318,13 @@ class NetworkManager {
                             }
                         }
 
+                        let roomChars = [];
+                        try {
+                            if (typeof this.onGetCharactersCallback === 'function') {
+                                roomChars = this.onGetCharactersCallback() || [];
+                            }
+                        } catch (e) {}
+
                         this.connections[pid] = {
                             conn: conn,
                             name: joinName,
@@ -272,7 +334,13 @@ class NetworkManager {
                             pumping: false
                         };
                         console.log(`Giocatore ${joinName} unito.`);
-                        conn.send({ type: 'JOIN_ACCEPTED', payload: { name: joinName } });
+                        conn.send({ 
+                            type: 'JOIN_ACCEPTED', 
+                            payload: { 
+                                name: joinName,
+                                characters: roomChars 
+                            } 
+                        });
                         if (this.onConnectCallback) this.onConnectCallback(joinName, pid, isReconnect);
                     } else if (!this.connections[conn.peer]) {
                         // Ignora pacchetti non autenticati prima del join
@@ -290,10 +358,21 @@ class NetworkManager {
     // -- PLAYER JOIN --
     async joinRoom(roomId, playerName) {
         return new Promise((resolve, reject) => {
-            this.roomId = roomId.toUpperCase();
+            let cleanRoom = (roomId || '').trim().toUpperCase().replace(/\s+/g, '');
+            if (/^[A-Z0-9]{8}$/.test(cleanRoom)) {
+                cleanRoom = cleanRoom.substring(0, 4) + '-' + cleanRoom.substring(4);
+            }
+            this.roomId = cleanRoom;
             this.playerName = playerName;
             this.playerId = 'player_' + Date.now();
             this.mode = 'client';
+
+            // Abortisci immediatamente qualsiasi query temporanea ancora aperta per evitare collisioni WebRTC
+            if (this._activeQueryPeer && typeof this._activeQueryPeer.abort === 'function') {
+                try { this._activeQueryPeer.abort(); } catch (e) {}
+                this._activeQueryPeer = null;
+                this._activeQueryRoom = null;
+            }
 
             let sessionKey = 'vtt_sess_' + this.roomId + '_' + encodeURIComponent(playerName.trim().toLowerCase());
             let sessionToken = null;
@@ -327,7 +406,6 @@ class NetworkManager {
             }
 
             // Chiudi subito il BroadcastChannel locale per evitare doppi messaggi e desincronizzazioni
-            // quando si aprono più tab sullo stesso PC!
             if (this.bc) {
                 try {
                     this.bc.onmessage = null;
@@ -336,16 +414,60 @@ class NetworkManager {
                 this.bc = null;
             }
             
-            this.peer = new Peer();
+            if (this.peer) {
+                try { this.peer.destroy(); } catch (e) {}
+                this.peer = null;
+            }
+
+            let connectTimeout = null;
+            let joinResolved = false;
+
+            const cleanupAndReject = (err) => {
+                if (joinResolved) return;
+                joinResolved = true;
+                if (connectTimeout) clearTimeout(connectTimeout);
+                reject(err);
+            };
+
+            // Timeout di sicurezza a 15 secondi per la negoziazione
+            connectTimeout = setTimeout(() => {
+                cleanupAndReject(new Error(`Timeout di negoziazione con la stanza ${this.roomId}. Verifica che il Master abbia la sessione attiva.`));
+            }, 15000);
+
+            try {
+                this.peer = new Peer(undefined, PEER_CONFIG);
+            } catch (err) {
+                return cleanupAndReject(err);
+            }
+
+            this.peer.on('disconnected', () => {
+                console.warn("PeerJS Client: Disconnessione temporanea dal server di segnalazione broker, riconnessione...");
+                try {
+                    if (this.peer && !this.peer.destroyed) {
+                        this.peer.reconnect();
+                    }
+                } catch (e) {}
+            });
+
             this.peer.on('open', (id) => {
-                this.hostConn = this.peer.connect(this.roomId, { reliable: true });
+                if (joinResolved) return;
+                try {
+                    this.hostConn = this.peer.connect(this.roomId, { reliable: true });
+                } catch (err) {
+                    return cleanupAndReject(err);
+                }
                 
                 this.hostConn.on('open', () => {
+                    if (joinResolved) return;
                     this.mode = 'client';
-                    this.hostConn.send({
-                        type: 'PLAYER_JOIN',
-                        payload: { name: this.playerName, id: this.playerId, sessionToken: this.sessionToken }
-                    });
+                    try {
+                        this.hostConn.send({
+                            type: 'PLAYER_JOIN',
+                            payload: { name: this.playerName, id: this.playerId, sessionToken: this.sessionToken }
+                        });
+                    } catch (e) {
+                        cleanupAndReject(e);
+                    }
                 });
                 
                 this.hostConn.on('data', (data) => {
@@ -357,20 +479,29 @@ class NetworkManager {
                         return;
                     }
                     if (data && data.type === 'JOIN_ACCEPTED') {
+                        if (joinResolved) return;
+                        joinResolved = true;
+                        if (connectTimeout) clearTimeout(connectTimeout);
                         console.log("Connessione accettata dal DM.");
-                        resolve();
-                        if(this.onConnectCallback) this.onConnectCallback();
+                        resolve(data.payload);
+                        if (this.onConnectCallback) this.onConnectCallback(data.payload);
                     } else if (data && data.type === 'JOIN_REJECTED') {
                         console.warn("Connessione rifiutata dal DM:", data.reason);
-                        reject(new Error(data.reason || "Accesso rifiutato dal DM."));
+                        cleanupAndReject(new Error(data.reason || "Accesso rifiutato dal DM."));
                         return;
                     }
                     this._handleRawData(data, 'dm');
                 });
                 
-                this.hostConn.on('error', (err) => reject(err));
+                this.hostConn.on('error', (err) => cleanupAndReject(err));
+                this.hostConn.on('close', () => {
+                    if (!joinResolved) {
+                        cleanupAndReject(new Error(`Connessione chiusa prima del completamento dell'accesso.`));
+                    }
+                });
             });
-            this.peer.on('error', (err) => reject(err));
+
+            this.peer.on('error', (err) => cleanupAndReject(err));
         });
     }
 
@@ -424,9 +555,22 @@ class NetworkManager {
 
     async queryRoomCharacters(roomId) {
         return new Promise((resolve) => {
-            const cleanRoom = (roomId || '').trim().toUpperCase();
-            if (!cleanRoom) return resolve([]);
+            let cleanRoom = (roomId || '').trim().toUpperCase().replace(/\s+/g, '');
+            if (/^[A-Z0-9]{8}$/.test(cleanRoom)) {
+                cleanRoom = cleanRoom.substring(0, 4) + '-' + cleanRoom.substring(4);
+            }
+            if (!cleanRoom || cleanRoom.length < 4) return resolve([]);
             if (typeof Peer === 'undefined') return resolve([]);
+
+            if (this._activeQueryPeer && this._activeQueryRoom === cleanRoom) {
+                return;
+            }
+
+            if (this._activeQueryPeer && typeof this._activeQueryPeer.abort === 'function') {
+                try { this._activeQueryPeer.abort(); } catch (e) {}
+                this._activeQueryPeer = null;
+                this._activeQueryRoom = null;
+            }
 
             const tempPeerId = 'query_' + Math.random().toString(36).substring(2, 8);
             let tempPeer = null;
@@ -437,17 +581,24 @@ class NetworkManager {
                 if (done) return;
                 done = true;
                 if (timer) clearTimeout(timer);
+                this._activeQueryPeer = null;
+                this._activeQueryRoom = null;
                 try { if (tempPeer) tempPeer.destroy(); } catch (e) {}
             };
 
+            this._activeQueryPeer = { abort: () => { cleanup(); resolve([]); } };
+            this._activeQueryRoom = cleanRoom;
+
+            // Timeout a 8 secondi per permettere a reti mobili (4G/5G/LTE) di negoziare STUN/TURN
             timer = setTimeout(() => {
                 cleanup();
                 resolve([]);
-            }, 3500);
+            }, 8000);
 
             try {
-                tempPeer = new Peer(tempPeerId);
+                tempPeer = new Peer(tempPeerId, PEER_CONFIG);
                 tempPeer.on('open', () => {
+                    if (done) return;
                     let conn = null;
                     try {
                         conn = tempPeer.connect(cleanRoom, { reliable: true });
@@ -456,7 +607,13 @@ class NetworkManager {
                         return resolve([]);
                     }
                     conn.on('open', () => {
-                        conn.send({ type: 'GET_ROOM_CHARACTERS' });
+                        if (done) return;
+                        try {
+                            conn.send({ type: 'GET_ROOM_CHARACTERS' });
+                        } catch (e) {
+                            cleanup();
+                            resolve([]);
+                        }
                     });
                     conn.on('data', (data) => {
                         if (data && data.type === 'ROOM_CHARACTERS_RESPONSE') {
@@ -468,6 +625,12 @@ class NetworkManager {
                     conn.on('error', () => {
                         cleanup();
                         resolve([]);
+                    });
+                    conn.on('close', () => {
+                        if (!done) {
+                            cleanup();
+                            resolve([]);
+                        }
                     });
                 });
                 tempPeer.on('error', () => {

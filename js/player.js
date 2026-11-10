@@ -214,8 +214,28 @@ if (urlParams.get('mode') === 'local' && nameParam) {
 let isQueryingRoomChars = false;
 let lastQueriedRoom = '';
 
+function formatConnectionErrorMessage(err, room) {
+    const raw = (err && (err.message || err.type || String(err))) || '';
+    if (raw.includes('Negotiation of connection') || raw.includes('negotiation-failed')) {
+        return "Impossibile stabilire la connessione con la stanza " + (room || '') + ". Verifica che il Master abbia la stanza aperta e attiva, oppure controlla la connessione internet.";
+    }
+    if (raw.includes('Could not connect to peer') || raw.includes('peer-unavailable')) {
+        return "La stanza " + (room || '') + " non è stata trovata o il Master non è online. Verifica il codice stanza.";
+    }
+    if (raw.includes('browser-incompatible')) {
+        return "Il browser non supporta WebRTC. Prova ad aggiornare il browser o ad usarne uno diverso.";
+    }
+    if (raw.includes('network') || raw.includes('Timeout')) {
+        return "Timeout di connessione alla stanza " + (room || '') + ". Controlla la tua connessione internet o riprova tra poco.";
+    }
+    return raw || ("Errore di connessione alla stanza " + (room || '') + ".");
+}
+
 async function queryAndPopulateCharacters(roomCode) {
-    const cleanRoom = (roomCode || '').trim().toUpperCase();
+    let cleanRoom = (roomCode || '').trim().toUpperCase().replace(/\s+/g, '');
+    if (/^[A-Z0-9]{8}$/.test(cleanRoom)) {
+        cleanRoom = cleanRoom.substring(0, 4) + '-' + cleanRoom.substring(4);
+    }
     if (!cleanRoom || cleanRoom.length < 4) return;
     if (cleanRoom === lastQueriedRoom && isQueryingRoomChars) return;
     lastQueriedRoom = cleanRoom;
@@ -225,20 +245,32 @@ async function queryAndPopulateCharacters(roomCode) {
     const charSelect = document.getElementById('login-character-select');
     const manualContainer = document.getElementById('login-manual-container');
     const nameInput = document.getElementById('login-name');
+    const charStatus = document.getElementById('login-char-status');
     if (!charSelect || !charContainer) return;
+
+    // Feedback visivo immediato: mostra al giocatore che stiamo cercando i PG nella stanza del DM!
+    charContainer.style.display = 'block';
+    charSelect.disabled = true;
+    charSelect.innerHTML = '<option value="">⏳ Ricerca personaggi della stanza...</option>';
+    if (charStatus) {
+        charStatus.style.display = 'block';
+        charStatus.style.color = '#ffcc00';
+        charStatus.innerHTML = '🔍 Connessione al Master per recuperare i personaggi...';
+    }
 
     try {
         const chars = await network.queryRoomCharacters(cleanRoom);
         if (Array.isArray(chars) && chars.length > 0) {
+            charSelect.disabled = false;
             charSelect.innerHTML = '<option value="">-- Seleziona Personaggio --</option>';
             chars.forEach(c => {
                 const opt = document.createElement('option');
                 opt.value = c.name;
                 if (c.isTaken) {
                     opt.disabled = true;
-                    opt.textContent = `🔒 ${c.name} (Già presente in stanza)`;
+                    opt.textContent = '🔒 ' + c.name + ' (Già presente in stanza)';
                 } else {
-                    opt.textContent = `🧙 ${c.name}`;
+                    opt.textContent = '🧙 ' + c.name;
                 }
                 charSelect.appendChild(opt);
             });
@@ -248,6 +280,12 @@ async function queryAndPopulateCharacters(roomCode) {
             charSelect.appendChild(manualOpt);
 
             charContainer.style.display = 'block';
+            if (charStatus) {
+                charStatus.style.display = 'block';
+                charStatus.style.color = '#81c784';
+                charStatus.innerHTML = '✔ ' + chars.length + ' personaggi trovati';
+            }
+
             if (nameInput && nameInput.value) {
                 const matchOpt = Array.from(charSelect.options).find(o => o.value.toLowerCase() === nameInput.value.toLowerCase());
                 if (matchOpt && !matchOpt.disabled) {
@@ -256,11 +294,29 @@ async function queryAndPopulateCharacters(roomCode) {
                 }
             }
         } else {
+            // Nessun PG restituito dal DM o query scaduta: sblocca input manuale ma lascia possibilità di riprovare
+            charSelect.disabled = false;
             charContainer.style.display = 'none';
             if (manualContainer) manualContainer.style.display = 'block';
+            if (charStatus) {
+                charStatus.style.display = 'block';
+                charStatus.style.color = '#bbb';
+                charStatus.innerHTML = '<span style="color:#aaa;">Nessun PG preimpostato trovato.</span> <a href="javascript:void(0)" id="btn-retry-query-chars" style="color:#ffcc00; text-decoration:underline; margin-left:6px;">🔄 Riprova</a>';
+                const retryBtn = document.getElementById('btn-retry-query-chars');
+                if (retryBtn) {
+                    retryBtn.onclick = (e) => {
+                        e.preventDefault();
+                        lastQueriedRoom = '';
+                        queryAndPopulateCharacters(cleanRoom);
+                    };
+                }
+            }
         }
     } catch (e) {
         console.warn("Query room characters:", e);
+        charSelect.disabled = false;
+        charContainer.style.display = 'none';
+        if (manualContainer) manualContainer.style.display = 'block';
     } finally {
         isQueryingRoomChars = false;
     }
@@ -292,20 +348,39 @@ const roomInput = document.getElementById('login-room');
 if (roomInput) {
     const savedRoom = localStorage.getItem('vtt_last_room_code') || '';
     if (roomParam) {
-        roomInput.value = roomParam;
+        let val = roomParam.trim().toUpperCase().replace(/\s+/g, '');
+        if (/^[A-Z0-9]{8}$/.test(val)) val = val.substring(0, 4) + '-' + val.substring(4);
+        roomInput.value = val;
     } else if (savedRoom) {
-        roomInput.value = savedRoom;
+        let val = savedRoom.trim().toUpperCase().replace(/\s+/g, '');
+        if (/^[A-Z0-9]{8}$/.test(val)) val = val.substring(0, 4) + '-' + val.substring(4);
+        roomInput.value = val;
     }
 
     let roomDebounce = null;
     roomInput.addEventListener('input', () => {
         if (roomDebounce) clearTimeout(roomDebounce);
         roomDebounce = setTimeout(() => {
-            const val = roomInput.value.trim().toUpperCase();
+            let val = roomInput.value.trim().toUpperCase().replace(/\s+/g, '');
+            if (/^[A-Z0-9]{8}$/.test(val)) {
+                val = val.substring(0, 4) + '-' + val.substring(4);
+                roomInput.value = val;
+            }
             if (val.length >= 6) {
                 queryAndPopulateCharacters(val);
             }
         }, 350);
+    });
+
+    roomInput.addEventListener('blur', () => {
+        let val = roomInput.value.trim().toUpperCase().replace(/\s+/g, '');
+        if (/^[A-Z0-9]{8}$/.test(val)) {
+            val = val.substring(0, 4) + '-' + val.substring(4);
+            roomInput.value = val;
+        }
+        if (val.length >= 4) {
+            queryAndPopulateCharacters(val);
+        }
     });
 
     const initRoom = roomInput.value.trim();
@@ -321,40 +396,89 @@ if (urlParams.get('autojoin') === 'true' && roomParam && nameParam) {
     }, 400);
 }
 
-document.getElementById('btn-login-online').addEventListener('click', () => {
+document.getElementById('btn-login-online').addEventListener('click', async () => {
     try {
-        const name = document.getElementById('login-name').value.trim();
-        const room = document.getElementById('login-room').value.trim();
+        let name = document.getElementById('login-name').value.trim();
+        let room = document.getElementById('login-room').value.trim();
         const status = document.getElementById('login-status');
+        const btnLogin = document.getElementById('btn-login-online');
         
-        if (!name || !room) {
-            status.innerText = "Inserisci Nome e Codice Stanza";
+        // Se il giocatore ha selezionato un PG dalla tendina ma non è nell'input
+        const charSelect = document.getElementById('login-character-select');
+        if (charSelect && charSelect.value && charSelect.value !== '__manual__') {
+            name = charSelect.value.trim();
+        }
+
+        if (!room) {
+            status.style.color = '#ff5252';
+            status.innerText = "Inserisci il Codice Stanza";
             return;
         }
+        if (!name) {
+            status.style.color = '#ff5252';
+            status.innerText = "Inserisci il tuo Nome o scegli un Personaggio";
+            return;
+        }
+
+        // Normalizza il codice stanza
+        let cleanRoom = room.toUpperCase().replace(/\s+/g, '');
+        if (/^[A-Z0-9]{8}$/.test(cleanRoom)) {
+            cleanRoom = cleanRoom.substring(0, 4) + '-' + cleanRoom.substring(4);
+            document.getElementById('login-room').value = cleanRoom;
+            room = cleanRoom;
+        }
         
-        status.innerText = "Connessione in corso...";
+        status.style.color = '#ffcc00';
+        status.innerText = "Connessione in corso (WebRTC P2P)...";
+        if (btnLogin) {
+            btnLogin.disabled = true;
+            btnLogin.innerText = "Connessione in corso...";
+        }
+
         console.log("Tentativo di connessione a:", room);
         
         if (typeof network === 'undefined') {
             alert("Errore critico: network.js non è stato caricato!");
+            if (btnLogin) { btnLogin.disabled = false; btnLogin.innerText = "Connetti Online"; }
             return;
         }
-        
-        network.joinRoom(room, name).then(() => {
-            console.log("Connesso con successo");
-            engine.localPlayerName = name; // FONDAMENTALE PER LA VISIBILITA DEL MANIGLIONE!
+
+        // Tentativo con retry automatico in caso di errore temporaneo
+        const tryConnect = async (attempt = 1) => {
+            try {
+                return await network.joinRoom(room, name);
+            } catch (err) {
+                if (attempt === 1) {
+                    console.warn("Primo tentativo fallito, nuovo tentativo tra 800ms...", err);
+                    status.innerText = "Nuovo tentativo di connessione in corso...";
+                    await new Promise(r => setTimeout(r, 800));
+                    return await network.joinRoom(room, name);
+                }
+                throw err;
+            }
+        };
+
+        tryConnect().then((joinPayload) => {
+            console.log("Connesso con successo", joinPayload);
+            engine.localPlayerName = name;
             try { localStorage.setItem('vtt_last_room_code', room); } catch (e) {}
             document.getElementById('login-overlay').style.display = 'none';
             updatePlayerRoleAndUI();
             network.send({ type: 'PLAYER_READY' });
         }).catch(err => {
-            const msg = (err && err.message) ? err.message : "Errore di connessione. Verifica il codice stanza.";
-            status.innerText = msg;
+            const friendlyMsg = formatConnectionErrorMessage(err, room);
+            status.style.color = '#ff5252';
+            status.innerText = friendlyMsg;
             console.error("Join Room Error:", err);
-            alert(msg);
+            alert(friendlyMsg);
+        }).finally(() => {
+            if (btnLogin) {
+                btnLogin.disabled = false;
+                btnLogin.innerText = "Connetti Online";
+            }
         });
     } catch(e) {
-        alert("Errore javascript nel click: " + e.message);
+        alert("Errore nel tentativo di connessione: " + e.message);
     }
 });
 

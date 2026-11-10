@@ -190,7 +190,15 @@ window.setTokenOwners = setTokenOwners;
 window.isTokenOwnedBy = isTokenOwnedBy;
 
 network.onGetCharacters(() => {
-    if (!Array.isArray(currentCampaignTokens) || currentCampaignTokens.length === 0) return [];
+    // Unisci i token della libreria campagna e i token attualmente presenti sulla mappa
+    const candidateTokens = [];
+    if (Array.isArray(currentCampaignTokens)) {
+        candidateTokens.push(...currentCampaignTokens);
+    }
+    if (typeof engine !== 'undefined' && Array.isArray(engine.tokens)) {
+        candidateTokens.push(...engine.tokens);
+    }
+    if (candidateTokens.length === 0) return [];
 
     const activeNames = new Set(
         Object.values(network.connections || {})
@@ -198,16 +206,17 @@ network.onGetCharacters(() => {
             .filter(Boolean)
     );
 
-    // Filtra SOLO i veri personaggi (PG) della campagna attiva:
-    // Devono appartenere alla campagna attiva, NON avere una scheda mostro (statblock),
-    // e avere una scheda PG (pcSheet) oppure essere categoria 'personaggi' senza statblock.
-    const campaignPgs = currentCampaignTokens.filter(ct => {
+    // Filtra SOLO i veri personaggi (PG):
+    // Non devono avere statblock da mostro, non devono essere evocazioni,
+    // e devono avere una scheda PG (pcSheet/hasPcSheet) oppure essere categoria 'personaggi'.
+    const campaignPgs = candidateTokens.filter(ct => {
         if (!ct) return false;
+        if (ct.isEvocation) return false;
         // Se ha uno statblock da mostro, NON è un PG (è un mostro/creatura/famiglio/evocazione/mascotte)
         if (ct.statblock) return false;
         // Se ha un campaignId diverso da quello attivo, scarta
         if (ct.campaignId && currentCampaignId && ct.campaignId !== currentCampaignId) return false;
-        const hasPcSheet = !!(ct.pcSheet && (ct.pcSheet.name || ct.pcSheet.characterName || ct.pcSheet.attributes));
+        const hasPcSheet = !!(ct.hasPcSheet || (ct.pcSheet && (ct.pcSheet.name || ct.pcSheet.characterName || ct.pcSheet.attributes)));
         const isPgCat = (ct.category === 'personaggi');
         return hasPcSheet || isPgCat;
     });
