@@ -115,6 +115,14 @@
             <span class="font-black text-amber-300 text-xs min-w-[14px] text-center" id="wealth-points">0</span>
             <button onclick="changeWealth(1)" class="w-5 h-5 rounded bg-[#202532] hover:bg-[#2e3546] font-bold text-xs text-amber-400 flex items-center justify-center transition-all hover:bg-amber-950/60" title="Aumenta Ricchezza">+</button>
           </div>
+
+          <!-- PUNTI FAVORE SOCIETÀ SEGRETA (VISIBILI SE APPARTIENE A UNA SOCIETÀ) -->
+          <div id="favor-points-container" class="hidden flex items-center gap-1.5 bg-[#101217] px-2.5 py-1 rounded-lg border border-purple-500/40" title="Punti Favore con la Società Segreta: risorsa per richiedere favori, assistenza di agenti, sgherri e segreti (Capitolo 8, pag. 260)">
+            <span class="text-xs font-bold text-purple-300 flex items-center gap-1"><span id="header-society-icon">📜</span> Favore:</span>
+            <button onclick="changeFavor(-1)" class="w-5 h-5 rounded bg-[#202532] hover:bg-[#2e3546] font-bold text-xs text-gray-300 flex items-center justify-center transition-all hover:text-white" title="Riduci Punti Favore">-</button>
+            <span class="font-black text-purple-300 text-xs min-w-[14px] text-center" id="favor-points">0</span>
+            <button onclick="changeFavor(1)" class="w-5 h-5 rounded bg-[#202532] hover:bg-[#2e3546] font-bold text-xs text-purple-400 flex items-center justify-center transition-all hover:bg-purple-950/60" title="Aumenta Punti Favore">+</button>
+          </div>
         </div>
       </div>
     </header>
@@ -143,6 +151,29 @@
           <button onclick="closeBlankSheetModal()" class="px-4 py-2 bg-[#252a36] hover:bg-[#343b4d] text-gray-300 font-semibold text-xs rounded-xl border border-gray-600">
             Annulla
           </button>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- MODALE DETTAGLI E STATUTO DELLA SOCIETÀ SEGRETA -->
+    <div id="society-details-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="sheet-card rounded-2xl p-5 max-w-2xl w-full max-h-[85vh] flex flex-col border border-purple-500/60 shadow-2xl space-y-3.5 bg-[#12141c]">
+        <div class="flex items-center justify-between border-b border-[#252b38] pb-2.5">
+          <div class="flex items-center gap-2.5">
+            <span class="text-2xl" id="soc-modal-icon">📜</span>
+            <div>
+              <h3 class="text-sm md:text-base font-bold uppercase tracking-wider text-purple-300" id="soc-modal-title">Statuto della Società Segreta</h3>
+              <p class="text-xs text-gray-400 italic" id="soc-modal-motto">Motto</p>
+            </div>
+          </div>
+          <button type="button" onclick="closeSocietyDetailsModal()" class="w-7 h-7 rounded-lg bg-[#1f2432] hover:bg-red-900/60 text-gray-300 hover:text-red-300 font-bold text-sm flex items-center justify-center transition-all">✕</button>
+        </div>
+        <div class="overflow-y-auto space-y-3 pr-1 text-xs text-gray-200" id="soc-modal-body" style="max-height: calc(85vh - 120px);">
+          <!-- Popolato dinamicamente da openSocietyDetailsModal -->
+        </div>
+        <div class="flex items-center justify-end pt-2 border-t border-[#252b38]">
+          <button type="button" onclick="closeSocietyDetailsModal()" class="px-4 py-1.5 bg-[#1f2432] hover:bg-[#2c3345] text-gray-200 font-semibold text-xs rounded-lg transition-all">Chiudi</button>
         </div>
       </div>
     </div>
@@ -245,7 +276,7 @@
       </div>
 
       <!-- SECONDA RIGA WIZARD: I 2 BACKGROUND (CON RIEPILOGO ABILITA/VANTAGGI), VIRTU E SUPERBIA, SCHERMA -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2.5 text-xs pt-1.5 border-t border-[#252a35]/60">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-2.5 text-xs pt-1.5 border-t border-[#252a35]/60">
         <!-- 1° BACKGROUND CON TENDINA PERSONALIZZATA & HOVER POPUP -->
         <div class="relative" id="bg-selector-wrapper-0">
           <label class="block text-gray-400 text-[11px] font-semibold mb-1 flex items-center justify-between">
@@ -352,6 +383,13 @@
             <!-- Popolato dinamicamente -->
           </select>
         </div>
+
+        <div>
+          <label class="block text-purple-300 text-[11px] font-semibold mb-1">Società Segreta</label>
+          <select id="sel-society" onchange="onSecretSocietyChange(this.value)" class="w-full bg-[#0d0e12] border border-purple-500/50 rounded-lg px-2 py-1.5 text-purple-200 font-semibold outline-none text-xs focus:border-purple-400">
+            <!-- Popolato dinamicamente da populateDropdowns() -->
+          </select>
+        </div>
       </div>
     </div>
 
@@ -363,7 +401,7 @@
       </button>
       <button onclick="switchTab('details')" id="tab-btn-details" class="tab-btn flex items-center gap-2">
         <span>📜</span>
-        <span>Vantaggi, Duelli & Stregoneria</span>
+        <span>Vantaggi, Duelli & Società</span>
       </button>
       <button onclick="switchTab('stories')" id="tab-btn-stories" class="tab-btn flex items-center gap-2">
         <span>📖</span>
@@ -689,6 +727,11 @@
 
       <!-- SEZIONE STREGONERIA (DINAMICA: SE 'NESSUNA' SCOMPARE AL 100% IN MODALITA GIOCO) -->
       <div id="sorcery-container">
+        <!-- Renderizzato via JS -->
+      </div>
+
+      <!-- SEZIONE SOCIETÀ SEGRETA (CARDS GUADAGNO/SPESA FAVORE E STATUTO) -->
+      <div id="secret-society-container">
         <!-- Renderizzato via JS -->
       </div>
     </div>
@@ -1645,6 +1688,280 @@
             }
     ];
 
+    // ==========================================================================
+    // DATABASE SOCIETÀ SEGRETE UFFICIALI 7TH SEA 2ª EDIZIONE (PAGG. 258-271)
+    // ==========================================================================
+    const secretSocietiesDb = [
+  {
+    id: "fratellanza_costa",
+    name: "La Fratellanza della Costa",
+    icon: "🏴‍☠️",
+    headquarters: "Mari di Théah • Nave Ammiraglia Dama Roja (Regina Bonaventura)",
+    motto: "Libertà sui mari e fedeltà assoluta alla Carta dei Primi Capitani",
+    summary: "Una coalizione di corsari e pirati indipendenti che rifiuta l'autorità dei tiranni e saccheggia le ricchezze dei nobili, condividendo bottino, provviste e decisioni in modo rigorosamente egualitario.",
+    lore: "In termini di organizzazione, la Fratellanza è un paradosso. Da una parte il suo credo celebra la libertà assoluta, dall'altra i membri sono vincolati al rispetto di una Carta che nessuno oserebbe violare. I marinai che incontrano un vascello battente i colori del gruppo sanno che non verrà fatto loro alcun male se si arrendono senza combattere. Chi non getta le armi affronterà alcuni degli equipaggi più esperti che abbiano mai solcato i mari.",
+    creedTitle: "La Carta della Fratellanza (10 Articoli Ufficiali)",
+    creedText: `1. Ogni uomo ha diritto a un voto in tutte le questioni ed eguale diritto a provviste e liquore, da usare a propria discrezione, salvo razionamento deliberato a maggioranza.
+2. Ogni uomo dovrà presentarsi secondo i turni e le disponibilità per il servizio a bordo.
+3. Chiunque imbrogli la Fratellanza per un valore pari o superiore a un Guilder di bottino sarà abbandonato per punizione su un'isola deserta.
+4. Nessuno deve giocare a carte o dadi per soldi.
+5. Tutte le anime a bordo di una nave catturata dovranno essere liberate affinché possano decidere, a mezzo voto, quale rotta seguire dopo che il loro vascello è stato depredato.
+6. A nessun membro di un equipaggio sarà fatto del male in caso di resa senza resistenza.
+7. Ogni uomo deve tenere in ordine e pulita l'artiglieria, la propria pistola e la propria spada.
+8. Disertare la nave o il posto di battaglia è punito con l'abbandono su un'isola deserta.
+9. A bordo non sono ammessi scontri fisici; ogni duello dovrà essere risolto a terra, con la spada o la pistola.
+10. Chi perde un arto al servizio della Fratellanza riceve un indennizzo: 600 Guilder per un braccio o l'invalidità, 500 Guilder per una mano, 100 Guilder per un occhio o un dito.`,
+    gains: [
+      { name: "Informazioni di interesse", amount: 2, desc: "Fornire informazioni non pubbliche ma non gelosamente custodite utili alla Fratellanza." },
+      { name: "Assistere un Agente", amount: 4, desc: "Salvare un corsaro o assisterlo nel completamento di una missione sui mari." },
+      { name: "Segreto di interesse", amount: 6, desc: "Consegnare segreti custoditi gelosamente (es. rotte riservate, scorte della marina reale)." },
+      { name: "Soffiata su Ricco Bottino", amount: 3, bonus: "+1 Ricchezza", desc: "Informazioni che conducono una nave della Fratellanza a una ricca preda (+1 Favore bonus, tot. 3) e 1 punto Ricchezza prelevato dalle spoglie." },
+      { name: "Catturare una Preda", amount: 4, bonus: "+2 Ricchezza", desc: "Aiutare attivamente un Agente a catturare una nave o un bottino di grande valore: concede due parti di bottino (Ricchezza 2+) oltre al normale Favore." }
+    ],
+    spends: [
+      { name: "Informazioni Marittime", cost: 1, desc: "Essere messi a conoscenza di informazioni ordinarie in possesso della Fratellanza." },
+      { name: "Protezione / Aiuto Agente Corsaro", cost: 3, desc: "Un abile Agente corsaro (Forza 6: lancia 6 dadi e subisce 6 ferite prima di una FD) protegge l'Eroe o lo assiste in missione." },
+      { name: "Contrabbandare Oggetto o Persona", cost: 4, desc: "Far passare un oggetto o fuggire una persona oltre un blocco navale o una sorveglianza militare sino al primo porto sicuro." },
+      { name: "Segreto Riservato", cost: 5, desc: "Ottenere un segreto ben custodito dalla rete della Fratellanza." },
+      { name: "Blocco Navale della Fratellanza", cost: 7, desc: "La flotta della Fratellanza pattuglia e blocca un tratto di mare per circa una settimana, rendendo il transito nemico quasi impossibile." }
+    ]
+  },
+  {
+    id: "kreuzritter",
+    name: "Die Kreuzritter",
+    icon: "⚔️",
+    headquarters: "Eisen • Stern (presso la Foresta della Wälder)",
+    motto: "Una stella bianca di speranza nell'oscurità della Wälder",
+    summary: "Cavalieri veterani di Eisen che operano nell'ombra per dare la caccia agli orrori sovrannaturali, proteggere gli innocenti dai mostri e custodire i segreti del leggendario metallo Dracheneisen.",
+    lore: "Nati oltre 500 anni fa per difendere Eisen dalle aberrazioni della Wälder, furono inviati verso sud con l'inganno da un leader traditore per permettere all'Inquisizione di prendere il potere a Stern. Marchiati ingiustamente come eretici, decisero di svanire nelle ombre. Consapevoli che là fuori esistono mostri reali oltre ogni immaginazione, giurarono di non farsi mai più strumentalizzare da politici o religiosi, brillando come una stella di speranza nell'oscurità.",
+    creedTitle: "Regole Speciali del Dracheneisen",
+    creedText: `• Proprietà del Metallo: Il Dracheneisen è il metallo più raro di Théah, indistruttibile, forgia armi che tagliano la pietra con la stessa facilità con cui l'acciaio fende il legno.
+• Rilevamento Mostri: La lama brilla di luce bianca pura se un Mostro si avvicina entro 9 metri.
+• Soppressione Pericolo: Se brandito con determinazione contro un Mostro, quest'ultimo deve spendere 2 Punti Pericolo per ottenere i benefici di 1 solo Punto Pericolo.
+• Danno Letale contro il Sovrannaturale: Le armi in Dracheneisen infliggono 1 Ferita aggiuntiva a qualsiasi bersaglio dotato del Vantaggio Stregoneria o di una Qualità Mostruosa.
+• Politica Rigorosa dell'Ordine: Nessun Eroe può iniziare con il Dracheneisen. Chi ne trova uno nel gioco scoprirà che l'Ordine lo cercherà; solo i cavalieri Kreuzritter possono impugnarlo.`,
+    gains: [
+      { name: "Informazioni su Mostri / Maledizioni", amount: 2, desc: "Fornire dettagli non pubblici ma non gelosamente custoditi su creature della notte o culti." },
+      { name: "Assistere un Crociato", amount: 4, desc: "Soccorrere un cavaliere Kreuzritter o aiutarlo in una caccia a un mostro." },
+      { name: "Segreto Sovrannaturale", amount: 6, desc: "Rivelare un segreto gelosamente custodito (es. vera identità di un negromante o punto debole unico di un abominio)." },
+      { name: "Eliminazione Mostro o Mago Oscuro", amount: 4, desc: "Fornire informazioni che portano all'eliminazione confermata di un mostro, alla sconfitta di uno stregone o alla distruzione di un artefatto (+2 Favore aggiuntivi, tot. 4)." },
+      { name: "Recupero di Dracheneisen", amount: 10, desc: "Consegnare all'Ordine un lingotto, reperto o lama di autentico Dracheneisen strappato all'oblio o a collezioni profane." }
+    ],
+    spends: [
+      { name: "Informazioni Occulte", cost: 1, desc: "Accedere agli archivi dell'Ordine per scoprire punti deboli, anatomia o folklore di un Mostro." },
+      { name: "Assistenza di un Cavaliere Crociato", cost: 3, desc: "Un agente Kreuzritter (Forza 6: lancia 6 dadi e subisce 6 ferite per FD) affianca l'Eroe in combattimento." },
+      { name: "Accesso al Reliquiario (Dracheneisen)", cost: 4, desc: "L'Ordine concede in prestito per una singola missione (alcune Scene, mai oltre 1 Episodio) un'arma in Dracheneisen o un artefatto protetto. Trattenerla oltre fa scattare l'accusa di tradimento." },
+      { name: "Segreto su Magie Oscure", cost: 5, desc: "Rivelazione di una verità pericolosa sulle cospirazioni mostruose a Théah." },
+      { name: "Ubicazione di un'Arma in Dracheneisen", cost: 9, desc: "L'Ordine rivela dove giace un'arma in Dracheneisen e assiste l'Eroe aprendo la Storia speciale 'Cercatore di Dracheneisen' (10+ Atti). Una volta completata, l'arma resta all'Eroe finché è membro." }
+    ]
+  },
+  {
+    id: "esploratori",
+    name: "La Società degli Esploratori",
+    icon: "🧭",
+    headquarters: "Castille • Lisso (Odiseo) • Sedi a Montaigne, Vendel, Freiburg",
+    motto: "Conoscere il passato per migliorare il futuro",
+    summary: "Archeologi, cartografi e studiosi che riportano alla luce le rovine Syrneth e Numanari, catalogano artefatti e mappe proteggendoli dai tombaroli e dall'Inquisizione.",
+    lore: "Fondata nel 1598 dalla studiosa castilliana Leandra Souza per fermare i tombaroli mercenari, la Società ha catalogato oltre 500 artefatti Syrneth e possiede la più grande raccolta di mappe al mondo. Nonostante la simpatia popolare e l'emblema della bussola d'argento, il Terzo Profeta decretò che indagare le rovine Syrneth corrompe l'anima: la Chiesa Vaticina li persegue come eretici, costringendoli a operare in segretezza tra le rovine di Théah, Ifri e del Nuovo Mondo.",
+    creedTitle: "Statuto dell'Esploratore",
+    creedText: `• Protezione del Passato: Gli artefatti Syrneth e Numanari devono essere catalogati, compresi e conservati, mai svenduti a nobili oziosi o distrutti per paura superstiziosa.
+• Asilo tra Confratelli: Ogni membro è tenuto a dare ospitalità e asilo a qualsiasi collega in fuga dagli agenti dell'Inquisizione.
+• Rigore Scientifico: La conoscenza archeologica appartiene a tutta l'umanità per costruire un futuro migliore.`,
+    gains: [
+      { name: "Mappe o Dati Geografici", amount: 2, desc: "Consegnare mappe inedite, rotte o appunti di viaggio." },
+      { name: "Assistere un Ricercatore", amount: 4, desc: "Proteggere un archeologo durante una spedizione o salvarlo da tombaroli." },
+      { name: "Consegna di Reliquia o Artefatto", amount: 4, desc: "Consegnare alla Società una reliquia o manufatto Syrneth/Numanari per lo studio (dalle note storiche a frammenti antichi)." },
+      { name: "Scoperta di Rovine Syrneth o Numa", amount: 5, desc: "Individuare un nuovo sito archeologico o complesso di rovine inviolate e notificarne le coordinate alla Società." },
+      { name: "Segreto Archeologico Maggiore", amount: 6, desc: "Consegnare un segreto gelosamente custodito sulle tecnologie Syrneth o la Vecchia Repubblica." }
+    ],
+    spends: [
+      { name: "Consultazione Mappe & Archivi", cost: 1, desc: "Accedere alla sterminata cartografia o alle schede di scavo della Società." },
+      { name: "Accesso a uno Scavo della Società", cost: 2, desc: "Permesso ufficiale di esplorare un sito archeologico attivo protetto (senza diritto di asportare reperti)." },
+      { name: "Accesso al Reliquiario degli Esploratori", cost: 3, desc: "La Società affida all'Agente un artefatto Syrneth o reperto per la missione (funziona come il Vantaggio Oggetto Distintivo, da restituire a missione compiuta)." },
+      { name: "Scorta di Ricercatori Armati", cost: 3, desc: "Un Agente veterano (Forza 6: 6 dadi e 6 ferite per FD) con equipaggiamento da spedizione affianca l'Eroe." },
+      { name: "Segreto Proibito sui Syrneth", cost: 5, desc: "Ottenere un segreto di prima grandezza sui misteri sepolti delle antiche razze." }
+    ]
+  },
+  {
+    id: "accademia_invisibile",
+    name: "L'Accademia Invisibile",
+    icon: "🔬",
+    headquarters: "Clandestina in tutta Théah (Ex-Università Vaticine)",
+    motto: "La verità della scienza oltre il rogo dell'Inquisizione",
+    summary: "Una rete segreta di scienziati, fisici e inventori che portano avanti la sperimentazione scientifica e tecnologica sfuggendo ai roghi dell'Alto Inquisitore Verdugo.",
+    lore: "Quando l'Alto Inquisitore Esteban Verdugo bandì la ricerca scientifica proclamando che 'è il momento di prepararsi per il prossimo mondo, non di indagare su questo' e mandò sul rogo i docenti universitari, gli studiosi non si arresero. Sotto il nome di Accademia Invisibile hanno tessuto una rete impenetrabile: ogni accademico ne conosce solo altri due per pseudonimo, scambiandosi formule in codici crittografici mai violati.",
+    creedTitle: "Principi dell'Accademia",
+    creedText: `• Compartimentazione Rigorosa: Nessun membro deve conoscere l'identità di più di due colleghi per evitare che la cattura comprometta la rete.
+• Crittografia Assoluta: Tutti i trattati, formule e appunti devono essere trascritti con codici segreti polialfabetici.
+• Eredità di Theus: La natura e la scienza sono gli enigmi lasciati da Theus all'intelletto umano, ed esplorarli è il massimo dovere dello studioso.`,
+    gains: [
+      { name: "Dati Tecnici o Materiali Chimici", amount: 2, desc: "Fornire reagenti rari, strumenti ottici o calcoli scientifici." },
+      { name: "Info / Segreti sull'Inquisizione", amount: 3, desc: "Fornire qualsiasi notizia o segreto legato ai movimenti dell'Alto Inquisitore Verdugo o dei suoi sgherri (+1 Favore bonus, tot. 3)." },
+      { name: "Salvataggio di uno Scienziato", amount: 4, desc: "Far evadere o nascondere un membro dell'Accademia ricercato dai fanatici." },
+      { name: "Salvataggio di una Scoperta Scientifica", amount: 6, desc: "Recuperare e condividere con l'Accademia una grande scoperta, invenzione o trattato salvato dal rogo." }
+    ],
+    spends: [
+      { name: "Recapito Messaggio Cifrato", cost: 1, desc: "Far giungere un messaggio cifrato o un piccolo pacco ovunque a Théah passandolo di mano in mano nella rete segreta." },
+      { name: "Dati Tecnici & Consulenza Scientifica", cost: 1, desc: "Accedere a deduzioni fisiche, chimiche o balistiche per risolvere un ostacolo pratico." },
+      { name: "Assistenza di un Ingegnere Clandestino", cost: 3, desc: "Un Agente esperto di congegni e miscele (Forza 6: 6 dadi e 6 ferite per FD) assiste l'Eroe." },
+      { name: "Segreto Scientifico Pericoloso", cost: 5, desc: "Ricevere formule avanzate: una nuova polvere pirica, la ricetta di un veleno e del suo antidoto, o le coordinate di archivi segreti proibiti." }
+    ]
+  },
+  {
+    id: "rosa_croce",
+    name: "I Cavalieri della Rosa e della Croce",
+    icon: "🌹",
+    headquarters: "Montaigne • Crieux • Capitoli aperti in tutte le Corti di Théah",
+    motto: "Come i malvagi non si fermeranno davanti a nulla per fare il male, così i giusti non dovrebbero mai trattenersi dal fare ciò che è giusto",
+    summary: "Il più celebre e rispettato ordine di gentiluomini e cavalieri erranti del continente, votati a proteggere gli indifesi, riparare i torti e sfidare la tirannia alla luce del sole.",
+    lore: "A differenza delle altre società, i Rosa e Croce operano apertamente. Fondati sui precetti di Rosenkreuz, i loro capitoli sono aperti a chiunque voglia chiedere giustizia. Guidati dal carismatico Aristide Baveaux, contano persino cinque cavalieri nella guardia personale dell'Empereur. Per diventare veri Cavalieri occorrono tre anni di durissimo servizio e missioni temerarie; i nobili facoltosi possono diventare 'Benefattori', finanziando la causa.",
+    creedTitle: "Il Codice Cavalleresco di Rosenkreuz",
+    creedText: `• Proteggere chi non può difendersi: La spada del cavaliere si sguaina solo per difendere gli orfani, le vedove e i deboli dai prepotenti.
+• Generosità e Spirito di Sacrificio: Non tirarsi mai indietro dinanzi a un atto di valore o a una nobile causa, anche a costo della vita.
+• Onore e Cortesia: Rispettare la parola data, non mentire mai slealmente e fungere da modello morale per ogni cittadino di Théah.`,
+    gains: [
+      { name: "Notizie sulle Corti o Torti Subiti", amount: 2, desc: "Segnalare ingiustizie, abusi feudali o intrighi di nobili crudeli." },
+      { name: "Reclutare un Benefattore", amount: 4, desc: "Convincere un aristocratico ricco e responsabile a supportare finanziariamente l'Ordine." },
+      { name: "Soccorrere un Cavaliere in Duello", amount: 4, desc: "Salvare o scortare un cavaliere dell'Ordine impegnato in una missione temeraria." },
+      { name: "Segreto su un Malvagio d'Alto Rango", amount: 6, desc: "Consegnare le prove irrefutabili delle nefandezze di un tiranno nobiliare." },
+      { name: "Compiere un'Impresa Cavalleresca", amount: 0, bonus: "Pari agli Atti", desc: "Portare a termine una Storia dell'Eroe affidata dall'Ordine: fornisce Punti Favore pari al numero di Atti della Storia oltre alle ricompense ordinarie." }
+    ],
+    spends: [
+      { name: "Aiuto Finanziario da un Benefattore", cost: 1, desc: "Ottenere fondi e ospitalità di classe da un ricco mecenate dell'Ordine (somme oltre Ricchezza 5 richiedono di sdebitarsi)." },
+      { name: "Informazioni sulla Nobiltà", cost: 1, desc: "Accedere ai registri araldici e ai gossip d'onore delle Corti europee." },
+      { name: "Scorta di un Cavaliere Guardiano", cost: 3, desc: "Un valoroso Cavaliere della Rosa e della Croce (Forza 6: 6 dadi e 6 ferite per FD) combatte al fianco dell'Eroe." },
+      { name: "Segreto d'Onore di Stato", cost: 5, desc: "Ottenere un segreto cruciale su una delle famiglie regnanti di Théah." }
+    ]
+  },
+  {
+    id: "vagabundos",
+    name: "Los Vagabundos",
+    icon: "🎭",
+    headquarters: "Castille (operativi nelle Corti di tutta Théah)",
+    motto: "Proteggine uno e ne proteggerai mille",
+    summary: "Vigilanti mascherati e spie clandestine dedite a proteggere i monarchi illuminati, smascherare i tiranni corrotti e fare giustizia al di là della legge.",
+    lore: "Nati a Castille per proteggere il giovanissimo Re da consiglieri traditori, la loro leggenda è esplosa ovunque: sventato un attentato alla Regina Elaine di Avalon, salvato lo Jarl Balderson a Vesten. La loro filosofia è semplice: 'se un eroe indossa la corona il popolo prospera, se la indossa un malvagio il popolo soffre'. I Los Vagabundos proteggono i re giusti e detronizzano quelli malvagi. Non tutti indossano la maschera: molti sono spie, ma solo a 5 eletti è concesso portare una delle 5 vere Maschere purpuree.",
+    creedTitle: "Il Giuramento della Maschera",
+    creedText: `• Proteggere le Buone Corone: Vigilare sulla vita dei sovrani saggi e abbattere i despoti sanguinari che calpestano il popolo.
+• La Legge dei Vigilanti: La vera giustizia supera la legge scritta dei potenti; rubare a un usurpatore per salvare gli affamati è un atto virtuoso.
+• Il Mistero di El Vagabundo: El Vagabundo non è un solo uomo, è un'idea viva. Chi indossa la Maschera sacrifica se stesso per incarnare la leggenda.`,
+    gains: [
+      { name: "Spie e Movimenti di Corte", amount: 2, desc: "Fornire informazioni sui movimenti di guardie, sicari o cospiratori." },
+      { name: "Assistere un Agente Mascherato", amount: 4, desc: "Fornire copertura o via di fuga a un affiliato dei Los Vagabundos." },
+      { name: "Sventare Cospirazione di Corte", amount: 6, desc: "Svelare un complotto segreto contro un monarca o ministro legittimo." },
+      { name: "Salvare un Nobiluomo Eroico", amount: 8, desc: "Salvare la vita a un regnante, duca o nobiluomo giusto ed eroico minacciato di morte." },
+      { name: "Sconfiggere un Nobiluomo Malvagio", amount: 8, desc: "Rovesciare, neutralizzare o costringere alla fuga un tiranno o aristocratico crudele e corrotto." }
+    ],
+    spends: [
+      { name: "Informazioni di Intelligence", cost: 1, desc: "Ottenere dettagli su passaggi segreti, guardie del corpo e abitudini di un palazzo nobiliare." },
+      { name: "Aiuto di un Agente Solitario (Forza 8)", cost: 3, desc: "I Los Vagabundos operano da soli e sono eccezionalmente abili: il loro Agente ha Forza +2 rispetto al normale (Forza 8: 8 dadi e 8 ferite per FD!)." },
+      { name: "Segreto sui Sovrani di Théah", cost: 5, desc: "Ottenere un segreto decisivo su alleanze, testamenti o crimini di una Corona." },
+      { name: "Indossare la Maschera di El Vagabundo", cost: 10, desc: "L'Eroe indossa per una Scena la leggendaria Maschera: ottiene +1 Grado in TUTTI i Tratti e in TUTTE le Abilità! Mentre la indossa incarna la leggenda: non può attivare la Virtù né prendere PE da Hubris/Peculiarità (ma può riceverne da dadi non spesi dal GM)." }
+    ]
+  },
+  {
+    id: "mociutes_skara",
+    name: "Močiutės Skara (Lo Scialle della Nonna)",
+    icon: "🧶",
+    headquarters: "Confederazione Sarmatiana & Ussura (ovunque vi sia dolore)",
+    motto: "Soccorrere chi soffre, lenire le ferite della guerra e fermare le armi",
+    summary: "Un movimento umanitario spontaneo e coraggioso che accorre nei teatri di guerra e calamità per portare cibo, cure e coperte a chiunque ne abbia bisogno, operando per fermare i massacri.",
+    lore: "Nato durante la Guerra della Croce quando donne curoniane attraversarono il confine con Ussura per sfamare orfani e vedove, oggi è una forza transnazionale senza gerarchie. I suoi membri corrono verso le fiamme per salvare vite, non per combattere. Panettieri, cerusici, madri e contadini curano chiunque senza guardare la divisa. Negli ultimi anni, agenti eroici dello Scialle usano diplomazia, sabotaggi e ricatti per impedire sul nascere nuove guerre devastatrici.",
+    creedTitle: "Il Credo dello Scialle",
+    creedText: `• Compassione Universale: Nessuna bandiera, nazione o religione giustifica il rifiuto del soccorso a un ferito o a un affamato.
+• Fermare le Armi prima del Massacro: L'azione migliore è prevenire la guerra prima che centinaia di giovani siano mandati al macello.
+• Rete di Rispetto e Fratellanza: Tutte le Società Segrete di Théah rispettano lo Scialle e aprono loro le porte per la loro purezza d'intenti.`,
+    gains: [
+      { name: "Notizie su Epidemie o Conflitti", amount: 2, desc: "Segnalare villaggi isolati, carestie o movimenti di truppe mercenarie." },
+      { name: "Scortare un Convoglio Umanitario", amount: 4, desc: "Difendere carovane di medicinali, farina e coperte da predoni e banditi." },
+      { name: "Cibo e Cure a una Comunità", amount: 5, desc: "Portare acqua potabile, rifornimenti e assistenza medica a un villaggio o quartiere devastato." },
+      { name: "Segreto Bellico Cruciale", amount: 6, desc: "Rivelare i piani d'invasione segreti di un generale guerrafondaio." },
+      { name: "Impedire a un Esercito di Combattere", amount: 10, desc: "Fermare una battaglia imminente con qualsiasi mezzo: negoziando una tregua, rubando le provviste o neutralizzando il comandante." }
+    ],
+    spends: [
+      { name: "Cure Mediche da Campo", cost: 1, desc: "I cerusici e le guaritrici dello Scialle curano le ferite e leniscono traumi dell'Eroe e dei suoi amici." },
+      { name: "Rete Universale: Informazioni Inter-Società", cost: 1, desc: "Grazie al rispetto unanime di cui gode, lo Scialle può richiedere informazioni ordinarie a QUALSIASI altra Società Segreta di Théah!" },
+      { name: "Rete Universale: Assistenza di un Agente Alleato", cost: 3, desc: "Chiedere l'intervento di un Agente protettore (Forza 6) attinto dalla rete di supporto di qualsiasi Società amica." },
+      { name: "Rete Universale: Segreto Inter-Società", cost: 5, desc: "Ottenere un segreto protetto rivolgendosi ai contatti diplomatici dello Scialle presso altre organizzazioni." }
+    ]
+  },
+  {
+    id: "liberatori",
+    name: "I Liberatori (Liberi Pensatori)",
+    icon: "💧",
+    headquarters: "Clandestina in tutta Théah (Organizzata in Mani di 5)",
+    motto: "Niente Dei, Niente Re — La goccia scava la roccia",
+    summary: "Una rete anarchica e clandestina senza capi che combatte le Due Grandi Tirannie (Monarchia e Chiesa) tramite la guerra mimesica, la satira sferzante, l'autodeterminazione e la propaganda.",
+    lore: "Fondata sul diario del misterioso Uppman, l'organizzazione vede la monarchia e la religione come catene create per soggiogare la mente umana. La loro guerra è 'mimesica': non serve uccidere un re se l'idea del trono sopravvive; occorre distruggere l'idea stessa del re nel cuore del popolo. Organizzati in cellule indipendenti di 5 membri chiamate 'Mani', sostituiscono messali sacri con testi comici, liberano debitori dalle carceri e ridicolizzano i governanti coprendoli di pece e piume.",
+    creedTitle: "Il Codice di Uppman & Il Codice del Cappotto",
+    creedText: `• I Cinque Precetti del Codice:
+1. L'omicidio è il furto del più grande dei doni e lo strumento con cui i malvagi mantengono l'ordine.
+2. Metti tutto in discussione, anche te stesso.
+3. Nessun uomo, donna o bambino dovrebbe mai desiderare.
+4. Distruggi il Potere attraverso le sue parole, atti e paure.
+5. Non incontrarsi mai in più di cinque (la Mano).
+• Il Codice del Cappotto (Saluto Cifrato):
+A tende la mano sinistra aperta con le dita allargate; se B risponde, stringono la mano:
+A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene anche a me." — B: "Sta bene a tutta la mia famiglia." — A: "Allora sono fortunato ad essere tuo fratello."`,
+    gains: [
+      { name: "Diffondere Propaganda / Fogli Satirici", amount: 2, desc: "Affiggere manifesti, diffondere canzonature o smascherare ipocrisie di governanti." },
+      { name: "Contrastare un Malvagio della Chiesa", amount: 4, desc: "Neutralizzare o svergognare pubblicamente un prelato corrotto o fanatico inquisitore." },
+      { name: "Assistere una Mano Clandestina", amount: 4, desc: "Aiutare una cellula di Liberatori a fuggire da una retata della milizia." },
+      { name: "Detronizzare o Cacciare un Nobile", amount: 6, desc: "Far cacciare un nobile tiranno dal suo seggio coperto di pece e piume o farlo arrestare." },
+      { name: "Segreto Cospirativo di Stato", amount: 6, desc: "Rivelare i piani segreti della nobiltà per affamare il popolo o imporre balzelli." }
+    ],
+    spends: [
+      { name: "Informazioni sulla Sicurezza Cittadina", cost: 1, desc: "Ottenere piante di carceri, turni delle guardie e covi sicuri tra i popolani." },
+      { name: "Nominare un 'Amico di Uppman'", cost: 2, desc: "Un individuo ottiene protezione speciale e immunità da azioni punitive dei Liberatori (costa 6 Favore se nobile o ecclesiastico; se tradisce, si perde tutto il Favore)." },
+      { name: "Radunare una Squadra di Sgherri (Forza 10)", cost: 3, desc: "Raduna una folla armata di popolani, fabbri e falegnami con Forza 10 per un obiettivo chiaro (es. 'assalite il palazzo!'). Per ogni 3 Favore extra spesi, la Forza aumenta di +10!" },
+      { name: "Assistenza di un Agente Sabotatore", cost: 3, desc: "Un Libero Pensatore maestro di travestimenti e sosia (Forza 6: 6 dadi e 6 ferite per FD) affianca l'Eroe." },
+      { name: "Segreto Sovversivo", cost: 5, desc: "Ricevere documenti compromettenti capaci di distruggere per sempre la reputazione di un'autorità." }
+    ]
+  },
+  {
+    id: "figlie_sofia",
+    name: "Le Figlie di Sofia",
+    icon: "🦉",
+    headquarters: "Vodacce (Palazzo Villanova) • Rifugi sicuri all'estero",
+    motto: "Libertà per le Streghe del Fato e fine della tirannia dei Principi Mercanti",
+    summary: "Un'audace cospirazione femminile nata nei palazzi di Vodacce per proteggere e far fuggire le Streghe della Sorte, spezzare il giogo dei Principi Mercanti e promuovere il sapere.",
+    lore: "Nate dall'incredibile alleanza segreta tra Valentina Villanova (la moglie del Principe) e Juliette (la sua amante cortigiana), le Figlie di Sofia sono cresciute come una rete segreta transnazionale. Finanziano circoli di lettura clandestini per donne, organizzano tratte di fuga verso la libertà per le giovani Streghe della Sorte e forniscono scorte invisibili agli alleati. Quasi tutti i membri sono donne, determinate a far crollare il crudele patriarcato dei Principi.",
+    creedTitle: "Il Mandato di Sofia",
+    creedText: `• Salvezza delle Streghe del Fato: Nessuna ragazza deve essere considerata una proprietà o una schiava a causa dei suoi occhi magici.
+• Sovvertimento dei Principi: Minare la ricchezza e l'arroganza dei Principi Mercanti, mettendoli l'uno contro l'altro.
+• Diffusione del Sapere: La cultura e la libertà di pensiero sono armi irresistibili contro la tirannia domestica e feudale.`,
+    gains: [
+      { name: "Spionaggio nei Palazzi di Vodacce", amount: 2, desc: "Fornire indiscrezioni sulle cortigiane, sui contratti o sulle feste dei Principi." },
+      { name: "Proteggere un Circolo di Lettura", amount: 4, desc: "Difendere o finanziare una scuola clandestina o biblioteca segreta femminile." },
+      { name: "Assistere un'Agente all'Estero", amount: 4, desc: "Fornire rifugio a una fuggitiva vodacce o a una spia dell'organizzazione." },
+      { name: "Minare i Piani di un Principe Mercante", amount: 6, desc: "Sventare un matrimonio forzato, far fallire un monopolio commerciale o aizzare due Principi l'uno contro l'altro." },
+      { name: "Far Fuggire una Strega del Fato", amount: 10, desc: "Far evadere una Strega della Sorte dai palazzi di Vodacce e condurla oltre il confine in un rifugio sicuro." }
+    ],
+    spends: [
+      { name: "Pettegolezzi e Intrighi di Corte", cost: 1, desc: "Ottenere informazioni scottanti sui vizi, amanti e debiti dei nobili vodacce." },
+      { name: "Nominare un 'Amico di Sofia'", cost: 2, desc: "Garantisce protezione e soccorso dalle Figlie di Sofia (costa 6 Favore se nobile o ecclesiastico)." },
+      { name: "Assistenza di una Strega del Fato", cost: 3, desc: "Una Strega affiliata assiste l'Eroe: ha Forza 6 (6 dadi, 6 ferite per FD), possiede Stregoneria (Sorte) e lancia +2 dadi bonus in tutti i Rischi sociali relativi alla politica di Vodacce!" },
+      { name: "Scorta di una Cortigiana Spia", cost: 3, desc: "Un'abile Agente sotto copertura (Forza 6) scorta e difende l'Eroe." },
+      { name: "Segreto Inconfessabile di un Principe", cost: 5, desc: "Ottenere un ricatto letale capace di piegare la volontà di un Principe Mercante." }
+    ]
+  },
+  {
+    id: "novus_ordo_mundi",
+    name: "Novus Ordo Mundi (I Sette Seggi)",
+    icon: "👁️",
+    headquarters: "Ombre di Théah • Esclusivo per il Game Master (Malvagi)",
+    motto: "Controllare il fato del mondo attraverso il velo dell'invisibilità",
+    summary: "Cabala segreta composta da esattamente sette geni criminali e diabolici Malvagi che manipolano le Nazioni attraverso intermediari, guerre e assassinii. NON accessibile agli Eroi.",
+    lore: "Nato ai tempi della Vecchia Repubblica da sette senatori corrotti che manipolavano imperatori fantoccio, il Novus Ordo Mundi non accetta Eroi. Vi sono solo 7 membri e l'unico modo per occupare un Seggio è assassinare a sangue freddo il predecessore (atto che trasforma istantaneamente in un Malvagio). Operano tramite molteplici gradi di intermediari e mercenari per non sporcarsi le mani, eliminando senza pietà chiunque si avvicini al loro segreto.",
+    creedTitle: "La Regola dei Sette Seggi (Solo GM)",
+    creedText: `• Inaccessibilità: Nessun Eroe può appartenere a questo Ordine in nessuna circostanza.
+• Metodi Nefandi: Se un Seggio decide un'azione individuale deve ripagare l'Ordine con un interesse del 10%. Chi tradisce il segreto viene trucidato dai sicari dei restanti Seggi.`,
+    gmOnly: true,
+    gains: [],
+    spends: []
+  }
+];
+
     const sorceriesDb = [
         {
             name: "Hexenwerk",
@@ -2041,6 +2358,8 @@
             wealth: 0,
             duelingStyle: "Eisenfaust",
             duelingStyles: ["Eisenfaust"],
+            secretSociety: "Die Kreuzritter",
+            favorPoints: 2,
             drexelGuard: "Bittner",
             studiosoManeuver: "Finta",
             lastManeuverUsed: "",
@@ -2408,6 +2727,8 @@
             wealth: startWealth,
             duelingStyle: pcData.duelingStyle || "Nessuna",
             duelingStyles: Array.isArray(pcData.duelingStyles) ? [...pcData.duelingStyles] : (pcData.duelingStyle && pcData.duelingStyle !== "Nessuna" ? [pcData.duelingStyle] : []),
+            secretSociety: pcData.secretSociety || "Nessuna",
+            favorPoints: pcData.favorPoints !== undefined ? pcData.favorPoints : 0,
             drexelGuard: pcData.drexelGuard || "Bittner",
             studiosoManeuver: pcData.studiosoManeuver || "Finta",
             lastManeuverUsed: "",
@@ -2498,6 +2819,8 @@
             wealth: 0,
             duelingStyle: "Nessuna",
             duelingStyles: [],
+            secretSociety: "Nessuna",
+            favorPoints: 0,
             drexelGuard: "Bittner",
             studiosoManeuver: "Finta",
             lastManeuverUsed: "",
@@ -2667,7 +2990,18 @@
 
         if (selNation) {
             selNation.value = character.nation || "";
-            populateNationTraitsDropdown(character.nation || "");
+            const selSociety = document.getElementById('sel-society');
+        if (selSociety) {
+            selSociety.innerHTML = '<option value="Nessuna">-- Nessuna Società Segreta --</option>';
+            secretSocietiesDb.filter(s => !s.gmOnly).forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.name;
+                opt.innerText = `${s.icon} ${s.name}`;
+                selSociety.appendChild(opt);
+            });
+        }
+
+        populateNationTraitsDropdown(character.nation || "");
         }
 
         if (selNationTrait) {
@@ -2709,6 +3043,8 @@
         }
         if (selVirtue) selVirtue.value = character.virtue || "";
         if (selHubris) selHubris.value = character.hubris || "";
+        const selSocEl = document.getElementById('sel-society');
+        if (selSocEl) selSocEl.value = character.secretSociety || "Nessuna";
     }
 
     function onNameChange(v) { character.name = v; updateHeroHeader(); }
@@ -2750,6 +3086,21 @@
             '7th Sea 2ª Edizione'
         ].filter(Boolean);
         if (sub) sub.innerText = parts.join(' • ');
+
+        const favorContainer = document.getElementById('favor-points-container');
+        const favorPts = document.getElementById('favor-points');
+        const favorIcon = document.getElementById('header-society-icon');
+        if (favorContainer) {
+            if (character.secretSociety && character.secretSociety !== "Nessuna") {
+                favorContainer.classList.remove('hidden');
+                if (favorPts) favorPts.textContent = character.favorPoints !== undefined ? character.favorPoints : 0;
+                const soc = secretSocietiesDb.find(s => s.name === character.secretSociety);
+                if (favorIcon && soc) favorIcon.textContent = soc.icon || "📜";
+            } else {
+                favorContainer.classList.add('hidden');
+            }
+        }
+
     }
 
     function switchTab(tabId) {
@@ -7164,6 +7515,328 @@
         }
     }
 
+
+    // ==========================================================================
+    // LOGICA SOCIETÀ SEGRETE & SISTEMA DEL FAVORE (7TH SEA 2ª ED.)
+    // ==========================================================================
+    function onSecretSocietyChange(val) {
+        character.secretSociety = (val && val !== "Nessuna") ? val : "Nessuna";
+        if (character.secretSociety === "Nessuna") {
+            character.favorPoints = 0;
+        } else if (character.favorPoints === undefined || character.favorPoints === null) {
+            character.favorPoints = 0;
+        }
+        updateHeroHeader();
+        renderSecretSocietyPanel();
+        if (typeof saveCharacterToVttToken === "function" && !window._s7LoadingFromToken) saveCharacterToVttToken();
+        const soc = secretSocietiesDb.find(s => s.name === character.secretSociety);
+        if (soc) {
+            showS7Toast(`Affiliazione: <b>${soc.icon} ${soc.name}</b>`, "info");
+        } else {
+            showS7Toast("Nessuna Società Segreta affiliata", "info");
+        }
+    }
+
+    function changeFavor(delta) {
+        character.favorPoints = Math.max(0, (character.favorPoints || 0) + delta);
+        const fEl = document.getElementById('favor-points');
+        if (fEl) fEl.innerText = character.favorPoints;
+        const socFavorEl = document.getElementById('soc-panel-favor-points');
+        if (socFavorEl) socFavorEl.innerText = character.favorPoints;
+        if (typeof saveCharacterToVttToken === "function" && !window._s7LoadingFromToken) saveCharacterToVttToken();
+    }
+
+    function spendFavorAction(actionName, cost, desc) {
+        if (!character.secretSociety || character.secretSociety === "Nessuna") {
+            showS7Toast("Nessuna Società Segreta affiliata!", "error");
+            return;
+        }
+        const current = character.favorPoints || 0;
+        if (current < cost) {
+            showS7Toast(`Punti Favore insufficienti! Richiesti: <b>${cost}</b>, Attuali: <b>${current}</b>`, "error");
+            return;
+        }
+        changeFavor(-cost);
+        const soc = secretSocietiesDb.find(s => s.name === character.secretSociety);
+        showS7Toast(`Spesi <b>${cost} Punti Favore</b> con ${soc ? soc.name : character.secretSociety} per: <i>${actionName}</i>. Favore residuo: <b>${character.favorPoints}</b>`, "success");
+
+        if (window.seventhSeaRules && typeof window.seventhSeaRules.broadcastSecretSocietyFavorToVttChat === 'function') {
+            window.seventhSeaRules.broadcastSecretSocietyFavorToVttChat(character.name || 'Eroe', soc, 'SPEND', actionName, cost, desc);
+        }
+        renderSecretSocietyPanel();
+    }
+
+    function gainFavorAction(actionName, amount, desc) {
+        if (!character.secretSociety || character.secretSociety === "Nessuna") {
+            showS7Toast("Nessuna Società Segreta affiliata!", "error");
+            return;
+        }
+        changeFavor(amount);
+        const soc = secretSocietiesDb.find(s => s.name === character.secretSociety);
+        showS7Toast(`Guadagnati <b>+${amount} Punti Favore</b> con ${soc ? soc.name : character.secretSociety} per: <i>${actionName}</i>! Favore attuale: <b>${character.favorPoints}</b>`, "success");
+
+        if (window.seventhSeaRules && typeof window.seventhSeaRules.broadcastSecretSocietyFavorToVttChat === 'function') {
+            window.seventhSeaRules.broadcastSecretSocietyFavorToVttChat(character.name || 'Eroe', soc, 'GAIN', actionName, amount, desc);
+        }
+        renderSecretSocietyPanel();
+    }
+
+    function openSocietyDetailsModal() {
+        const modal = document.getElementById('society-details-modal');
+        if (!modal) return;
+        const socName = character.secretSociety;
+        const soc = secretSocietiesDb.find(s => s.name === socName);
+        if (!soc) {
+            showS7Toast("Seleziona prima una Società Segreta!", "warning");
+            return;
+        }
+
+        const iconEl = document.getElementById('soc-modal-icon');
+        const titleEl = document.getElementById('soc-modal-title');
+        const mottoEl = document.getElementById('soc-modal-motto');
+        const bodyEl = document.getElementById('soc-modal-body');
+
+        if (iconEl) iconEl.textContent = soc.icon;
+        if (titleEl) titleEl.innerText = `${soc.name}`;
+        if (mottoEl) mottoEl.innerText = `« ${soc.motto} »`;
+
+        if (bodyEl) {
+            let html = `
+                <div class="space-y-3.5">
+                    <div class="bg-[#181b26] p-3 rounded-xl border border-purple-500/30">
+                        <div class="text-[11px] font-bold uppercase tracking-wider text-purple-300 mb-1">🏛️ Sede Operativa & Sfera d'Azione</div>
+                        <p class="text-xs text-gray-300">${escapeHtml(soc.headquarters)}</p>
+                    </div>
+
+                    <div class="bg-[#181b26] p-3 rounded-xl border border-[#2b3348]">
+                        <div class="text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1">📜 Origini & Filosofia (Manuale Base pagg. 258-271)</div>
+                        <p class="text-xs text-gray-300 leading-relaxed">${escapeHtml(soc.lore)}</p>
+                    </div>
+
+                    <div class="bg-[#151824] p-3.5 rounded-xl border border-purple-500/40 space-y-2">
+                        <div class="text-xs font-bold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
+                            <span>⚖️</span>
+                            <span>${escapeHtml(soc.creedTitle)}</span>
+                        </div>
+                        <div class="text-xs text-gray-200 whitespace-pre-line leading-relaxed font-mono bg-[#0c0e15] p-3 rounded-lg border border-[#242b3d]">
+                            ${escapeHtml(soc.creedText)}
+                        </div>
+                    </div>
+            `;
+
+            if (soc.specialRulesTitle) {
+                html += `
+                    <div class="bg-amber-950/30 p-3.5 rounded-xl border border-amber-600/40 space-y-1.5">
+                        <div class="text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                            <span>⭐</span>
+                            <span>${escapeHtml(soc.specialRulesTitle)}</span>
+                        </div>
+                        <div class="text-xs text-amber-100 whitespace-pre-line leading-relaxed bg-[#0c0e15]/70 p-3 rounded-lg border border-amber-500/30">
+                            ${escapeHtml(soc.specialRulesText)}
+                        </div>
+                    </div>
+                `;
+            }
+
+            html += `
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                        <div class="bg-[#161a26] p-3 rounded-xl border border-emerald-500/30 space-y-2">
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                                <span>🏆</span> Come Guadagnare Favore
+                            </div>
+                            <ul class="space-y-1.5 text-[11px] text-gray-300">
+                                ${soc.gains.map(g => `<li class="flex items-start gap-1.5"><b class="text-emerald-400 shrink-0">+${g.amount} Pt:</b> <span><b>${escapeHtml(g.name)}</b> &bull; ${escapeHtml(g.desc)}</span></li>`).join('')}
+                            </ul>
+                        </div>
+
+                        <div class="bg-[#161a26] p-3 rounded-xl border border-rose-500/30 space-y-2">
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1">
+                                <span>💸</span> Come Spendere Favore
+                            </div>
+                            <ul class="space-y-1.5 text-[11px] text-gray-300">
+                                ${soc.spends.map(s => `<li class="flex items-start gap-1.5"><b class="text-rose-400 shrink-0">${s.cost} Pt:</b> <span><b>${escapeHtml(s.name)}</b> &bull; ${escapeHtml(s.desc)}</span></li>`).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            `;
+            bodyEl.innerHTML = html;
+        }
+
+        modal.classList.remove('hidden');
+    }
+
+    function closeSocietyDetailsModal() {
+        const modal = document.getElementById('society-details-modal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    function renderSecretSocietyPanel() {
+        const container = document.getElementById('secret-society-container');
+        if (!container) return;
+
+        const socName = character.secretSociety;
+        if (!socName || socName === "Nessuna") {
+            if (isLocked) {
+                container.innerHTML = '';
+                container.classList.add('hidden');
+            } else {
+                container.classList.remove('hidden');
+                container.innerHTML = `
+                    <div class="sheet-card rounded-xl p-3 md:p-4 bg-[#12141c] border border-[#252b3a] text-center space-y-2">
+                        <div class="text-2xl">📜</div>
+                        <h4 class="text-xs md:text-sm font-bold uppercase tracking-wide text-amber-400">Nessuna Società Segreta Affiliata</h4>
+                        <p class="text-xs text-gray-400 max-w-lg mx-auto">
+                            L'Eroe non appartiene ancora a nessuna Società Segreta. Puoi selezionare una Società dal menu a tendina in alto nel <b>Pannello Creazione</b>, oppure unirti durante la campagna (costo 0 Punti, max 1 Società per Eroe).
+                        </p>
+                    </div>
+                `;
+            }
+            return;
+        }
+
+        container.classList.remove('hidden');
+        const soc = secretSocietiesDb.find(s => s.name === socName);
+        if (!soc) {
+            container.innerHTML = `<div class="p-3 text-xs text-gray-400">Società '${escapeHtml(socName)}' non trovata nel database.</div>`;
+            return;
+        }
+
+        const favPts = character.favorPoints || 0;
+
+        let html = `
+            <div class="sheet-card rounded-xl p-3.5 md:p-4 border border-purple-500/40 bg-[#131622] space-y-3.5">
+                <!-- INTESTAZIONE SOCIETÀ SEGRETA -->
+                <div class="flex flex-wrap items-center justify-between gap-2.5 border-b border-[#252b3d] pb-2.5">
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-2xl">${soc.icon}</span>
+                        <div>
+                            <h3 class="text-xs md:text-sm font-bold uppercase tracking-wider text-purple-300 flex items-center gap-2">
+                                <span>${escapeHtml(soc.name)}</span>
+                                <span class="text-[10px] bg-purple-950/80 text-purple-300 px-2 py-0.5 rounded border border-purple-800 font-semibold">Società Segreta</span>
+                            </h3>
+                            <p class="text-[11px] text-gray-400 italic">« ${escapeHtml(soc.motto)} »</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2.5 flex-wrap">
+                        <!-- STEPPER PUNTI FAVORE NEL PANNELLO -->
+                        <div class="flex items-center gap-1.5 bg-[#0e1017] px-2.5 py-1 rounded-lg border border-purple-500/50" title="Punti Favore accumulati con questa Società">
+                            <span class="text-xs font-bold text-purple-300">Favore:</span>
+                            <button onclick="changeFavor(-1)" class="w-5 h-5 rounded bg-[#1f2434] hover:bg-[#2b3348] font-bold text-xs text-gray-300 flex items-center justify-center transition-all hover:text-white" title="Riduci Favore">-</button>
+                            <span class="font-black text-purple-300 text-xs min-w-[16px] text-center" id="soc-panel-favor-points">${favPts}</span>
+                            <button onclick="changeFavor(1)" class="w-5 h-5 rounded bg-[#1f2434] hover:bg-[#2b3348] font-bold text-xs text-purple-400 flex items-center justify-center transition-all hover:bg-purple-950/60" title="Aumenta Favore">+</button>
+                        </div>
+
+                        <button onclick="openSocietyDetailsModal()" class="flex items-center gap-1.5 px-3 py-1 bg-purple-950/70 hover:bg-purple-900 border border-purple-500/60 rounded-lg text-xs font-bold text-purple-200 transition-all shadow" title="Consulta Statuto, 10 Articoli, Giuramenti e Regole Ufficiali">
+                            <span>📜</span>
+                            <span>Statuto &amp; Regole</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SEDE & RIASSUNTO LORE -->
+                <div class="bg-[#0e1017] p-2.5 rounded-lg border border-[#242b3d] flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs">
+                    <div>
+                        <span class="text-amber-400 font-semibold">🏛️ Sede:</span> <span class="text-gray-300">${escapeHtml(soc.headquarters)}</span>
+                    </div>
+                    <div class="text-[11px] text-gray-400">
+                        ${escapeHtml(soc.summary)}
+                    </div>
+                </div>
+        `;
+
+        if (soc.specialRulesTitle) {
+            html += `
+                <div class="bg-amber-950/25 p-2.5 rounded-lg border border-amber-600/35 text-xs text-amber-200 leading-snug flex items-start gap-2">
+                    <span class="text-base shrink-0">⭐</span>
+                    <div>
+                        <b class="text-amber-300 font-bold">${escapeHtml(soc.specialRulesTitle)}:</b>
+                        <span class="text-gray-200 ml-1">${escapeHtml(soc.specialRulesText.split('\n')[0])}</span>
+                        <button onclick="openSocietyDetailsModal()" class="text-[10px] text-amber-400 underline ml-1 hover:text-amber-300 font-bold">Leggi tutto...</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        html += `
+                <!-- GRIGLIA SPENDI E GUADAGNA FAVORE -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 pt-1">
+                    <!-- COLONNA SPENDI FAVORE -->
+                    <div class="sheet-card rounded-xl p-3 bg-[#11131c] border border-rose-500/30 space-y-2">
+                        <div class="flex items-center justify-between border-b border-[#242a3b] pb-1.5">
+                            <div class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-300">
+                                <span>💸</span>
+                                <span>Spendi Favore (Richieste)</span>
+                            </div>
+                            <span class="text-[10px] text-gray-400">Favore: <b class="text-purple-300">${favPts}</b> pt</span>
+                        </div>
+
+                        <div class="space-y-1.5">
+                            ${soc.spends.map(s => {
+                                const canAfford = favPts >= s.cost;
+                                const btnClass = canAfford
+                                    ? "bg-rose-900/60 hover:bg-rose-800 border-rose-500/60 text-rose-200"
+                                    : "bg-[#181a24] border-[#2c3244] text-gray-500 cursor-not-allowed";
+                                const safeName = s.name.replace(/'/g, "\\'");
+                                const safeDesc = s.desc.replace(/'/g, "\\'");
+                                return `
+                                    <div class="p-2 rounded-lg bg-[#161824] border border-[#262c3e] flex items-center justify-between gap-2 text-xs hover:border-rose-500/40 transition-colors">
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-1.5">
+                                                <span class="px-1.5 py-0.2 rounded text-[10px] font-black bg-rose-950/90 text-rose-300 border border-rose-800">${s.cost} Pt</span>
+                                                <span class="font-bold text-gray-200 truncate">${escapeHtml(s.name)}</span>
+                                            </div>
+                                            <p class="text-[11px] text-gray-400 mt-0.5 leading-snug line-clamp-2">${escapeHtml(s.desc)}</p>
+                                        </div>
+                                        <button onclick="spendFavorAction('${safeName}', ${s.cost}, '${safeDesc}')" class="px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all shrink-0 ${btnClass}" ${canAfford ? '' : 'title="Punti Favore insufficienti"'}>
+                                            Spendi
+                                        </button>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+
+                    <!-- COLONNA GUADAGNA FAVORE -->
+                    <div class="sheet-card rounded-xl p-3 bg-[#11131c] border border-emerald-500/30 space-y-2">
+                        <div class="flex items-center justify-between border-b border-[#242a3b] pb-1.5">
+                            <div class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-300">
+                                <span>🏆</span>
+                                <span>Guadagna Favore (Missioni)</span>
+                            </div>
+                            <span class="text-[10px] text-gray-400">Regole pp. 260-271</span>
+                        </div>
+
+                        <div class="space-y-1.5">
+                            ${soc.gains.map(g => {
+                                const safeName = g.name.replace(/'/g, "\\'");
+                                const safeDesc = g.desc.replace(/'/g, "\\'");
+                                return `
+                                    <div class="p-2 rounded-lg bg-[#161824] border border-[#262c3e] flex items-center justify-between gap-2 text-xs hover:border-emerald-500/40 transition-colors">
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-1.5">
+                                                <span class="px-1.5 py-0.2 rounded text-[10px] font-black bg-emerald-950/90 text-emerald-300 border border-emerald-800">+${g.amount} Pt</span>
+                                                <span class="font-bold text-gray-200 truncate">${escapeHtml(g.name)}</span>
+                                            </div>
+                                            <p class="text-[11px] text-gray-400 mt-0.5 leading-snug line-clamp-2">${escapeHtml(g.desc)}</p>
+                                        </div>
+                                        <button onclick="gainFavorAction('${safeName}', ${g.amount}, '${safeDesc}')" class="px-2.5 py-1 bg-emerald-900/60 hover:bg-emerald-800 border border-emerald-500/60 rounded-md text-[11px] font-bold text-emerald-200 transition-all shrink-0" title="Registra il completamento di questo compito">
+                                            + Riscuoti
+                                        </button>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        container.innerHTML = html;
+    }
+
+
     function renderSeventhSeaSheet() {
         if (typeof saveCharacterToVttToken === "function" && !window._s7LoadingFromToken) saveCharacterToVttToken();
         updateHeroHeader();
@@ -7216,6 +7889,9 @@
         onStyleChange, toggleStyleCustomDropdown, filterStyleCustomDropdown, selectStyleCustom, setStyleSourceFilter, showStyleHoverPopup, hideStyleHoverPopup,
         setDrexelGuard, setStudiosoManeuverChoice, resetDuelManeuverLock, switchActiveDuelingStyle, activateVeronicaInganno, computeManeuverEffectForHero, executeDuelManeuver,
         onSorceryChange, onVirtueChange, onHubrisChange,
+        onSecretSocietyChange, changeFavor, spendFavorAction, gainFavorAction,
+        openSocietyDetailsModal, closeSocietyDetailsModal, renderSecretSocietyPanel,
+        secretSocietiesDb,
         toggleAddAdvantagePanel, toggleAdvSourceType, populateAdvDuelStylePicker, onNewAdvSelectChange, updateAdvantagePreview, confirmAddAdvantage, confirmAddCustomAdvantage, removeAdvantage,
         populateDropdowns, rollRisk, rerollRiskDie, autoRerollWorstRiskDie, rerollWithDevilsLuck, spendRaise, resetDice,
         adjustCustomDiceModifier, resetCustomDiceModifier, updateCustomDiceModifierUI,
@@ -7237,6 +7913,8 @@
             if (token.pcSheet && token.pcSheet.traits && typeof token.pcSheet.traits === 'object') {
                 character = JSON.parse(JSON.stringify(token.pcSheet));
                 if (character.wealth === undefined) character.wealth = 0;
+                if (character.secretSociety === undefined) character.secretSociety = "Nessuna";
+                if (character.favorPoints === undefined) character.favorPoints = 0;
                 normalizeCharacterDuelingState(character);
                 normalizeCharacterSorceryState(character);
                 isLocked = !!character.isLocked;

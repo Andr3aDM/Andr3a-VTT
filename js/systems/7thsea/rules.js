@@ -437,6 +437,61 @@
         }
     }
 
+    // BROADCAST ATTIVAZIONE / SPESA / GUADAGNO FAVORE SOCIETÀ SEGRETA IN CHAT VTT
+    function broadcastSecretSocietyFavorToVttChat(heroName, societyObj, actionType, actionName, pointsDelta, desc = '') {
+        const isSpend = actionType === 'SPEND';
+        const badgeColor = isSpend ? '#7f1d1d' : '#064e3b';
+        const badgeBorder = isSpend ? '#ef4444' : '#10b981';
+        const badgeText = isSpend ? '#fca5a5' : '#a7f3d0';
+        const deltaLabel = isSpend ? `-${pointsDelta} Favore` : `+${pointsDelta} Favore`;
+        const titleColor = isSpend ? '#fca5a5' : '#86efac';
+        const socIcon = societyObj ? societyObj.icon : '📜';
+        const socName = societyObj ? societyObj.name : 'Società Segreta';
+
+        const htmlMsg = `
+            <div style="border-left:3px solid #a855f7;padding-left:8px;margin:3px 0;">
+                <div style="font-size:12px;color:#d8b4fe;font-weight:900;display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                    <span>${socIcon} [${socName}]</span>
+                    <span style="color:${titleColor};font-weight:bold;">${actionName}</span>
+                    <span style="background:${badgeColor};color:${badgeText};border:1px solid ${badgeBorder};padding:1px 6px;border-radius:4px;font-size:10px;font-weight:bold;">${deltaLabel}</span>
+                </div>
+                ${desc ? `<div style="font-size:11px;color:#cbd5e1;margin-top:2px;line-height:1.4;">${desc}</div>` : ''}
+            </div>
+        `;
+
+        const chatLog = document.getElementById('chat-log');
+        if (chatLog) {
+            const li = document.createElement('li');
+            li.style.cssText = 'background:#161922;padding:6px 8px;border-radius:6px;border:1px solid #3b2d54;margin-bottom:4px;';
+            li.innerHTML = `<strong style="color:#c084fc;">${heroName || 'Eroe'}:</strong> ${htmlMsg}`;
+            chatLog.appendChild(li);
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        try {
+            const net = (typeof network !== 'undefined' && network) ? network : (typeof window !== 'undefined' ? window.network : null);
+            if (net && net.mode) {
+                const payload = {
+                    id: 'soc_s7_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                    sender: heroName || 'Eroe',
+                    formula: `[${socName}] ${actionName}`,
+                    result: deltaLabel,
+                    details: desc || '',
+                    isPublic: true,
+                    customHtml: htmlMsg
+                };
+                if (typeof net.send === 'function') {
+                    net.send({ type: 'DICE_ROLL', payload });
+                } else if (typeof net.broadcast === 'function') {
+                    net.broadcast({ type: 'DICE_ROLL', payload });
+                }
+            }
+        } catch (netErr) {
+            console.warn('[7thSea Rules] Errore broadcast società segreta a rete:', netErr);
+        }
+    }
+
+
     // BROADCAST ESECUZIONE MANOVRA DI DUELLO IN CHAT VTT
     function broadcastDuelManeuverToVttChat(heroName, maneuverInfo) {
         if (typeof document === 'undefined' || !maneuverInfo) return;
@@ -665,6 +720,7 @@
         broadcastRiskRollToVttChat,
         broadcastAdvantageActivationToVttChat,
         broadcastDuelManeuverToVttChat,
+        broadcastSecretSocietyFavorToVttChat,
         hasAdvantage,
         getActiveInstitute,
         CONTEXTUAL_BONUS_ADVANTAGES,

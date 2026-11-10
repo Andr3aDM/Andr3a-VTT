@@ -826,3 +826,43 @@ body.player-page .s7-enemy-bonus-card,
 
 
 
+
+
+/* ==========================================================================
+   SOCIETÀ SEGRETE & SISTEMA DEL FAVORE (7TH SEA 2ª ED. PAGG. 258-271)
+   ========================================================================== */
+#seventh-sea-sheet-window #favor-points-container {
+    border-color: rgba(168, 85, 247, 0.45) !important;
+    background: #101217 !important;
+    transition: all 0.2s ease;
+}
+
+#seventh-sea-sheet-window #favor-points-container:hover {
+    border-color: rgba(168, 85, 247, 0.8) !important;
+}
+
+#seventh-sea-sheet-window #secret-society-container {
+    transition: all 0.2s ease;
+}
+
+#seventh-sea-sheet-window #society-details-modal {
+    z-index: 99999 !important;
+}
+
+#seventh-sea-sheet-window #society-details-modal .sheet-card {
+    border-color: rgba(168, 85, 247, 0.6) !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 25px rgba(168, 85, 247, 0.25) !important;
+}
+
+#seventh-sea-sheet-window #soc-modal-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+#seventh-sea-sheet-window #soc-modal-body::-webkit-scrollbar-thumb {
+    background: #3b2a54;
+    border-radius: 4px;
+}
+
+#seventh-sea-sheet-window #soc-modal-body::-webkit-scrollbar-thumb:hover {
+    background: #7e22ce;
+}
