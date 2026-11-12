@@ -498,7 +498,7 @@
     </div>
 
     
-    <script src="js/storage.js?v=25"></script>
+    <script src="js/storage.js?v=27"></script>
 
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
     <!-- Dadi e Chat DM -->
@@ -589,6 +589,11 @@
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <strong style="color: #ffcc00; font-size: 13px;">🌐 Multiplayer Online (P2P)</strong>
                 <span id="campaign-lock-badge" style="display:none; font-size:10px; background:#c62828; color:white; padding:1px 6px; border-radius:8px; font-weight:bold;" title="Selezione Campagna bloccata durante la sessione online">🔒 Campagna Bloccata</span>
+            </div>
+            <div id="campaign-room-code-row" style="display: flex; align-items: center; gap: 4px; margin-top: 6px;">
+                <span style="font-size: 11px; color: #bbb; white-space: nowrap;">Codice Campagna:</span>
+                <input type="text" id="campaign-room-code" maxlength="30" autocomplete="off" spellcheck="false" placeholder="es. STRAHD-2026" title="Codice fisso della campagna: i giocatori lo usano per entrare anche nelle sessioni successive. Cambiarlo blocca l'accesso con quello vecchio." style="flex: 1; min-width: 0; background: #111; color: #ffcc00; border: 1px solid #555; border-radius: 4px; padding: 3px 6px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; font-size: 12px;">
+                <button id="btn-room-code-random" type="button" title="Genera un nuovo codice casuale" style="background: #333; color: #ffcc00; border: 1px solid #555; border-radius: 4px; padding: 2px 7px; cursor: pointer; font-size: 12px;">🎲</button>
             </div>
             <div style="display: flex; gap: 6px; margin: 6px 0 6px 0;">
                 <button id="btn-host-online" style="flex: 1; background: #ffcc00; color: black; font-weight: bold; padding: 6px 4px; border: none; border-radius: 4px; cursor: pointer; font-size: 11.5px; transition: 0.2s;">Avvia Stanza</button>
@@ -1054,21 +1059,22 @@
         </div>
     </div>
 
-    <script src="js/network.js?v=10"></script>
+    <script src="js/network.js?v=13"></script>
     <script src="js/engine.js?v=153"></script>
 
     <script src="js/dice.js?v=127"></script>
     <script src="js/audio.js?v=117"></script>
-    <script src="js/dm.js?v=181"></script>
+    <script src="js/dm.js?v=186"></script>
     <script src="js/compendium.js?v=24"></script>
-    <script src="js/pcsheet.js?v=9"></script>
+    <script src="js/pcsheet.js?v=11"></script>
     <script src="js/systems/system_manager.js?v=1"></script>
     <script src="js/systems/dnd5e/adapter.js?v=1"></script>
     <script src="js/systems/7thsea/data.js?v=1"></script>
-    <script src="js/systems/7thsea/rules.js?v=1"></script>
-    <script src="js/systems/7thsea/sheet.js?v=1"></script>
-    <script src="js/systems/7thsea/compendium.js?v=1"></script>
-    <script src="js/initiative.js?v=37"></script>
+    <script src="js/systems/7thsea/rules.js?v=5"></script>
+    <script src="js/systems/7thsea/sheet.js?v=13"></script>
+    <script src="js/systems/7thsea/compendium.js?v=2"></script>
+    <script src="js/initiative.js?v=40"></script>
+    <script src="js/systems/7thsea/initiative.js?v=11"></script>
 <script>
     document.querySelectorAll('.section h3').forEach(h3 => {
         h3.addEventListener('click', () => {
@@ -1076,7 +1082,7 @@
         });
     });
 </script>
-<script src="js/lang.js?v=15"></script>
+<script src="js/lang.js?v=19"></script>
 
     
 

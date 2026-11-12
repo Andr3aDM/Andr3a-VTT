@@ -11,6 +11,34 @@
     let expandedSpells = new Set();
     let expandedFeatures = new Set();
 
+    // --- Anti-ritorno (eco) della scheda PG D&D 5e ---
+    // Ogni salvataggio marca la scheda con una revisione (_editRev). Quando torna indietro la stessa revisione
+    // (eco del Master dopo PLAYER_UPDATE_PC_SHEET) e nulla di visibile è cambiato, la scheda NON viene ricostruita:
+    // niente più perdita del focus sul campo successivo o del testo in scrittura nel Giornale.
+    let lastRenderedSig = null;
+    let journalRefreshPending = false;
+    const sheetStats = { renders: 0, echoSkips: 0, deferredWhileTyping: 0 };
+    if (typeof window !== 'undefined') window._dnd5eSheetStats = sheetStats;
+
+    function newEditRev() {
+        return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    }
+
+    // Firma di tutto ciò che la scheda mostra. null = contenuto non identificabile (scheda senza _editRev,
+    // es. salvata con una versione precedente): in quel caso si ricostruisce sempre, come prima.
+    function displaySig(token) {
+        if (!token) return null;
+        const s = token.pcSheet;
+        if (s && !s._editRev) return null;
+        return [s ? s._editRev : 'nosheet', token.name, token.src ? token.src.length : 0, token.hpCurrent, token.hpMax,
+            token.hpTemp, token.ac, token.adventureJournal || (s && s.adventureJournal) || ''].join('\u0001');
+    }
+
+    function isSheetShowing(token) {
+        const win = document.getElementById('pc-sheet-window');
+        return !!(token && win && win.style.display !== 'none' && token.id === currentTokenId);
+    }
+
     const ABILITY_META = [
         { id: 1, key: 'str', sub: 'strength', labelIt: 'FOR', labelEn: 'STR', fullIt: 'Forza', fullEn: 'Strength' },
         { id: 2, key: 'dex', sub: 'dexterity', labelIt: 'DES', labelEn: 'DEX', fullIt: 'Destrezza', fullEn: 'Dexterity' },
@@ -1090,6 +1118,7 @@
     function commitSheetChanges(token, syncHpAndAcToToken = false) {
         if (!token || !token.pcSheet) return;
         token.pcSheet.updatedAt = Date.now();
+        token.pcSheet._editRev = newEditRev();
 
         if (syncHpAndAcToToken) {
             token.hpMax = token.pcSheet.hpMax;
@@ -1108,11 +1137,16 @@
                     p.hpCurrent = token.hpCurrent;
                     p.hpMax = token.hpMax;
                     p.ac = token.ac;
+                    // Solo l'elenco del tracker: ridisegno e spedizione li fa già questa funzione qui sotto
+                    if (typeof window.renderTrackerList === 'function') window.renderTrackerList({ skipRenderAndSync: true });
                 }
-                if (typeof window.renderTrackerList === 'function') window.renderTrackerList();
             }
             eng.renderTokensLayer();
         }
+
+        // Ciò che è a video riflette già questa modifica (l'utente l'ha appena inserita, o il chiamante ridisegna subito):
+        // l'eco di ritorno con la stessa revisione non deve ricostruire la scheda.
+        if (isSheetShowing(token)) lastRenderedSig = displaySig(token);
 
         if (isDMView()) {
             if (typeof window.updateSelectedTokenControls === 'function' && eng && eng.selectedTokenId === token.id) {
@@ -1152,6 +1186,7 @@
         if (!token) return;
         token.adventureJournalUpdatedAt = Date.now();
         if (token.pcSheet) token.pcSheet.adventureJournal = token.adventureJournal;
+        if (isSheetShowing(token)) lastRenderedSig = displaySig(token);
 
         if (isDMView()) {
             if (typeof window.upsertTokenInCampaign === 'function') {
@@ -1729,20 +1764,25 @@
 
             if (target.id === 'pcs-input-hp-curr') {
                 tok.pcSheet.hpCurrent = Math.max(0, parseInt(target.value) || 0);
+                target.value = tok.pcSheet.hpCurrent;
                 commitSheetChanges(tok, true);
             } else if (target.id === 'pcs-input-hp-max') {
                 tok.pcSheet.hpMax = Math.max(1, parseInt(target.value) || 1);
+                target.value = tok.pcSheet.hpMax;
                 commitSheetChanges(tok, true);
             } else if (target.id === 'pcs-input-hp-temp') {
                 tok.pcSheet.hpTemp = Math.max(0, parseInt(target.value) || 0);
+                target.value = tok.pcSheet.hpTemp;
                 commitSheetChanges(tok, false);
             } else if (target.id === 'pcs-input-ac') {
                 tok.pcSheet.ac = Math.max(0, parseInt(target.value) || 10);
+                target.value = tok.pcSheet.ac;
                 commitSheetChanges(tok, true);
             } else if (target.classList.contains('pcs-currency-input')) {
                 const coin = target.getAttribute('data-coin');
                 if (coin && tok.pcSheet.currencies) {
                     tok.pcSheet.currencies[coin] = Math.max(0, parseInt(target.value) || 0);
+                    target.value = tok.pcSheet.currencies[coin];
                     commitSheetChanges(tok, false);
                 }
             } else if (target.id === 'pcs-inventory-notes') {
@@ -1768,6 +1808,7 @@
         });
         // Auto-salvataggio del Giornale dell'Avventura (Debounced, 350ms)
         let journalDebounceTimer = null;
+        let pendingJournalSave = null;
         win.addEventListener('input', (e) => {
             if (e.target && e.target.id === 'pcs-journal-textarea') {
                 const tok = getActiveToken();
@@ -1785,16 +1826,30 @@
                     counterEl.textContent = `${chars} ${tr('caratteri', 'characters')} | ${words} ${tr('parole', 'words')}`;
                 }
                 if (journalDebounceTimer) clearTimeout(journalDebounceTimer);
-                journalDebounceTimer = setTimeout(() => {
+                pendingJournalSave = () => {
+                    journalDebounceTimer = null;
+                    pendingJournalSave = null;
                     tok.adventureJournal = text;
                     tok.adventureJournalUpdatedAt = Date.now();
                     if (tok.pcSheet) tok.pcSheet.adventureJournal = text;
                     commitJournalChanges(tok);
-                    if (statusEl) {
-                        statusEl.textContent = '● ' + tr('Salvato', 'Saved');
-                        statusEl.style.color = '#81c784';
+                    const st = document.getElementById('pcs-journal-status');
+                    if (st) {
+                        st.textContent = '● ' + tr('Salvato', 'Saved');
+                        st.style.color = '#81c784';
                     }
-                }, 350);
+                };
+                journalDebounceTimer = setTimeout(pendingJournalSave, 800);
+            }
+        });
+        // Uscendo dal Giornale: salva subito quanto scritto e applica un eventuale aggiornamento rimandato
+        win.addEventListener('focusout', (e) => {
+            if (!e.target || e.target.id !== 'pcs-journal-textarea') return;
+            if (journalDebounceTimer) clearTimeout(journalDebounceTimer);
+            if (pendingJournalSave) pendingJournalSave();
+            if (journalRefreshPending) {
+                journalRefreshPending = false;
+                setTimeout(() => { pcSheetManager.refreshIfOpen(currentTokenId); }, 0);
             }
         });
     }
@@ -1850,6 +1905,8 @@
     function renderSheetBody(token) {
         const body = document.getElementById('pcs-body');
         if (!body) return;
+        sheetStats.renders++;
+        lastRenderedSig = displaySig(token);
 
         if (currentTab === 'journal') {
             body.innerHTML = renderJournalTab(token);
@@ -2447,7 +2504,19 @@
             if (!win || win.style.display === 'none') return;
             if (!tokenId || tokenId === currentTokenId) {
                 const tok = getActiveToken();
-                if (tok) renderSheetModal(tok);
+                if (!tok) return;
+                const sig = displaySig(tok);
+                if (sig !== null && sig === lastRenderedSig) {
+                    sheetStats.echoSkips++; // eco della propria modifica: a video è già tutto aggiornato
+                    return;
+                }
+                const ae = document.activeElement;
+                if (ae && ae.id === 'pcs-journal-textarea' && win.contains(ae)) {
+                    sheetStats.deferredWhileTyping++; // non ricostruire il Giornale mentre si scrive: si applica all'uscita dal campo
+                    journalRefreshPending = true;
+                    return;
+                }
+                renderSheetModal(tok);
             }
         },
         parseCharacterSheetJSON,

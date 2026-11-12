@@ -72,6 +72,34 @@ class StorageDB {
         });
     }
 
+    // Codice Campagna fisso (stanza online): scelto dal Master, viaggia con esporta/importa
+    async updateCampaignRoomCode(campaignId, roomCode) {
+        if (!campaignId) return null;
+        const campaign = await this.getCampaign(campaignId);
+        if (!campaign) return null;
+        campaign.roomCode = String(roomCode || '');
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction('campaigns', 'readwrite');
+            tx.objectStore('campaigns').put(campaign);
+            tx.oncomplete = () => resolve(campaign);
+            tx.onerror = () => reject(tx.error);
+        });
+    }
+
+    // Salva un singolo campo della campagna (es. dati di un sistema di gioco come la Riserva di Pericolo 7th Sea)
+    async updateCampaignField(campaignId, key, value) {
+        if (!campaignId || !key) return null;
+        const campaign = await this.getCampaign(campaignId);
+        if (!campaign) return null;
+        campaign[key] = value;
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction('campaigns', 'readwrite');
+            tx.objectStore('campaigns').put(campaign);
+            tx.oncomplete = () => resolve(campaign);
+            tx.onerror = () => reject(tx.error);
+        });
+    }
+
     async getCampaignTokens(campaignId) {
         if (!campaignId) return [];
         const campaign = await this.getCampaign(campaignId);

@@ -671,6 +671,7 @@
         renderAntagonistEnemyBonusWidget();
     }
 
+    let antDangerDice = 0;   // dadi aggiunti con i Punti Pericolo per il prossimo tiro del Malvagio
     function rollAntagonistPool(name, pool, explodeTens = false, setsOf15 = false, targetHeroName = null, targetHeroBonus = 0) {
         if (!window.seventhSeaRules) return;
         const res = window.seventhSeaRules.rollSeventhSeaRisk({
@@ -819,6 +820,7 @@
                             <strong style="color:#fcd34d; font-size:12px;">Riserva di Rischio (d10):</strong>
                             <input type="number" id="s7-ant-dice-pool" value="${villainyRank}" min="1" max="40" style="width:46px; background:#0b0d13; color:#fcd34d; border:1px solid #d4af37; border-radius:4px; padding:3px; text-align:center; font-weight:900; font-size:12.5px;">
                             <span style="font-size:11px; color:#9ca3af;">d10</span>
+                            ${(window.seventhSeaInitiative && typeof window.seventhSeaInitiative.spendDangerPoint === 'function') ? `<button type="button" id="s7-btn-ant-danger-dice" title="Il Master spende 1 Punto Pericolo: +2 dadi a questo tiro del Malvagio (ripetibile, p. 176)" style="background:#7f1d1d; color:#fff; border:none; border-radius:4px; padding:3px 7px; font-size:11px; font-weight:bold; cursor:pointer;">☠️ +2 dadi</button><span id="s7-ant-danger-badge" style="font-size:11px; color:#fca5a5; font-weight:bold;"></span>` : ''}
                         </div>
                         <div style="display:flex; align-items:center; gap:8px; font-size:11px;">
                             <label style="display:flex; align-items:center; gap:3px; cursor:pointer; color:#fca5a5;" title="I 10 tirati esplodono aggiungendo un altro d10">
@@ -894,6 +896,18 @@
             });
         });
 
+        // +2 dadi pagati con la Riserva di Pericolo (solo console del Master): valgono per il prossimo tiro
+        antDangerDice = 0;
+        const dangerBtn = document.getElementById('s7-btn-ant-danger-dice');
+        const dangerBadge = () => { const b = document.getElementById('s7-ant-danger-badge'); if (b) b.textContent = antDangerDice ? `+${antDangerDice} dadi Pericolo` : ''; };
+        if (dangerBtn) {
+            dangerBtn.addEventListener('click', () => {
+                if (!window.seventhSeaInitiative.spendDangerPoint(`+2 dadi a ${m.name}`)) return;
+                antDangerDice += 2;
+                dangerBadge();
+            });
+        }
+
         // Bind Roll Risk button
         const execRollBtn = document.getElementById('s7-btn-exec-ant-roll');
         if (execRollBtn) {
@@ -906,7 +920,9 @@
                 const targetBonus = activeAntagonistTarget ? activeAntagonistTarget.bonus : 0;
                 const originalPool = activeAntagonistTarget ? activeAntagonistTarget.originalPool : null;
 
-                rollAntagonistPool(m.name, poolVal, expInp?.checked, s15Inp?.checked, targetName, targetBonus);
+                rollAntagonistPool(m.name, poolVal + antDangerDice, expInp?.checked, s15Inp?.checked, targetName, targetBonus);
+                antDangerDice = 0;
+                dangerBadge();
 
                 // Auto-reset del pool e del target subito dopo il lancio
                 if (activeAntagonistTarget && poolInp && originalPool !== null) {

@@ -35,6 +35,7 @@ window.setCampaignControlsLocked = setCampaignControlsLocked;
 function updateHostOnlineButtonState() {
     const btn = document.getElementById('btn-host-online');
     const campSelect = document.getElementById('campaign-select');
+    if (typeof refreshCampaignRoomCodeField === 'function') refreshCampaignRoomCodeField().catch(e => console.error(e));
     if (!btn) return;
     if (network && network.mode === 'host') {
         btn.style.display = 'none';
@@ -56,28 +57,146 @@ function updateHostOnlineButtonState() {
 }
 window.updateHostOnlineButtonState = updateHostOnlineButtonState;
 
+function trDm(s) { return typeof window.t === 'function' ? window.t(s) : s; }
+
+// ---- Codice Campagna fisso: scelto dal Master, salvato nella campagna, usato da "Avvia Stanza" ----
+let roomCodeFieldCampaignId = null; // campagna di cui il campo mostra il codice
+let lastSavedRoomCode = '';
+function getActiveCampaignIdSafe() {
+    try { return currentCampaignId || ''; } catch (e) { return ''; } // currentCampaignId è dichiarata più in basso
+}
+
+async function generateUniqueRoomCode(excludeCampaignId) {
+    let others = [];
+    try { others = (await vttDB.getCampaigns()) || []; } catch (e) {}
+    const used = new Set(others.filter(c => c && c.id !== excludeCampaignId && c.roomCode).map(c => vttRoomCode.key(c.roomCode)));
+    let code = NetworkManager.generateRoomCode();
+    for (let i = 0; i < 20 && used.has(vttRoomCode.key(code)); i++) code = NetworkManager.generateRoomCode();
+    return code;
+}
+
+// Codice salvato della campagna (creato alla prima volta). null se la campagna non è nell'archivio.
+async function getOrCreateCampaignRoomCode(campaignId) {
+    if (!campaignId) return null;
+    let camp = null;
+    try { camp = await vttDB.getCampaign(campaignId); } catch (e) {}
+    if (!camp) return null;
+    if (camp.roomCode && vttRoomCode.isValid(camp.roomCode)) return vttRoomCode.display(camp.roomCode);
+    const code = await generateUniqueRoomCode(campaignId);
+    try { await vttDB.updateCampaignRoomCode(campaignId, code); } catch (e) { console.error(e); }
+    return code;
+}
+
+function applyRoomCodeFieldLock() {
+    const inp = document.getElementById('campaign-room-code');
+    const btn = document.getElementById('btn-room-code-random');
+    const locked = !getActiveCampaignIdSafe() || (network && network.mode === 'host');
+    if (inp) { inp.disabled = locked; inp.style.opacity = locked ? '0.65' : '1'; }
+    if (btn) { btn.disabled = locked; btn.style.opacity = locked ? '0.5' : '1'; btn.style.cursor = locked ? 'not-allowed' : 'pointer'; }
+}
+
+async function refreshCampaignRoomCodeField(force = false) {
+    const inp = document.getElementById('campaign-room-code');
+    if (!inp) return;
+    const campId = getActiveCampaignIdSafe();
+    if (!force && campId === roomCodeFieldCampaignId) { applyRoomCodeFieldLock(); return; }
+    roomCodeFieldCampaignId = campId;
+    if (!campId) { inp.value = ''; lastSavedRoomCode = ''; applyRoomCodeFieldLock(); return; }
+    const code = await getOrCreateCampaignRoomCode(campId);
+    if (roomCodeFieldCampaignId !== campId) return; // nel frattempo è cambiata campagna
+    lastSavedRoomCode = code || '';
+    inp.value = lastSavedRoomCode;
+    applyRoomCodeFieldLock();
+}
+
+async function saveCampaignRoomCodeFromInput(silent = false) {
+    const inp = document.getElementById('campaign-room-code');
+    const campId = getActiveCampaignIdSafe();
+    if (!inp || !campId || roomCodeFieldCampaignId !== campId || (network && network.mode === 'host')) return lastSavedRoomCode;
+    const disp = vttRoomCode.display(inp.value);
+    if (disp === lastSavedRoomCode) { inp.value = lastSavedRoomCode; return lastSavedRoomCode; }
+    if (!vttRoomCode.isValid(disp)) {
+        if (!silent) showToast(trDm('⚠️ Il Codice Campagna deve avere da 6 a 24 lettere o cifre.'));
+        inp.value = lastSavedRoomCode;
+        return lastSavedRoomCode;
+    }
+    let others = [];
+    try { others = (await vttDB.getCampaigns()) || []; } catch (e) {}
+    if (others.some(c => c && c.id !== campId && c.roomCode && vttRoomCode.key(c.roomCode) === vttRoomCode.key(disp))) {
+        if (!silent) showToast(trDm('⚠️ Questo codice è già usato da un\'altra tua campagna.'));
+        inp.value = lastSavedRoomCode;
+        return lastSavedRoomCode;
+    }
+    try { await vttDB.updateCampaignRoomCode(campId, disp); } catch (e) { console.error(e); return lastSavedRoomCode; }
+    if (getActiveCampaignIdSafe() !== campId) return disp;
+    lastSavedRoomCode = disp;
+    inp.value = disp;
+    if (!silent) showToast(trDm('🔑 Codice Campagna salvato:') + ' ' + disp);
+    return disp;
+}
+
+(function setupRoomCodeField() {
+    const inp = document.getElementById('campaign-room-code');
+    const btn = document.getElementById('btn-room-code-random');
+    if (inp) {
+        inp.addEventListener('change', () => { saveCampaignRoomCodeFromInput(false); });
+        inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } });
+    }
+    if (btn && inp) {
+        btn.addEventListener('click', async () => {
+            const campId = getActiveCampaignIdSafe();
+            if (!campId || (network && network.mode === 'host')) return;
+            inp.value = await generateUniqueRoomCode(campId);
+            await saveCampaignRoomCodeFromInput(false);
+        });
+    }
+})();
+
 // Setup online host button
-document.getElementById('btn-host-online').addEventListener('click', () => {
+document.getElementById('btn-host-online').addEventListener('click', async () => {
     const campSelect = document.getElementById('campaign-select');
     if (!campSelect || !campSelect.value) {
-        alert(typeof window.t === 'function' ? window.t('⚠️ Seleziona prima una Campagna per avviare la sessione online!') : '⚠️ Seleziona prima una Campagna per avviare la sessione online!');
+        showToast(trDm('⚠️ Seleziona prima una Campagna per avviare la sessione online!'));
         return;
     }
     const btn = document.getElementById('btn-host-online');
     const btnClose = document.getElementById('btn-close-room');
     const status = document.getElementById('online-status');
+    if (btn.dataset.starting === '1') return;
+    btn.dataset.starting = '1';
     btn.disabled = true;
     btn.innerText = "Creazione Stanza...";
-    
-    network.hostRoom().then(id => {
+
+    // Codice fisso della campagna (con l'eventuale modifica appena scritta); se la campagna non è nell'archivio, casuale
+    if (roomCodeFieldCampaignId === campSelect.value) await saveCampaignRoomCodeFromInput(true);
+    const code = await getOrCreateCampaignRoomCode(campSelect.value);
+
+    const campLabel = (campSelect.selectedOptions && campSelect.selectedOptions[0]) ? campSelect.selectedOptions[0].textContent : '';
+    network.hostRoom(code || null, {
+        label: campLabel,
+        onStatus: (s) => {
+            if (s && s.state === 'busy') {
+                status.innerHTML = `<span style="color:#ffcc00;">⏳ ${escapeHTML(trDm('Codice ancora occupato dalla sessione precedente, nuovo tentativo…'))}</span>`;
+            }
+        }
+    }).then(id => {
+        btn.dataset.starting = '';
         btn.style.display = 'none';
         if (btnClose) btnClose.style.display = 'block';
-        status.innerHTML = `<span style="color:#4caf50; font-weight:bold;">Online!</span><br>Codice Stanza: <b id="host-room-code-badge" style="color:#ffcc00; font-size:16px; user-select: all; cursor: pointer; letter-spacing: 1px;" title="Seleziona o clicca per copiare">${escapeHTML(id)}</b>`;
+        status.innerHTML = `<span style="color:#4caf50; font-weight:bold;">Online!</span><br>${escapeHTML(trDm('Codice Campagna:'))} <b id="host-room-code-badge" style="color:#ffcc00; font-size:16px; user-select: all; cursor: pointer; letter-spacing: 1px;" title="Seleziona o clicca per copiare">${escapeHTML(id)}</b>`;
         setCampaignControlsLocked(true);
+        applyRoomCodeFieldLock();
+        // Se il Master ricarica la pagina, la stanza riparte da sola con lo stesso codice
+        try { sessionStorage.setItem('vtt_dm_room_active', campSelect.value); } catch (e) {}
     }).catch(err => {
+        btn.dataset.starting = '';
         btn.disabled = false;
         btn.innerText = "Riprova";
-        status.innerHTML = `<span style="color:#f44336;">Errore di connessione.</span>`;
+        let msg = trDm('Errore di connessione.');
+        if (err && err.vttBusy) msg = trDm('Codice già in uso da un\'altra stanza: cambia il Codice Campagna e riprova.');
+        else if (err && err.vttInvalid) msg = trDm('⚠️ Il Codice Campagna deve avere da 6 a 24 lettere o cifre.');
+        status.innerHTML = `<span style="color:#f44336;">${escapeHTML(msg)}</span>`;
+        applyRoomCodeFieldLock();
         console.error(err);
     });
 });
@@ -88,6 +207,7 @@ if (btnCloseRoom) {
         const confirmMsg = typeof window.t === 'function' ? window.t('Terminare la sessione online e disconnettere tutti i giocatori?') : 'Terminare la sessione online e disconnettere tutti i giocatori?';
         if (confirm(confirmMsg)) {
             network.closeRoom();
+            try { sessionStorage.removeItem('vtt_dm_room_active'); } catch (e) {}
             const btn = document.getElementById('btn-host-online');
             const status = document.getElementById('online-status');
             const playersDiv = document.getElementById('online-players');
@@ -358,6 +478,8 @@ network.onMessage((data, peerId) => {
         if (peerId === 'local' && typeof showToast === 'function') {
             showToast('🟢 Schermo Giocatore Locale connesso!');
         }
+        // Nuovo ingresso (o ricarica pagina) di questo peer: deve ricevere di nuovo tutte le schede una volta
+        forgetPcSheetSendsTo(peerId);
         // Invia SUBITO la mappa compressa per prima cosa assoluta (0ms black screen)
         const mapPayload = getNetworkMapPayload();
         if (mapPayload) {
@@ -846,7 +968,9 @@ network.onMessage((data, peerId) => {
         }
     } else if (data.type === 'REQUEST_PC_SHEET') {
         const token = engine.tokens.find(t => t.id === data.tokenId);
-        if (token) {
+        const reqVerKey = token ? getPcSheetVerKey(token) : null;
+        if (token && !wasPcSheetJustSentTo(peerId, token.id, reqVerKey)) {
+            markPcSheetSentTo(peerId, token.id, reqVerKey);
             network.send({
                 type: 'PC_SHEET_SYNC',
                 payload: {
@@ -882,8 +1006,9 @@ network.onMessage((data, peerId) => {
                     p.hpCurrent = token.hpCurrent;
                     p.hpMax = token.hpMax;
                     p.ac = token.ac;
+                    // Solo l'elenco del tracker: ridisegno e spedizione li fa già questo gestore qui sotto (una volta sola)
+                    if (typeof renderTrackerList === 'function') renderTrackerList({ skipRenderAndSync: true });
                 }
-                if (typeof renderTrackerList === 'function') renderTrackerList();
             }
             if (engine.selectedTokenId === token.id && typeof window.updateSelectedTokenControls === 'function') {
                 window.updateSelectedTokenControls(token);
@@ -1152,6 +1277,18 @@ vttDB.init().then(async () => {
         console.warn("Libreria token:", e);
     }
     await refreshCampaigns(true);
+    // Il Master ha ricaricato la pagina con la stanza attiva: riaprila con lo stesso codice (i giocatori stanno già riprovando)
+    try {
+        const activeCamp = sessionStorage.getItem('vtt_dm_room_active');
+        const sel = document.getElementById('campaign-select');
+        if (activeCamp && sel && sel.value === activeCamp && network.mode !== 'host') {
+            showToast(trDm('🔄 Riapertura automatica della stanza online…'));
+            const hb = document.getElementById('btn-host-online');
+            if (hb) { hb.disabled = false; hb.click(); }
+        } else if (activeCamp) {
+            sessionStorage.removeItem('vtt_dm_room_active');
+        }
+    } catch (e) {}
 });
 
 let lastSyncTime = 0;
@@ -1159,6 +1296,30 @@ let syncTimeout = null;
 const syncedTokenImageIds = new Set();
 const syncedImageKeys = new Set();
 const syncedPcSheetVers = new Map();
+// Anti-duplicato invio schede mirato a un singolo peer: al join la stessa scheda partiva fino a 3 volte
+// (push a t=0, risposta a REQUEST_PC_SHEET, reinvio a t=150ms). Finestra breve di 2s: una nuova richiesta
+// successiva (es. pacchetto perso) viene sempre onorata, così come ogni nuova versione della scheda.
+const recentPcSheetSends = new Map(); // `${peerId}|${tokenId}|${verKey}` -> timestamp
+const PC_SHEET_RESEND_WINDOW_MS = 2000;
+function getPcSheetVerKey(t) {
+    const sVer = t.pcSheet ? (t.pcSheet.updatedAt || 1) : 0;
+    return `${sVer}_${t.adventureJournalUpdatedAt || 1}`;
+}
+function wasPcSheetJustSentTo(peerId, tokenId, verKey) {
+    const ts = recentPcSheetSends.get(`${peerId}|${tokenId}|${verKey}`);
+    return !!ts && (Date.now() - ts < PC_SHEET_RESEND_WINDOW_MS);
+}
+function markPcSheetSentTo(peerId, tokenId, verKey) {
+    const now = Date.now();
+    if (recentPcSheetSends.size > 300) {
+        recentPcSheetSends.forEach((ts, k) => { if (now - ts >= PC_SHEET_RESEND_WINDOW_MS) recentPcSheetSends.delete(k); });
+    }
+    recentPcSheetSends.set(`${peerId}|${tokenId}|${verKey}`, now);
+}
+function forgetPcSheetSendsTo(peerId) {
+    const prefix = `${peerId}|`;
+    recentPcSheetSends.forEach((ts, k) => { if (k.startsWith(prefix)) recentPcSheetSends.delete(k); });
+}
 const compressedTokenSrcByKey = new Map();
 let cachedNetworkMapSource = null;
 let cachedNetworkMapOutput = null;
@@ -1337,13 +1498,14 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
         const combKey = `${sheetVer}_${jVer}`;
         if (t.pcSheet || t.adventureJournal) {
             const needSheetSend = sendFullImages || !!targetPeerId || syncedPcSheetVers.get(t.id) !== combKey;
-            if (needSheetSend) {
+            if (needSheetSend && !(targetPeerId && wasPcSheetJustSentTo(targetPeerId, t.id, combKey))) {
                 pcSheetsToSendAfterState.push({
                     tokenId: t.id,
                     pcSheet: t.pcSheet || null,
                     adventureJournal: t.adventureJournal || ''
                 });
-                if (!targetPeerId) syncedPcSheetVers.set(t.id, combKey);
+                if (targetPeerId) markPcSheetSentTo(targetPeerId, t.id, combKey);
+                else syncedPcSheetVers.set(t.id, combKey);
             }
         }
 
@@ -1383,6 +1545,22 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
         };
     });
 
+    // Ordine di spedizione delle schede PG:
+    // - aggiornamenti normali (broadcast): la scheda PRIMA dello stato. Così il Giocatore, ricostruendo i token con lo
+    //   STATE_SYNC, trova già in cache la versione nuova: niente copia vecchia rimessa nel token, niente REQUEST_PC_SHEET.
+    // - ingresso di un giocatore (targetPeerId) o invio completo (sendFullImages): lo stato resta PRIMO, per mostrare
+    //   subito mappa e token; le schede (anche molte) seguono.
+    const sheetsBeforeState = !targetPeerId && !sendFullImages;
+    const sendPendingPcSheets = () => {
+        pcSheetsToSendAfterState.forEach(item => {
+            network.send({
+                type: 'PC_SHEET_SYNC',
+                payload: item
+            }, targetPeerId);
+        });
+    };
+    if (sheetsBeforeState) sendPendingPcSheets();
+
     const hpDisplayStyle = document.getElementById('hp-display-style') ? document.getElementById('hp-display-style').value : 'bar';
     const conditionDisplayStyle = document.getElementById('condition-display-style') ? document.getElementById('condition-display-style').value : 'concentric';
     network.send({
@@ -1415,14 +1593,7 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
             }, targetPeerId);
         });
     }
-    if (pcSheetsToSendAfterState.length > 0) {
-        pcSheetsToSendAfterState.forEach(item => {
-            network.send({
-                type: 'PC_SHEET_SYNC',
-                payload: item
-            }, targetPeerId);
-        });
-    }
+    if (!sheetsBeforeState) sendPendingPcSheets();
 }
 window.syncState = syncState;
 
@@ -6050,7 +6221,11 @@ function handleMove(e) {
         } else {
             activeStroke.x = worldPos.x;
             activeStroke.y = worldPos.y;
-            engine.renderAll();
+            // Trascinamento Pin/Nota: vive solo sul livello disegni privato. Ridisegnare a ogni movimento
+            // anche token, sagome, anelli e targhette (renderAll) era lavoro inutile; il ridisegno completo
+            // avviene comunque al rilascio (handleEnd -> needsFullRender).
+            if (activeStrokeType === 'note') engine.renderDrawings();
+            else engine.renderAll();
         }
     } else if (currentTool === 'move-grid' && activeStroke) {
         const dx = worldPos.x - activeStroke.startWorldX;
@@ -6106,7 +6281,9 @@ function handleMove(e) {
         }
     } else if (currentTool.startsWith('draw-')) {
         activeStroke.points.push(worldPos);
-        engine.renderAll();
+        // Disegno a mano libera: a ogni punto basta ridisegnare i livelli disegni, non token e targhette.
+        // Il ridisegno completo avviene al rilascio (handleEnd -> needsFullRender).
+        engine.renderDrawings();
         if (currentTool === 'draw-public') {
             if (Date.now() - (window.lastDrawLiveSend || 0) > 40) {
                 window.lastDrawLiveSend = Date.now();

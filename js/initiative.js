@@ -305,6 +305,7 @@ function sortInitiativeParticipants() {
 }
 
 window.autoRollInitiative = function(includePCs = false) {
+    if (window.seventhSeaInitiative && window.seventhSeaInitiative.handlesTracker()) return; // 7th Sea: niente d20, contano gli Incrementi
     if (!engine.initiative) return;
     if (!Array.isArray(engine.initiative.participants) || engine.initiative.participants.length === 0) {
         setupInitiative();
@@ -376,8 +377,7 @@ window.autoRollInitiative = function(includePCs = false) {
     if (engine.initiative.active) {
         engine.initiative.currentTurnIndex = 0;
     }
-    renderTrackerList();
-    if (typeof syncState === 'function') syncState();
+    renderTrackerList(); // ridisegna la mappa e spedisce lo stato
 
     if (typeof showToast === 'function') {
         const modeLbl = includePCs ? 'Tutti (Inclusi PG)' : 'Solo Mostri/PNG (Esclusi PG)';
@@ -458,7 +458,12 @@ function createSingleParticipantRow(p, index, isIndented = false) {
     return div;
 }
 
-function renderTrackerList() {
+// opts.skipRenderAndSync === true: aggiorna solo l'elenco del tracker, senza ridisegnare la mappa né spedire lo stato
+// (per i chiamanti che lo fanno già subito dopo). Senza opzioni il comportamento è quello di sempre.
+function renderTrackerList(opts) {
+    // Campagne 7th Sea: il tracker è la Sequenza d'Azione del modulo di sistema (js/systems/7thsea/initiative.js)
+    if (window.seventhSeaInitiative && window.seventhSeaInitiative.handlesTracker()) { window.seventhSeaInitiative.renderTrackerList(opts); return; }
+    if (window.seventhSeaInitiative) window.seventhSeaInitiative.restoreCoreTrackerUi();
     const list = document.getElementById('tracker-list');
     if (!list) return;
     list.innerHTML = '';
@@ -560,6 +565,7 @@ function renderTrackerList() {
         }
     }
     
+    if (opts && opts.skipRenderAndSync === true) return;
     // Aggiorna visibilità token correnti (il rendering viene chiamato in dm.js ma qui forziamo)
     if (typeof engine.renderAll === 'function') engine.renderAll();
     if (typeof syncState === 'function') syncState();
@@ -591,9 +597,7 @@ window.updateGroupHPMath = function(groupKey, mathStr) {
             window.updateParticipantHPMath(idx, mathStr, true);
         }
     });
-    renderTrackerList();
-    engine.renderAll();
-    if (typeof syncState === 'function') syncState();
+    renderTrackerList(); // ridisegna la mappa e spedisce lo stato
 };
 
 window.removeTrackerGroup = function(groupKey) {
@@ -622,6 +626,7 @@ window.removeParticipant = function(index) {
 };
 
 window.handleRollForInitiative = function(data) {
+    if (window.seventhSeaInitiative && window.seventhSeaInitiative.handlesTracker()) return; // 7th Sea: l'ordine lo decide la Sequenza d'Azione
     if (!data || typeof data !== 'object') return;
     if (typeof engine === 'undefined' || !engine || !engine.isDM) return;
     if (!engine.initiative || !Array.isArray(engine.initiative.participants) || engine.initiative.participants.length === 0) return;
@@ -672,8 +677,7 @@ window.handleRollForInitiative = function(data) {
 
         if (matched) {
             matched.init = resultNum;
-            if (typeof renderTrackerList === 'function') renderTrackerList();
-            if (typeof syncState === 'function') syncState();
+            if (typeof renderTrackerList === 'function') renderTrackerList(); // ridisegna la mappa e spedisce lo stato
             if (typeof showToast === 'function') {
                 showToast(`⚔️ Iniziativa per ${matched.name}: ${resultNum}`);
             }
@@ -710,8 +714,7 @@ window.handleRollForInitiative = function(data) {
                 matches.forEach(p => {
                     p.init = resultNum;
                 });
-                if (typeof renderTrackerList === 'function') renderTrackerList();
-                if (typeof syncState === 'function') syncState();
+                if (typeof renderTrackerList === 'function') renderTrackerList(); // ridisegna la mappa e spedisce lo stato
                 if (typeof showToast === 'function') {
                     showToast(`⚔️ Iniziativa ${monsterName} (${matches.length}): ${resultNum}`);
                 }
@@ -741,8 +744,7 @@ window.handleRollForInitiative = function(data) {
 
             if (targetP) {
                 targetP.init = resultNum;
-                if (typeof renderTrackerList === 'function') renderTrackerList();
-                if (typeof syncState === 'function') syncState();
+                if (typeof renderTrackerList === 'function') renderTrackerList(); // ridisegna la mappa e spedisce lo stato
                 if (typeof showToast === 'function') {
                     showToast(`⚔️ Iniziativa per ${targetP.name}: ${resultNum}`);
                 }
@@ -787,8 +789,7 @@ document.getElementById('btn-tracker-state').addEventListener('click', (e) => {
         engine.initiative.currentTurnIndex = 0;
         if (typeof showToast === 'function') showToast('Ordine aggiornato!');
     }
-    renderTrackerList();
-    if (typeof syncState === 'function') syncState();
+    renderTrackerList(); // ridisegna la mappa e spedisce lo stato
 });
 
 document.getElementById('btn-tracker-reset').addEventListener('click', () => {
@@ -820,8 +821,7 @@ document.getElementById('btn-tracker-reset').addEventListener('click', () => {
                 const sc = document.getElementById('selected-shape-controls');
                 if (sc) sc.style.display = 'none';
             }
-            engine.renderTokensLayer();
-            if (typeof syncState === 'function') syncState();
+            // Ridisegno e spedizione: una sola volta alla fine (dopo tutte le pulizie)
             if (typeof showToast === 'function') showToast('Effetti AoE a tempo dissolti.');
         }
     }
@@ -875,16 +875,17 @@ document.getElementById('btn-tracker-reset').addEventListener('click', () => {
 
         if (auraResetCount > 0) {
             if (typeof window.renderConditionsList === 'function') window.renderConditionsList();
-            engine.renderAll();
-            if (typeof syncState === 'function') syncState(true);
         }
     }
 
-    renderTrackerList();
-    if (typeof syncState === 'function') syncState();
+    // Un solo ridisegno della mappa e una sola spedizione per l'intero Ferma/Reset
+    renderTrackerList({ skipRenderAndSync: true });
+    engine.renderAll();
+    if (typeof syncState === 'function') syncState(true);
 });
 
 window.nextInitiativeTurn = function() {
+    if (window.seventhSeaInitiative && window.seventhSeaInitiative.handlesTracker()) return; // 7th Sea: l'ordine lo decide la Sequenza d'Azione
     if (!engine.initiative.participants || engine.initiative.participants.length === 0) return;
 
     const curIdx = engine.initiative.currentTurnIndex;
@@ -1032,8 +1033,7 @@ window.nextInitiativeTurn = function() {
         }
 
         if (changed || expiredShapes.length > 0) {
-            engine.renderTokensLayer();
-            if (typeof syncState === 'function') syncState();
+            // Ridisegno e spedizione: una sola volta alla fine (dopo tutti i timer)
         }
     }
 
@@ -1108,8 +1108,7 @@ window.nextInitiativeTurn = function() {
         });
 
         if (auraChanged) {
-            engine.renderTokensLayer();
-            if (typeof syncState === 'function') syncState();
+            // Ridisegno e spedizione: una sola volta alla fine (dopo tutti i timer)
         }
 
         // Gestione decremento turni per le Condizioni a tempo dei Token
@@ -1182,8 +1181,7 @@ window.nextInitiativeTurn = function() {
 
         if (condChanged) {
             if (typeof window.renderConditionsList === 'function') window.renderConditionsList();
-            engine.renderTokensLayer();
-            if (typeof syncState === 'function') syncState();
+            // Ridisegno e spedizione: una sola volta alla fine (dopo tutti i timer)
         }
 
         // Gestione decremento turni per la Durata dei Token / Evocazioni (durationRounds > 0)
@@ -1286,8 +1284,7 @@ window.nextInitiativeTurn = function() {
                 const selTok = engine.tokens.find(t => t.id === engine.selectedTokenId);
                 if (selTok) window.updateSelectedTokenControls(selTok);
             }
-            engine.renderAll();
-            if (typeof syncState === 'function') syncState(true);
+            // Ridisegno e spedizione: una sola volta alla fine (dopo tutti i timer)
         }
     }
 
@@ -1295,10 +1292,14 @@ window.nextInitiativeTurn = function() {
         engine.initiative.round = currentRound + 1;
     }
     engine.initiative.currentTurnIndex = (engine.initiative.currentTurnIndex + 1) % engine.initiative.participants.length;
-    renderTrackerList();
+    // Un solo ridisegno della mappa e una sola spedizione per l'intero cambio di turno (prima: fino a 4-5 ridisegni e 3 spedizioni)
+    renderTrackerList({ skipRenderAndSync: true });
+    engine.renderAll();
+    if (typeof syncState === 'function') syncState(true);
 };
 
 window.prevInitiativeTurn = function() {
+    if (window.seventhSeaInitiative && window.seventhSeaInitiative.handlesTracker()) return; // 7th Sea: l'ordine lo decide la Sequenza d'Azione
     if (!engine.initiative.participants || engine.initiative.participants.length === 0) return;
     engine.initiative.currentTurnIndex = (engine.initiative.currentTurnIndex - 1 + engine.initiative.participants.length) % engine.initiative.participants.length;
     renderTrackerList();
@@ -1387,8 +1388,6 @@ window.updateParticipantHPMath = function(index, mathStr, skipRender = false) {
     }
     
     if (!skipRender) {
-        renderTrackerList();
-        engine.renderAll();
-        syncState();
+        renderTrackerList(); // ridisegna la mappa e spedisce lo stato
     }
 };

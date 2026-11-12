@@ -232,11 +232,8 @@ function formatConnectionErrorMessage(err, room) {
 }
 
 async function queryAndPopulateCharacters(roomCode) {
-    let cleanRoom = (roomCode || '').trim().toUpperCase().replace(/\s+/g, '');
-    if (/^[A-Z0-9]{8}$/.test(cleanRoom)) {
-        cleanRoom = cleanRoom.substring(0, 4) + '-' + cleanRoom.substring(4);
-    }
-    if (!cleanRoom || cleanRoom.length < 4) return;
+    const cleanRoom = vttRoomCode.display(roomCode);
+    if (!vttRoomCode.isValid(cleanRoom)) return;
     if (cleanRoom === lastQueriedRoom && isQueryingRoomChars) return;
     lastQueriedRoom = cleanRoom;
     isQueryingRoomChars = true;
@@ -348,12 +345,10 @@ const roomInput = document.getElementById('login-room');
 if (roomInput) {
     const savedRoom = localStorage.getItem('vtt_last_room_code') || '';
     if (roomParam) {
-        let val = roomParam.trim().toUpperCase().replace(/\s+/g, '');
-        if (/^[A-Z0-9]{8}$/.test(val)) val = val.substring(0, 4) + '-' + val.substring(4);
+        const val = vttRoomCode.display(roomParam);
         roomInput.value = val;
     } else if (savedRoom) {
-        let val = savedRoom.trim().toUpperCase().replace(/\s+/g, '');
-        if (/^[A-Z0-9]{8}$/.test(val)) val = val.substring(0, 4) + '-' + val.substring(4);
+        const val = vttRoomCode.display(savedRoom);
         roomInput.value = val;
     }
 
@@ -361,31 +356,24 @@ if (roomInput) {
     roomInput.addEventListener('input', () => {
         if (roomDebounce) clearTimeout(roomDebounce);
         roomDebounce = setTimeout(() => {
-            let val = roomInput.value.trim().toUpperCase().replace(/\s+/g, '');
-            if (/^[A-Z0-9]{8}$/.test(val)) {
-                val = val.substring(0, 4) + '-' + val.substring(4);
-                roomInput.value = val;
-            }
-            if (val.length >= 6) {
+            const val = vttRoomCode.display(roomInput.value);
+            if (vttRoomCode.isValid(val)) {
                 queryAndPopulateCharacters(val);
             }
         }, 350);
     });
 
     roomInput.addEventListener('blur', () => {
-        let val = roomInput.value.trim().toUpperCase().replace(/\s+/g, '');
-        if (/^[A-Z0-9]{8}$/.test(val)) {
-            val = val.substring(0, 4) + '-' + val.substring(4);
-            roomInput.value = val;
-        }
-        if (val.length >= 4) {
+        const val = vttRoomCode.display(roomInput.value);
+        if (val) roomInput.value = val;
+        if (vttRoomCode.isValid(val)) {
             queryAndPopulateCharacters(val);
         }
     });
 
-    const initRoom = roomInput.value.trim();
-    if (initRoom && initRoom.length >= 4) {
-        setTimeout(() => queryAndPopulateCharacters(initRoom), 300);
+    const initRoom = vttRoomCode.display(roomInput.value);
+    if (vttRoomCode.isValid(initRoom)) {
+        setTimeout(() => { if (!window.__vttSkipInitialRoomQuery) queryAndPopulateCharacters(initRoom); }, 300);
     }
 }
 
@@ -411,7 +399,7 @@ document.getElementById('btn-login-online').addEventListener('click', async () =
 
         if (!room) {
             status.style.color = '#ff5252';
-            status.innerText = "Inserisci il Codice Stanza";
+            status.innerText = "Inserisci il Codice Campagna";
             return;
         }
         if (!name) {
@@ -421,11 +409,13 @@ document.getElementById('btn-login-online').addEventListener('click', async () =
         }
 
         // Normalizza il codice stanza
-        let cleanRoom = room.toUpperCase().replace(/\s+/g, '');
-        if (/^[A-Z0-9]{8}$/.test(cleanRoom)) {
-            cleanRoom = cleanRoom.substring(0, 4) + '-' + cleanRoom.substring(4);
-            document.getElementById('login-room').value = cleanRoom;
-            room = cleanRoom;
+        const cleanRoom = vttRoomCode.display(room);
+        document.getElementById('login-room').value = cleanRoom;
+        room = cleanRoom;
+        if (!vttRoomCode.isValid(room)) {
+            status.style.color = '#ff5252';
+            status.innerText = (typeof window.t === 'function') ? window.t('Codice non valido: servono da 6 a 24 lettere o cifre.') : 'Codice non valido: servono da 6 a 24 lettere o cifre.';
+            return;
         }
         
         status.style.color = '#ffcc00';
@@ -462,6 +452,7 @@ document.getElementById('btn-login-online').addEventListener('click', async () =
             console.log("Connesso con successo", joinPayload);
             engine.localPlayerName = name;
             try { localStorage.setItem('vtt_last_room_code', room); } catch (e) {}
+            rememberSuccessfulJoin(room, name, joinPayload && joinPayload.roomLabel);
             document.getElementById('login-overlay').style.display = 'none';
             updatePlayerRoleAndUI();
             network.send({ type: 'PLAYER_READY' });
@@ -470,7 +461,6 @@ document.getElementById('btn-login-online').addEventListener('click', async () =
             status.style.color = '#ff5252';
             status.innerText = friendlyMsg;
             console.error("Join Room Error:", err);
-            alert(friendlyMsg);
         }).finally(() => {
             if (btnLogin) {
                 btnLogin.disabled = false;
@@ -481,6 +471,137 @@ document.getElementById('btn-login-online').addEventListener('click', async () =
         alert("Errore nel tentativo di connessione: " + e.message);
     }
 });
+
+// ---- "Rientra in campagna": ultimi accessi riusciti su questo dispositivo (max 3) ----
+const REJOIN_LIST_KEY = 'vtt_rejoin_list';             // localStorage: resta anche nei giorni successivi
+const REJOIN_AUTO_KEY = 'vtt_auto_rejoin';             // localStorage: casella "Entra automaticamente"
+const PLAYER_SESSION_KEY = 'vtt_player_session';       // sessionStorage: rientro dopo ricaricamento nella stessa scheda
+const NO_AUTO_ONCE_KEY = 'vtt_player_no_autojoin_once';
+const trP = (k) => (typeof window.t === 'function' ? window.t(k) : k);
+
+function readRejoinList() {
+    try {
+        const a = JSON.parse(localStorage.getItem(REJOIN_LIST_KEY) || '[]');
+        return Array.isArray(a) ? a.filter(e => e && e.code && e.name && vttRoomCode.isValid(e.code)).slice(0, 3) : [];
+    } catch (e) { return []; }
+}
+function writeRejoinList(list) {
+    try { localStorage.setItem(REJOIN_LIST_KEY, JSON.stringify(list.slice(0, 3))); } catch (e) {}
+}
+function rememberSuccessfulJoin(code, name, label) {
+    const k = vttRoomCode.key(code);
+    const n = String(name || '').trim();
+    if (!k || !n) return;
+    const list = readRejoinList().filter(e => !(vttRoomCode.key(e.code) === k && String(e.name).trim().toLowerCase() === n.toLowerCase()));
+    list.unshift({ code: vttRoomCode.display(code), name: n, label: String(label || '').slice(0, 60), at: Date.now() });
+    writeRejoinList(list);
+    try { sessionStorage.setItem(PLAYER_SESSION_KEY, JSON.stringify({ code: vttRoomCode.display(code), name: n })); } catch (e) {}
+}
+function startRejoin(entry) {
+    const roomEl = document.getElementById('login-room');
+    const nameEl = document.getElementById('login-name');
+    const charSel = document.getElementById('login-character-select');
+    const btn = document.getElementById('btn-login-online');
+    if (!roomEl || !nameEl || !btn || btn.disabled) return;
+    roomEl.value = entry.code;
+    nameEl.value = entry.name;
+    if (charSel) charSel.value = ''; // entra con il nome salvato, senza aspettare l'elenco dei personaggi
+    btn.click();
+}
+function renderRejoinList() {
+    const box = document.getElementById('login-rejoin-container');
+    const listEl = document.getElementById('login-rejoin-list');
+    if (!box || !listEl) return;
+    const list = readRejoinList();
+    listEl.innerHTML = '';
+    if (!list.length) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    list.forEach((entry, idx) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; gap:4px; margin-bottom:5px;';
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'login-rejoin-btn';
+        b.style.cssText = 'flex:1; min-width:0; text-align:left; padding:8px 10px; background:#1b5e20; color:#fff; border:1px solid #43a047; border-radius:5px; cursor:pointer; font-size:12px; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+        b.textContent = `${entry.label || entry.code} — ${entry.name}`;
+        b.title = `${entry.code} · ${entry.name}`;
+        b.addEventListener('click', () => startRejoin(entry));
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.textContent = '✕';
+        x.title = trP('Dimentica questo accesso');
+        x.style.cssText = 'background:#333; color:#bbb; border:1px solid #555; border-radius:5px; cursor:pointer; padding:0 9px; font-size:12px;';
+        x.addEventListener('click', () => {
+            const l = readRejoinList();
+            l.splice(idx, 1);
+            writeRejoinList(l);
+            renderRejoinList();
+        });
+        row.appendChild(b);
+        row.appendChild(x);
+        listEl.appendChild(row);
+    });
+    const auto = document.getElementById('login-auto-rejoin');
+    if (auto) auto.checked = localStorage.getItem(REJOIN_AUTO_KEY) === '1';
+}
+(function setupRejoin() {
+    const auto = document.getElementById('login-auto-rejoin');
+    if (auto) {
+        auto.addEventListener('change', () => {
+            try { if (auto.checked) localStorage.setItem(REJOIN_AUTO_KEY, '1'); else localStorage.removeItem(REJOIN_AUTO_KEY); } catch (e) {}
+        });
+    }
+    const overlay = document.getElementById('login-overlay');
+    const mode = urlParams.get('mode');
+    if (mode === 'tv' || mode === 'local' || !overlay || overlay.style.display === 'none') return;
+    renderRejoinList();
+    if (urlParams.get('autojoin') === 'true') return;
+
+    let skipOnce = false;
+    try { skipOnce = sessionStorage.getItem(NO_AUTO_ONCE_KEY) === '1'; sessionStorage.removeItem(NO_AUTO_ONCE_KEY); } catch (e) {}
+    if (skipOnce) return;
+
+    // 1) pagina ricaricata nella stessa scheda (tipico dei telefoni): rientra sempre
+    // 2) browser riaperto: rientra solo se il giocatore ha attivato la casella su questo dispositivo
+    let entry = null;
+    try {
+        const s = JSON.parse(sessionStorage.getItem(PLAYER_SESSION_KEY) || 'null');
+        if (s && s.code && s.name && vttRoomCode.isValid(s.code)) entry = s;
+    } catch (e) {}
+    const urlRoom = urlParams.get('room');
+    if (entry && urlRoom && vttRoomCode.key(urlRoom) !== vttRoomCode.key(entry.code)) entry = null; // link a un'altra stanza
+    if (!entry && !urlRoom && localStorage.getItem(REJOIN_AUTO_KEY) === '1') {
+        const l = readRejoinList();
+        if (l.length) entry = l[0];
+    }
+    if (!entry) return;
+
+    window.__vttSkipInitialRoomQuery = true; // niente connessione in più per l'elenco dei personaggi
+    const status = document.getElementById('login-status');
+    let cancelled = false;
+    if (status) {
+        status.style.color = '#81c784';
+        status.textContent = '';
+        const span = document.createElement('span');
+        span.textContent = `${trP('↩️ Rientro automatico come')} ${entry.name}… `;
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.textContent = trP('Annulla');
+        cancel.style.cssText = 'background:#333; color:#fff; border:1px solid #777; border-radius:4px; padding:2px 8px; cursor:pointer; font-size:11px;';
+        cancel.addEventListener('click', () => {
+            cancelled = true;
+            status.textContent = '';
+            window.__vttSkipInitialRoomQuery = false;
+            try { sessionStorage.removeItem(PLAYER_SESSION_KEY); } catch (e) {}
+            const r = document.getElementById('login-room');
+            const code = r ? vttRoomCode.display(r.value) : '';
+            if (vttRoomCode.isValid(code)) queryAndPopulateCharacters(code);
+        });
+        status.appendChild(span);
+        status.appendChild(cancel);
+    }
+    setTimeout(() => { if (!cancelled) startRejoin(entry); }, 1200);
+})();
 
 let playerToastTimeout = null;
 function showPlayerToast(msg) {
@@ -524,6 +645,84 @@ function showPlayerToast(msg) {
 }
 window.showToast = showPlayerToast;
 
+// ---- Rientro automatico dopo un calo di rete (lo stato arriva da network.js) ----
+let reconnectBannerEl = null;
+function getReconnectBanner() {
+    if (reconnectBannerEl) return reconnectBannerEl;
+    const el = document.createElement('div');
+    el.id = 'player-reconnect-banner';
+    el.style.cssText = 'position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:10001;display:none;align-items:center;gap:10px;color:#fff;padding:8px 14px;border-radius:8px;font-weight:bold;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.6);max-width:92vw;';
+    const txt = document.createElement('span');
+    txt.id = 'player-reconnect-text';
+    const btn = document.createElement('button');
+    btn.id = 'player-reconnect-retry';
+    btn.type = 'button';
+    btn.style.cssText = 'background:rgba(0,0,0,0.35);color:#fff;border:1px solid rgba(255,255,255,0.6);border-radius:5px;padding:4px 10px;font-weight:bold;cursor:pointer;font-size:12px;white-space:nowrap;';
+    btn.addEventListener('click', () => { if (typeof network.retryNow === 'function') network.retryNow(); });
+    el.appendChild(txt);
+    el.appendChild(btn);
+    document.body.appendChild(el);
+    reconnectBannerEl = el;
+    return el;
+}
+function setReconnectBanner(text, btnLabel, danger) {
+    const el = getReconnectBanner();
+    el.style.background = danger ? 'rgba(198, 40, 40, 0.96)' : 'rgba(21, 101, 192, 0.96)';
+    el.style.border = danger ? '1px solid #ef5350' : '1px solid #64b5f6';
+    el.querySelector('#player-reconnect-text').textContent = text;
+    const btn = el.querySelector('#player-reconnect-retry');
+    btn.style.display = btnLabel ? 'inline-block' : 'none';
+    if (btnLabel) btn.textContent = btnLabel;
+    el.style.display = 'flex';
+}
+function hideReconnectBanner() {
+    if (reconnectBannerEl) reconnectBannerEl.style.display = 'none';
+}
+
+// Fine sessione voluta (stanza chiusa / espulsione): finestra in pagina, nessun rientro automatico
+function showPlayerEndModal(msg) {
+    hideReconnectBanner();
+    let ov = document.getElementById('player-end-modal');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'player-end-modal';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:20000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;';
+        ov.innerHTML = '<div style="background:#1c1f26;border:1px solid #ef5350;border-radius:10px;padding:18px 20px;max-width:360px;width:88vw;color:#eee;font-size:14px;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,0.7);">' +
+            '<div id="player-end-modal-text" style="margin-bottom:14px;line-height:1.45;"></div>' +
+            '<button type="button" id="player-end-modal-ok" style="background:#c62828;color:#fff;border:none;border-radius:6px;padding:7px 22px;font-weight:bold;cursor:pointer;">OK</button></div>';
+        document.body.appendChild(ov);
+        ov.querySelector('#player-end-modal-ok').addEventListener('click', () => {
+            try { sessionStorage.removeItem('vtt_player_session'); sessionStorage.setItem('vtt_player_no_autojoin_once', '1'); } catch (e) {}
+            window.location.reload();
+        });
+    }
+    ov.querySelector('#player-end-modal-text').textContent = msg;
+    ov.style.display = 'flex';
+}
+
+if (typeof network.onReconnectState === 'function') {
+    network.onReconnectState((s) => {
+        const tr = (k) => (typeof window.t === 'function' ? window.t(k) : k);
+        if (s.state === 'lost' || s.state === 'waiting' || s.state === 'trying') {
+            let detail = '';
+            if (s.state === 'trying') detail = `${tr('Tentativo di rientro')} ${s.attempt}/${s.max}…`;
+            else if (s.state === 'waiting') detail = `${tr('Nuovo tentativo')} ${s.attempt}/${s.max}` + (s.delay >= 2000 ? ` (${Math.round(s.delay / 1000)} s)` : '…');
+            setReconnectBanner(tr('🔄 Connessione con il Master persa.') + (detail ? ' ' + detail : ''), tr('Riprova ora'), false);
+        } else if (s.state === 'failed') {
+            setReconnectBanner(tr('🔴 Impossibile ricollegarsi al Master.'), tr('Riprova'), true);
+        } else if (s.state === 'reconnected') {
+            hideReconnectBanner();
+            showPlayerToast('🟢 Riconnesso al Master!');
+            try { updatePlayerRoleAndUI(); } catch (e) {}
+            // Come al primo ingresso: il Master rimanda mappa, stato e schede solo a questo giocatore
+            network.send({ type: 'PLAYER_READY' });
+        } else if (s.state === 'closed') {
+            if (s.cause === 'rejected') setReconnectBanner('🔴 ' + (s.reason || tr('Accesso rifiutato dal Master.')), null, true);
+            else hideReconnectBanner(); // chiusura voluta: il messaggio arriva con ROOM_CLOSED / KICKED
+        }
+    });
+}
+
 if (typeof network.onDisconnect === 'function') {
     network.onDisconnect(() => {
         showPlayerToast(typeof window.t === 'function' ? window.t('🔴 Connessione con il Master interrotta.') : '🔴 Connessione con il Master interrotta.');
@@ -533,13 +732,14 @@ if (typeof network.onDisconnect === 'function') {
 network.onMessage((data, peerId) => {
     if (data.type === 'ROOM_CLOSED') {
         const msg = (data.payload && data.payload.reason) ? data.payload.reason : (typeof window.t === 'function' ? window.t('Il Master ha terminato la sessione.') : 'Il Master ha terminato la sessione.');
-        alert(msg);
-        window.location.reload();
+        showPlayerEndModal(msg);
         return;
     } else if (data.type === 'KICKED') {
         const msg = (data.payload && data.payload.reason) ? data.payload.reason : (typeof window.t === 'function' ? window.t('Sei stato espulso dalla stanza dal Master.') : 'Sei stato espulso dalla stanza dal Master.');
-        alert(msg);
-        window.location.reload();
+        showPlayerEndModal(msg);
+        return;
+    } else if (data.type === 'SESSION_REPLACED') {
+        showPlayerEndModal(typeof window.t === 'function' ? window.t("Sei entrato con questo personaggio da un'altra finestra o dispositivo.") : "Sei entrato con questo personaggio da un'altra finestra o dispositivo.");
         return;
     }
 
@@ -836,7 +1036,24 @@ network.onMessage((data, peerId) => {
             engine.initiative = state.initiative;
             const trackerDiv = document.getElementById('player-tracker');
             const trackerList = document.getElementById('player-tracker-list');
-            if (state.initiative.active && state.initiative.isVisibleToPlayers) {
+            // Firma di tutto ciò che il tracker mostra (posizione, turno corrente, elenco, nomi, iniziative, nascosti).
+            // Se è identica all'ultimo STATE_SYNC il DOM è già corretto: non va ricostruito a ogni movimento di token
+            // (evita innerHTML + N nodi nuovi + scroll animato + lavoro del traduttore a ogni sync).
+            const initShown = !!(state.initiative.active && state.initiative.isVisibleToPlayers);
+            let trackerSig = 'hidden';
+            if (initShown) {
+                const parts = state.initiative.participants || [];
+                trackerSig = (state.initiative.playerPosition || 'top') + '\u0001' + state.initiative.currentTurnIndex + '\u0001' + (state.initiative.s7Label || '') + '\u0001' + (Array.isArray(state.initiative.s7Notes) ? state.initiative.s7Notes.join('\u0002') : '');
+                for (let i = 0; i < parts.length; i++) {
+                    const sp = parts[i];
+                    trackerSig += '\u0001' + sp.id + '\u0002' + sp.name + '\u0002' + sp.init + '\u0002' + (sp.isHidden ? 1 : 0);
+                }
+            }
+            const trackerUpToDate = (window._playerTrackerSig === trackerSig) && (trackerDiv.style.display === (initShown ? 'flex' : 'none'));
+            window._playerTrackerSig = trackerSig;
+            if (trackerUpToDate) {
+                // Tracker già allineato: nessuna operazione sul DOM
+            } else if (state.initiative.active && state.initiative.isVisibleToPlayers) {
                 trackerDiv.style.display = 'flex';
                 trackerDiv.style.flexDirection = 'column';
                 trackerDiv.style.top = 'auto';
@@ -845,6 +1062,17 @@ network.onMessage((data, peerId) => {
                 trackerDiv.style.right = 'auto';
                 trackerDiv.style.transform = 'none';
                 trackerDiv.style.boxSizing = 'border-box';
+                // Titolo del tracker fornito dal sistema di gioco (es. Sequenza d'Azione di 7th Sea); altrimenti quello di sempre
+                const trackerHdr = trackerDiv.querySelector('strong');
+                if (trackerHdr) {
+                    if (state.initiative.s7Label) {
+                        if (trackerHdr.dataset.coreLabel === undefined) trackerHdr.dataset.coreLabel = trackerHdr.textContent;
+                        trackerHdr.textContent = state.initiative.s7Label;
+                    } else if (trackerHdr.dataset.coreLabel !== undefined) {
+                        trackerHdr.textContent = trackerHdr.dataset.coreLabel;
+                        delete trackerHdr.dataset.coreLabel;
+                    }
+                }
 
                 const pos = state.initiative.playerPosition || 'top';
                 const isVertical = (pos === 'left' || pos === 'right');
@@ -923,6 +1151,15 @@ network.onMessage((data, peerId) => {
                     }
                     trackerList.appendChild(div);
                 });
+                // Note del sistema di gioco (es. Conseguenze e Opportunità della Sequenza d'Azione 7th Sea)
+                if (Array.isArray(state.initiative.s7Notes)) {
+                    state.initiative.s7Notes.forEach(note => {
+                        const nd = document.createElement('div');
+                        nd.style.cssText = 'padding:3px 8px; font-size:11.5px; background:#3e2723; border:1px solid #6d4c41; border-radius:5px; color:#ffccbc; white-space:normal; box-sizing:border-box;' + (isVertical ? ' width:100%;' : ' max-width:260px;');
+                        nd.textContent = note;
+                        trackerList.appendChild(nd);
+                    });
+                }
 
                 if (activeElement && typeof activeElement.scrollIntoView === 'function') {
                     setTimeout(() => {
@@ -1166,7 +1403,25 @@ network.onMessage((data, peerId) => {
         updatePlayerRoleAndUI();
         engine.renderAll();
         if (window.pcSheetManager) {
-            window.pcSheetManager.refreshIfOpen();
+            // Ricarica la scheda aperta SOLO se sono cambiati i dati del SUO token che la scheda mostra
+            // (PV, CA, nome, immagine, proprietari: es. danno inflitto dal Master dal pannello token).
+            // Movimenti, turni, sagome e modifiche ad altri token non ricostruiscono più la scheda.
+            // Le nuove versioni della scheda/diario arrivano con PC_SHEET_SYNC / TOKEN_JOURNAL_SYNC, che la ricaricano da sé.
+            if (!window._sheetTokenSigs) window._sheetTokenSigs = new Map();
+            const sheetSigs = window._sheetTokenSigs;
+            for (let i = 0; i < finalTokens.length; i++) {
+                const ft = finalTokens[i];
+                const sig = ft.name + '|' + ft.hpCurrent + '|' + ft.hpMax + '|' + ft.hpTemp + '|' + ft.ac + '|' + ft.imgKey + '|' +
+                    (Array.isArray(ft.owners) ? ft.owners.join(',') : '') + '|' + ft.owner + '|' + ft.category;
+                if (sheetSigs.get(ft.id) !== sig) {
+                    sheetSigs.set(ft.id, sig);
+                    window.pcSheetManager.refreshIfOpen(ft.id);
+                }
+            }
+            if (sheetSigs.size > finalTokens.length + 50) {
+                const alive = new Set(finalTokens.map(ft => ft.id));
+                sheetSigs.forEach((v, k) => { if (!alive.has(k)) sheetSigs.delete(k); });
+            }
         }
     } else if (data.type === 'FOG_SYNC') {
         engine.pendingFogImage = data.payload;

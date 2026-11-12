@@ -463,6 +463,37 @@ const dict = {
     "Clicca per espandere/comprimere il gruppo": "Click to expand/collapse group",
     "🟢 Giocatore connesso:": "🟢 Player connected:",
     "🔄 Giocatore riconnesso:": "🔄 Player reconnected:",
+    "↩️ Rientra in campagna": "↩️ Rejoin campaign",
+    "Entra automaticamente su questo dispositivo": "Join automatically on this device",
+    "Dimentica questo accesso": "Forget this entry",
+    "↩️ Rientro automatico come": "↩️ Rejoining automatically as",
+    "Sei entrato con questo personaggio da un'altra finestra o dispositivo.": "You joined with this character from another window or device.",
+    "Annulla": "Cancel",
+    "Codice Campagna:": "Campaign Code:",
+    "Codice Campagna": "Campaign Code",
+    "es. STRAHD-2026": "e.g. STRAHD-2026",
+    "Codice Campagna (es: STRAHD-2026)": "Campaign Code (e.g. STRAHD-2026)",
+    "Codice fisso della campagna: i giocatori lo usano per entrare anche nelle sessioni successive. Cambiarlo blocca l'accesso con quello vecchio.": "Fixed campaign code: players use it to join in later sessions too. Changing it blocks access with the old one.",
+    "Genera un nuovo codice casuale": "Generate a new random code",
+    "⚠️ Il Codice Campagna deve avere da 6 a 24 lettere o cifre.": "⚠️ The Campaign Code must have 6 to 24 letters or digits.",
+    "⚠️ Questo codice è già usato da un'altra tua campagna.": "⚠️ This code is already used by another of your campaigns.",
+    "🔑 Codice Campagna salvato:": "🔑 Campaign Code saved:",
+    "Codice ancora occupato dalla sessione precedente, nuovo tentativo…": "Code still held by the previous session, retrying…",
+    "Codice già in uso da un'altra stanza: cambia il Codice Campagna e riprova.": "Code already used by another room: change the Campaign Code and try again.",
+    "🔄 Riapertura automatica della stanza online…": "🔄 Reopening the online room automatically…",
+    "Codice non valido: servono da 6 a 24 lettere o cifre.": "Invalid code: 6 to 24 letters or digits are required.",
+    "Inserisci il Codice Campagna": "Enter the Campaign Code",
+    "Errore di connessione.": "Connection error.",
+    "🔄 Connessione con il Master persa.": "🔄 Connection to the GM lost.",
+    "Tentativo di rientro": "Reconnection attempt",
+    "Nuovo tentativo": "Next attempt",
+    "Riprova ora": "Retry now",
+    "Riprova": "Retry",
+    "🔴 Impossibile ricollegarsi al Master.": "🔴 Unable to reconnect to the GM.",
+    "🟢 Riconnesso al Master!": "🟢 Reconnected to the GM!",
+    "Accesso rifiutato dal Master.": "Access denied by the GM.",
+    "Il Master ha terminato la sessione.": "The GM has ended the session.",
+    "Sei stato espulso dalla stanza dal Master.": "You have been removed from the room by the GM.",
     "🔴 Giocatore disconnesso:": "🔴 Player disconnected:",
     "🟢 Schermo Giocatore Locale connesso!": "🟢 Local Player Screen connected!",
     "♟️ Token creato:": "♟️ Token created:",
@@ -684,23 +715,72 @@ function applyLanguage() {
 function toggleLanguage() {
     currentLang = currentLang === 'it' ? 'en' : 'it';
     localStorage.setItem('vtt_lang', currentLang);
-    applyLanguage();
+    runFullTranslationPass();
 }
 
-let isTranslating = false;
-const observer = new MutationObserver((mutations) => {
-    if (isTranslating) return;
-    let shouldTranslate = false;
-    for (let mutation of mutations) {
-        if (mutation.addedNodes.length > 0) {
-            shouldTranslate = true;
-            break;
+// ---------------------------------------------------------------------------------------------
+// OSSERVATORE DOM A BASSO COSTO
+// - Italiano (lingua sorgente dell'interfaccia): l'osservatore non fa NULLA. Prima ripercorreva
+//   l'intero document.body a ogni nodo aggiunto (riga chat, tracker, scheda...) senza cambiare niente.
+// - Inglese: traduce subito SOLO i nodi appena aggiunti, poi una singola passata completa di sicurezza
+//   ~400 ms dopo l'ultima raffica (recupera title/testi modificati senza aggiungere nodi).
+// - Le mutazioni generate dalla traduzione stessa vengono scartate con takeRecords(): niente più
+//   finestra cieca di 50 ms in cui i nodi aggiunti venivano persi.
+// ---------------------------------------------------------------------------------------------
+const langStats = { fullPasses: 0, incrementalNodes: 0 };
+if (typeof window !== 'undefined') window._vttLangStats = langStats;
+
+let safetyPassTimer = null;
+let safetyPassDeadline = 0;
+
+function runFullTranslationPass() {
+    if (safetyPassTimer) { clearTimeout(safetyPassTimer); safetyPassTimer = null; }
+    applyLanguage();
+    langStats.fullPasses++;
+    observer.takeRecords();
+}
+
+function scheduleSafetyPass() {
+    const now = Date.now();
+    if (safetyPassTimer) clearTimeout(safetyPassTimer);
+    else safetyPassDeadline = now + 1500; // sotto attività continua la passata non slitta oltre 1,5 s
+    const delay = Math.min(400, Math.max(0, safetyPassDeadline - now));
+    safetyPassTimer = setTimeout(() => {
+        safetyPassTimer = null;
+        if (currentLang === 'en') runFullTranslationPass();
+    }, delay);
+}
+
+function translateAddedNode(n) {
+    // Testo inserito dentro <option> o dentro un elemento data-i18n: la logica di traduzione
+    // (e il ricordo del testo originale italiano) vive sull'elemento genitore.
+    if (n.nodeType === 3) {
+        const parent = n.parentNode;
+        if (parent && parent.nodeType === 1 && (parent.tagName === 'OPTION' || parent.hasAttribute('data-i18n'))) {
+            translateNode(parent);
+            return;
         }
     }
-    if (shouldTranslate) {
-        isTranslating = true;
-        applyLanguage();
-        setTimeout(() => { isTranslating = false; }, 50);
+    translateNode(n);
+}
+
+const observer = new MutationObserver((mutations) => {
+    if (currentLang !== 'en') return;
+    let translated = false;
+    for (let i = 0; i < mutations.length; i++) {
+        const added = mutations[i].addedNodes;
+        for (let j = 0; j < added.length; j++) {
+            const n = added[j];
+            if ((n.nodeType === 1 || n.nodeType === 3) && n.isConnected) {
+                translateAddedNode(n);
+                langStats.incrementalNodes++;
+                translated = true;
+            }
+        }
+    }
+    if (translated) {
+        observer.takeRecords();
+        scheduleSafetyPass();
     }
 });
 
@@ -745,6 +825,6 @@ window.addEventListener('DOMContentLoaded', () => {
         loginOverlay.appendChild(btn);
     }
 
-    applyLanguage();
+    runFullTranslationPass();
     observer.observe(document.body, { childList: true, subtree: true });
 });

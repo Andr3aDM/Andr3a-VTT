@@ -896,6 +896,7 @@
                 <div style="display:flex;align-items:center;gap:8px;">
                     <span style="font-size:18px;">⛵</span>
                     <strong style="color:#fcd34d;font-size:13.5px;letter-spacing:0.4px;" id="s7-window-title-text">Scheda Eroe 7th Sea (2ª Edizione)</strong>
+                    <span id="s7-pending-badge" style="display:none;background:#78350f;color:#fde68a;border:1px solid #f59e0b;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:bold;" title="Le modifiche restano su questo dispositivo finché non blocchi la scheda (🔒) o scegli Invia">✎ Modifiche non inviate</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:6px;">
                     <button type="button" id="s7-btn-export-json" style="background:#1b5e20;color:#a5d6a7;border:1px solid #2e7d32;border-radius:5px;padding:3px 9px;font-size:11px;font-weight:bold;cursor:pointer;" title="Esporta Scheda Eroe e Giornale in formato .json">💾 Esporta (.json)</button>
@@ -903,6 +904,7 @@
                     <button type="button" id="s7-btn-close-window" style="background:#3b1219;color:#fca5a5;border:1px solid #ef4444;border-radius:5px;padding:2px 9px;font-size:13px;font-weight:bold;cursor:pointer;margin-left:4px;" title="Chiudi Scheda">✕</button>
                 </div>
             </div>
+            <div id="s7-sync-notice" style="display:none;background:#3b2a05;color:#fde68a;border-bottom:1px solid #b45309;padding:6px 12px;font-size:11.5px;line-height:1.4;"></div>
             <div id="s7-sheet-scroll-body">
                 ${SHEET_INNER_HTML}
             </div>
@@ -968,15 +970,50 @@
             : (character && character.advantages || []).some(a => (a.name || '').toLowerCase() === 'solo contro tutti');
     }
 
-    // Sincronizza lo stato di character nel token VTT e trasmette in rete
-    window.saveCharacterToVttToken = function (forceSync = true) {
-        if (window._s7LoadingFromToken) return;
-        const tok = getActiveToken();
-        if (!tok || !character) return;
+    // =========================================================================================
+    // SINCRONIZZAZIONE SCHEDA 7TH SEA (revisioni, invii raggruppati, anti-eco)
+    // - Ogni modifica dell'utente aggiorna SUBITO il token su questo dispositivo (barra PV, nome),
+    //   ma la spedizione in rete parte S7_SEND_DELAY_MS dopo l'ultimo clic (una sola per raffica),
+    //   oppure subito alla chiusura della scheda, al cambio di Eroe o all'uscita dalla pagina.
+    // - Ogni modifica marca la scheda con una revisione (_s7Rev). Quando torna indietro una revisione
+    //   prodotta da questo dispositivo (eco del Master), la scheda NON viene ricaricata: niente più
+    //   testo riscritto mentre si digita nome/concetto/diario.
+    // - Il Diario viaggia da solo (PLAYER_UPDATE_TOKEN_JOURNAL) S7_JOURNAL_DELAY_MS dopo la pausa.
+    // =========================================================================================
+    const S7_SEND_DELAY_MS = 500;
+    const S7_JOURNAL_DELAY_MS = 1000;
+    let s7SendTimer = null;
+    let s7JournalTimer = null;
+    let displayedRev = undefined;
+    // Revisioni "già superate" da ciò che la scheda mostra: le proprie e quelle altrui sostituite da una modifica successiva.
+    // Servono perché lato Giocatore il core, a ogni STATE_SYNC, rimette nel token la copia della scheda in cache, che per
+    // un istante (finché non arriva il PC_SHEET_SYNC) è più vecchia di quella mostrata: non va mai ricaricata.
+    const knownOldRevs = [];
+    const s7SyncStats = { localCommits: 0, sheetSends: 0, journalSends: 0, reloads: 0, echoSkips: 0, staleSkips: 0, flushOnRefresh: 0, deferredWhileEditing: 0 };
+    window._s7SheetStats = s7SyncStats;
 
+    function newS7Rev() {
+        return 's7_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    }
+    function rememberRev(rev) {
+        if (!rev || knownOldRevs.includes(rev)) return;
+        knownOldRevs.push(rev);
+        if (knownOldRevs.length > 60) knownOldRevs.shift();
+    }
+
+    // Copia lo stato di character nel token (solo su questo dispositivo).
+    // isUserChange = true: modifica reale dell'utente -> nuova revisione e nuovo updatedAt.
+    function commitCharacterToToken(tok, isUserChange) {
         character.system = '7thsea';
         character.isLocked = !!isLocked;
-        character.updatedAt = Date.now();
+        if (isUserChange) {
+            rememberRev(displayedRev); // la versione mostrata finora diventa "superata"
+            character.updatedAt = Date.now();
+            character._s7Rev = newS7Rev();
+            displayedRev = character._s7Rev;
+            rememberRev(character._s7Rev);
+            s7SyncStats.localCommits++;
+        }
 
         tok.pcSheet = JSON.parse(JSON.stringify(character));
         tok.hasPcSheet = true;
@@ -995,26 +1032,18 @@
         if (titleEl) {
             titleEl.textContent = `Scheda Eroe 7th Sea — ${tok.name || 'Nuovo Eroe'}`;
         }
+    }
 
-        if (!forceSync) return;
-
+    function sendSheetNow(tok) {
         const eng = getEngineRef();
         const net = getNetworkRef();
-
+        s7SyncStats.sheetSends++;
         if (eng && eng.isDM) {
-            if (typeof window.upsertTokenInCampaign === 'function') {
-                window.upsertTokenInCampaign(tok);
-            }
-            if (typeof window.broadcastPcSheetSync === 'function') {
-                window.broadcastPcSheetSync(tok);
-            }
-            if (typeof window.syncState === 'function') {
-                window.syncState(true, false);
-            }
-            if (typeof eng.renderTokensLayer === 'function') {
-                eng.renderTokensLayer();
-            }
-        } else if (net && net.mode === 'client') {
+            if (typeof window.upsertTokenInCampaign === 'function') window.upsertTokenInCampaign(tok);
+            if (typeof window.broadcastPcSheetSync === 'function') window.broadcastPcSheetSync(tok);
+            if (typeof window.syncState === 'function') window.syncState(true, false);
+        } else if (net && (net.mode === 'client' || net.mode === 'offline')) {
+            // 'offline' = Schermo locale / TV via BroadcastChannel: stesso comportamento della scheda D&D 5e
             net.send({
                 type: 'PLAYER_UPDATE_PC_SHEET',
                 payload: {
@@ -1026,10 +1055,277 @@
                     hpCurrent: tok.hpCurrent
                 }
             });
-            if (eng && typeof eng.renderTokensLayer === 'function') {
-                eng.renderTokensLayer();
-            }
         }
+    }
+
+    function scheduleSheetSend() {
+        if (s7SendTimer) clearTimeout(s7SendTimer);
+        s7SendTimer = setTimeout(flushSheetSend, S7_SEND_DELAY_MS);
+    }
+
+    // Spedisce subito la modifica in attesa (se c'è). Ricopia da character: un aggiornamento arrivato
+    // nel frattempo può aver sostituito tok.pcSheet, ma la versione dell'utente resta quella valida.
+    function flushSheetSend() {
+        if (!s7SendTimer) return false;
+        clearTimeout(s7SendTimer);
+        s7SendTimer = null;
+        const tok = getActiveToken();
+        if (!tok || !character) return false;
+        commitCharacterToToken(tok, false);
+        sendSheetNow(tok);
+        return true;
+    }
+
+    function flushJournalSend() {
+        if (!s7JournalTimer) return false;
+        clearTimeout(s7JournalTimer);
+        s7JournalTimer = null;
+        const tok = getActiveToken();
+        if (!tok) return false;
+        const jArea = document.getElementById('s7-adventure-journal');
+        const val = jArea ? jArea.value : (tok.adventureJournal || '');
+        tok.adventureJournal = val;
+        if (tok.pcSheet) tok.pcSheet.adventureJournal = val;
+        if (character) character.adventureJournal = val;
+        s7SyncStats.journalSends++;
+        const eng = getEngineRef();
+        const net = getNetworkRef();
+        if (eng && eng.isDM) {
+            tok.adventureJournalUpdatedAt = Date.now();
+            if (typeof window.upsertTokenInCampaign === 'function') window.upsertTokenInCampaign(tok);
+            if (typeof window.broadcastPcSheetSync === 'function') window.broadcastPcSheetSync(tok);
+            if (typeof window.syncState === 'function') window.syncState(true, false);
+        } else if (net && (net.mode === 'client' || net.mode === 'offline')) {
+            net.send({
+                type: 'PLAYER_UPDATE_TOKEN_JOURNAL',
+                payload: { tokenId: tok.id, adventureJournal: val, player: net.playerName || '' }
+            });
+        }
+        return true;
+    }
+
+    function flushAllPendingSends() {
+        flushSheetSend();
+        flushJournalSend();
+    }
+
+    // =========================================================================================
+    // MODALITÀ MODIFICA CON CONFERMA (🔓 = modifiche solo nella scheda aperta, 🔒 = conferma)
+    // - In 🔓 ogni modifica resta nella scheda aperta: token e Master non la vedono (costo: solo un flag).
+    // - Bloccare (🔒), oppure "Invia" nella finestra di chiusura, spedisce la scheda una sola volta.
+    // - Gli aggiornamenti in arrivo non toccano una scheda con modifiche non inviate (avviso in alto).
+    // - Il Giocatore avvisa il Master quando ha modifiche in corso (messaggio S7_SHEET_EDITING del modulo,
+    //   ignorato dal core), con un segnale ogni 60 s; il Master lo dimentica dopo 150 s di silenzio.
+    // =========================================================================================
+    let confirmedJson = null;          // contenuto della scheda confermata (base per "modifiche non inviate" e Scarta)
+    let pendingRemoteRev = undefined;  // revisione altrui arrivata mentre si modificava
+    let editNotifyActive = false;
+    let editHeartbeatTimer = null;
+    let pendingEvalTimer = null;
+    const gmEditing = new Map();       // lato Master: tokenId -> { player, heroName, lastSeen }
+    let gmEditingSweepTimer = null;
+    const S7_VOLATILE_KEYS = { updatedAt: 1, _s7Rev: 1, isLocked: 1, adventureJournal: 1 };
+
+    function sheetContentJson(obj) {
+        return JSON.stringify(obj, (k, v) => (S7_VOLATILE_KEYS[k] ? undefined : v));
+    }
+    function markConfirmedBaseline() {
+        confirmedJson = character ? sheetContentJson(character) : null;
+    }
+    function hasPendingEdits() {
+        return !isLocked && !!character && confirmedJson !== null && sheetContentJson(character) !== confirmedJson;
+    }
+
+    function notifyGm(msg) {
+        if (typeof window.showToast === 'function') window.showToast(msg);
+        else showS7Toast(msg, 'info');
+    }
+
+    function renderSyncNotice() {
+        const el = document.getElementById('s7-sync-notice');
+        if (!el) return;
+        const tok = getActiveToken();
+        let html = '';
+        if (!isLocked && pendingRemoteRev !== undefined) {
+            const who = isGMClient() ? 'Il giocatore' : 'Il Master';
+            html = `⚠ ${who} ha aggiornato questa scheda mentre la modificavi. Bloccando (🔒) la tua versione sostituisce la sua; con "Scarta" (alla chiusura) vedi la sua.`;
+        } else if (isGMClient() && tok && gmEditing.has(tok.id)) {
+            const e = gmEditing.get(tok.id);
+            html = `🔓 <b>${escapeHtml(e.player)}</b> sta modificando questa scheda: le sue modifiche arriveranno quando le conferma.`;
+        }
+        el.innerHTML = html;
+        el.style.display = html ? 'block' : 'none';
+    }
+
+    function refreshPendingBadge() {
+        const pending = hasPendingEdits();
+        const badge = document.getElementById('s7-pending-badge');
+        if (badge) badge.style.display = pending ? 'inline-block' : 'none';
+        renderSyncNotice();
+        return pending;
+    }
+
+    function updatePendingUI(reason) {
+        const pending = refreshPendingBadge();
+        setEditNotify(pending, reason);
+        return pending;
+    }
+
+    function schedulePendingEval() {
+        if (pendingEvalTimer) clearTimeout(pendingEvalTimer);
+        pendingEvalTimer = setTimeout(() => { pendingEvalTimer = null; updatePendingUI(); }, 250);
+    }
+
+    // Avviso al Master (solo dai Giocatori)
+    function setEditNotify(active, reason) {
+        if (isGMClient()) return;
+        const isHeartbeat = (reason === 'heartbeat');
+        if (active === editNotifyActive && !isHeartbeat) return;
+        const net = getNetworkRef();
+        const tok = getActiveToken();
+        editNotifyActive = !!active;
+        if (editNotifyActive && !editHeartbeatTimer) {
+            editHeartbeatTimer = setInterval(() => { if (editNotifyActive) setEditNotify(true, 'heartbeat'); }, 60000);
+        } else if (!editNotifyActive && editHeartbeatTimer) {
+            clearInterval(editHeartbeatTimer);
+            editHeartbeatTimer = null;
+        }
+        if (!net || !tok || typeof net.send !== 'function') return;
+        try {
+            net.send({
+                type: 'S7_SHEET_EDITING',
+                payload: {
+                    tokenId: tok.id,
+                    heroName: (character && character.name) || tok.name || '',
+                    player: net.playerName || '',
+                    editing: editNotifyActive,
+                    reason: reason || (editNotifyActive ? 'start' : 'stop')
+                }
+            });
+        } catch (e) {}
+    }
+
+    // Lato Master: ricezione degli avvisi
+    function sweepGmEditing() {
+        const now = Date.now();
+        gmEditing.forEach((v, k) => { if (now - v.lastSeen > 150000) gmEditing.delete(k); });
+        if (gmEditing.size === 0 && gmEditingSweepTimer) { clearInterval(gmEditingSweepTimer); gmEditingSweepTimer = null; }
+        renderSyncNotice();
+    }
+    function onS7NetMessage(data) {
+        if (!data || data.type !== 'S7_SHEET_EDITING' || !isGMClient()) return;
+        const p = data.payload || {};
+        if (!p.tokenId) return;
+        const who = p.player || 'Un giocatore';
+        const hero = p.heroName || 'Eroe';
+        if (p.editing) {
+            const isNew = !gmEditing.has(p.tokenId);
+            gmEditing.set(p.tokenId, { player: who, heroName: hero, lastSeen: Date.now() });
+            if (isNew) notifyGm(`🔓 ${who} sta modificando la scheda di ${hero}`);
+            if (!gmEditingSweepTimer) gmEditingSweepTimer = setInterval(sweepGmEditing, 30000);
+        } else if (gmEditing.delete(p.tokenId)) {
+            notifyGm(p.reason === 'discard' ? `↩️ ${who} ha annullato le modifiche alla scheda di ${hero}` : `✔ ${who} ha confermato la scheda di ${hero}`);
+        }
+        renderSyncNotice();
+    }
+
+    // Conferma: spedisce subito la scheda così com'è (resta nello stato di blocco attuale)
+    function confirmEditsNow(reason) {
+        const tok = getActiveToken();
+        if (!tok || !character) return;
+        commitCharacterToToken(tok, true);
+        const eng = getEngineRef();
+        if (eng && typeof eng.renderTokensLayer === 'function') eng.renderTokensLayer();
+        if (s7SendTimer) { clearTimeout(s7SendTimer); s7SendTimer = null; }
+        sendSheetNow(tok);
+        rememberRev(pendingRemoteRev);
+        pendingRemoteRev = undefined;
+        markConfirmedBaseline();
+        updatePendingUI(reason || 'confirm');
+    }
+
+    // Scarta: torna all'ultima versione confermata (comprese eventuali modifiche altrui arrivate nel frattempo)
+    function discardEditsNow() {
+        const tok = getActiveToken();
+        pendingRemoteRev = undefined;
+        if (tok) loadTokenIntoS7Sheet(tok, true, false);
+        setEditNotify(false, 'discard');
+    }
+
+    function ensureUnsavedModal() {
+        let m = document.getElementById('s7-unsaved-modal');
+        if (m) return m;
+        m = document.createElement('div');
+        m.id = 's7-unsaved-modal';
+        m.style.cssText = 'display:none;position:fixed;inset:0;z-index:100050;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;';
+        const btn = 'border-radius:6px;padding:6px 12px;font-size:12px;font-weight:bold;cursor:pointer;';
+        m.innerHTML = `
+            <div style="background:#14161c;border:1px solid #d4af37;border-radius:10px;padding:18px 20px;max-width:390px;color:#e5e7eb;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,0.6);">
+                <div style="font-weight:bold;color:#fcd34d;font-size:14px;margin-bottom:8px;">✎ Modifiche non inviate</div>
+                <div id="s7-unsaved-text" style="line-height:1.45;margin-bottom:14px;"></div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+                    <button type="button" id="s7-unsaved-back" style="${btn}background:#1f2432;color:#cbd5e1;border:1px solid #475569;">Torna alla scheda</button>
+                    <button type="button" id="s7-unsaved-discard" style="${btn}background:#3b1219;color:#fca5a5;border:1px solid #ef4444;">Scarta</button>
+                    <button type="button" id="s7-unsaved-send" style="${btn}background:#14532d;color:#bbf7d0;border:1px solid #22c55e;">Invia al Master</button>
+                </div>
+            </div>`;
+        document.body.appendChild(m);
+        return m;
+    }
+
+    function showUnsavedModal(afterChoice) {
+        const m = ensureUnsavedModal();
+        const name = (character && character.name) || 'questo Eroe';
+        let text = `Hai modifiche non ancora inviate alla scheda di <b>${escapeHtml(name)}</b>.`;
+        if (pendingRemoteRev !== undefined) {
+            text += `<br><span style="color:#fbbf24;">${isGMClient() ? 'Il giocatore' : 'Il Master'} ha aggiornato la scheda nel frattempo: inviando sostituisci la sua versione.</span>`;
+        }
+        document.getElementById('s7-unsaved-text').innerHTML = text;
+        document.getElementById('s7-unsaved-send').textContent = isGMClient() ? 'Conferma modifiche' : 'Invia al Master';
+        const hide = () => { m.style.display = 'none'; };
+        document.getElementById('s7-unsaved-back').onclick = () => { hide(); };
+        document.getElementById('s7-unsaved-discard').onclick = () => { hide(); discardEditsNow(); if (afterChoice) afterChoice(); };
+        document.getElementById('s7-unsaved-send').onclick = () => { hide(); confirmEditsNow('confirm'); if (afterChoice) afterChoice(); };
+        m.style.display = 'flex';
+    }
+
+    // Aggiorna solo il campo Diario da un aggiornamento in arrivo, senza toccarlo mentre l'utente scrive
+    function syncJournalFieldFromToken(tok) {
+        const jArea = document.getElementById('s7-adventure-journal');
+        if (!jArea || !tok) return;
+        if (document.activeElement === jArea || s7JournalTimer) return;
+        const v = tok.adventureJournal || (tok.pcSheet && tok.pcSheet.adventureJournal) || '';
+        if (jArea.value !== v) {
+            jArea.value = v;
+            if (character) character.adventureJournal = v;
+        }
+    }
+
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        document.addEventListener('focusout', (e) => {
+            if (e.target && e.target.id === 's7-adventure-journal') flushJournalSend();
+        });
+        window.addEventListener('pagehide', flushAllPendingSends);
+        window.addEventListener('beforeunload', flushAllPendingSends);
+        const netForListener = getNetworkRef();
+        if (netForListener && typeof netForListener.addListener === 'function') netForListener.addListener(onS7NetMessage);
+    }
+
+    // Sincronizza lo stato di character nel token VTT e trasmette in rete (raggruppato)
+    window.saveCharacterToVttToken = function (forceSync = true) {
+        if (window._s7LoadingFromToken) return;
+        const tok = getActiveToken();
+        if (!tok || !character) return;
+        if (forceSync && !isLocked) {
+            // 🔓 Modalità modifica: la modifica resta nella scheda aperta fino alla conferma (🔒 o "Invia")
+            schedulePendingEval();
+            return;
+        }
+        commitCharacterToToken(tok, !!forceSync);
+        if (!forceSync) return;
+        const eng = getEngineRef();
+        if (eng && typeof eng.renderTokensLayer === 'function') eng.renderTokensLayer();
+        scheduleSheetSend();
     };
 
     window.onS7JournalChange = function (val) {
@@ -1037,7 +1333,10 @@
         if (!tok) return;
         tok.adventureJournal = val;
         if (tok.pcSheet) tok.pcSheet.adventureJournal = val;
-        window.saveCharacterToVttToken(true);
+        if (character) character.adventureJournal = val;
+        if (s7JournalTimer) clearTimeout(s7JournalTimer);
+        // Allo scadere s7JournalTimer contiene ancora l'id del timer appena eseguito: flushJournalSend lo riconosce come "in attesa"
+        s7JournalTimer = setTimeout(flushJournalSend, S7_JOURNAL_DELAY_MS);
     };
 
     // DATI STATO GLOBALE
@@ -2861,9 +3160,21 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
 
     // TOGGLE LOCK: GESTIONE MODALITA GIOCO COMPATTA VERTICALE VS CREAZIONE
     function toggleLock() {
+        const goingUnlocked = isLocked;
+        if (goingUnlocked) flushSheetSend(); // spedisci prima eventuali modifiche di gioco in attesa
         isLocked = !isLocked;
         updateLockUI();
-        renderSeventhSeaSheet();
+        renderSeventhSeaSheet(); // in 🔒 salva e programma la spedizione; in 🔓 segna solo
+        if (!goingUnlocked) {
+            // 🔒 = conferma: la spedizione parte subito
+            flushSheetSend();
+            rememberRev(pendingRemoteRev);
+            pendingRemoteRev = undefined;
+            markConfirmedBaseline();
+            updatePendingUI('confirm');
+        } else {
+            refreshPendingBadge();
+        }
     }
 
     function updateLockUI() {
@@ -3599,6 +3910,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         character.traits[name] = (character.traits[name] === val && val > minVal) ? val - 1 : Math.max(minVal, val);
         renderTraits();
         updatePoolFormula();
+        if (typeof saveCharacterToVttToken === "function" && !window._s7LoadingFromToken) saveCharacterToVttToken();
     }
 
     function setSkill(name, val) {
@@ -3610,6 +3922,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         character.skills[name] = (character.skills[name] === val) ? val - 1 : val;
         renderSkills();
         updatePoolFormula();
+        if (typeof saveCharacterToVttToken === "function" && !window._s7LoadingFromToken) saveCharacterToVttToken();
     }
 
     let customDiceModifier = 0;
@@ -4123,11 +4436,16 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
             return;
         }
 
+        if (info.costRaises !== 0 && !canSpendRaisesNow()) return;
+
         // Regola ufficiale pag. 235: Non si può mai eseguire la stessa Manovra per due volte di seguito
         if (character.lastManeuverUsed && character.lastManeuverUsed === info.name && info.costRaises !== 0) {
             showS7Toast(`⚠️ <b>Regola del Duello (pag. 235):</b> Non puoi eseguire <b>${info.name}</b> per due volte di seguito! Esegui prima un'altra Manovra (o clicca "Reset / Nuovo Round").`, "warning");
             return;
         }
+
+        // Eroe Inerme: la manovra è un'Azione e costa 1 Punto Eroe in più
+        if (info.costRaises !== 0 && !payHelplessActionCost(info.costPE || 0)) return;
 
         // Controllo spesa Punti Eroe (es. Svolazzo del Matador di Torres o Picchiata dell'Aquila di Szybowanie)
         if (info.costPE && info.costPE > 0) {
@@ -4139,6 +4457,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
             changeHeroPoints(-info.costPE);
         }
 
+        const raisesBeforeManeuver = currentRaises;
         // Gestione consumo Incrementi se c'è un lancio attivo
         let spentRaisesText = info.costText;
         if (currentRaises > 0) {
@@ -4157,6 +4476,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         if (info.costRaises !== 0) {
             character.lastManeuverUsed = info.name;
         }
+        if (currentRaises < raisesBeforeManeuver) reportRaisesSpent(raisesBeforeManeuver - currentRaises, info.name);
 
         // Effetto speciale Colpo a Segno (Vol. 2 pag. 205) e Lama Fulminea (Vol. 2 pag. 206)
         renderDuelingStyle();
@@ -6877,6 +7197,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         const targetBonus = activeHeroTarget ? activeHeroTarget.bonus : 0;
 
         currentRollState = {
+            raiseTarget: (window.seventhSeaRules && typeof window.seventhSeaRules.currentRaiseTarget === 'function') ? window.seventhSeaRules.currentRaiseTarget() : 10,
             traitName: selectedTrait,
             traitVal: tVal,
             skillName: selectedSkill,
@@ -6906,7 +7227,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
 
         const rawDice = currentRollState.diceObjects.map(d => d.val);
         const calc = (window.seventhSeaRules && typeof window.seventhSeaRules.calculateRaisesFromDice === 'function')
-            ? window.seventhSeaRules.calculateRaisesFromDice(rawDice, currentRollState.setsOf15)
+            ? window.seventhSeaRules.calculateRaisesFromDice(rawDice, currentRollState.setsOf15, currentRollState.raiseTarget || 10)
             : { dice: rawDice, sets: [], remaining: rawDice, totalRaises: 0 };
 
         currentRollState.calc = calc;
@@ -6931,6 +7252,8 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                     sets: calc.sets,
                     remaining: calc.remaining,
                     totalRaises: currentRaises,
+                    tokenId: currentTokenId,
+                    raiseTarget: currentRollState.raiseTarget || 10,
                     wasRerolled: currentRollState.hasRerolled,
                     explosionsCount: currentRollState.explosionsCount
                 });
@@ -7256,14 +7579,97 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         }
     }
 
+    // ---- Una sola riserva di Incrementi durante la Sequenza d'Azione (js/systems/7thsea/initiative.js) ----
+    // Se il token di questa scheda partecipa a una Sequenza: in Fase Tiri non si spende; in Fase Azioni ogni spesa
+    // della scheda scala anche il tracker del Master, e quello che spende il Master dal tracker torna sulla scheda.
+    // Spesa fatta da questa scheda e non ancora confermata dal Master (valore atteso dopo la spesa)
+    let pendingRaiseSpend = null;
+    function getSequenceContext() {
+        const eng = getEngineRef();
+        const I = eng && eng.initiative;
+        if (!I || !I.s7 || !currentTokenId || !Array.isArray(I.participants)) return null;
+        const tid = String(currentTokenId).replace(/^tok_/, '');
+        const p = I.participants.find(x => x && x.tokenId !== undefined && x.tokenId !== null && String(x.tokenId).replace(/^tok_/, '') === tid);
+        return p ? { I, p, phase: I.s7.phase } : null;
+    }
+    function canSpendRaisesNow() {
+        const ctx = getSequenceContext();
+        if (ctx && ctx.phase === 'rolls') {
+            showS7Toast((ctx.I.s7.mode === 'drama' ? "Sequenza Drammatica" : "Sequenza d'Azione") + " in Fase Tiri: gli Incrementi si spendono quando il Master avvia la Fase Azioni.", "warning");
+            return false;
+        }
+        return true;
+    }
+    // Eroe Inerme (p. 181): può ancora tirare, ma ogni Azione costa 1 Punto Eroe (p. 177 "Agire mentre si è Inerme")
+    function isHelplessNow() {
+        const n = (character && Array.isArray(character.dramaticWounds)) ? character.dramaticWounds.filter(Boolean).length : 0;
+        return n >= (isDuroDaUccidere() ? 5 : 4);
+    }
+    // Ritorna false (e avvisa) se l'Eroe è Inerme e non ha abbastanza Punti Eroe; altrimenti scala 1 PE quando serve
+    function payHelplessActionCost(extraPE) {
+        if (!isHelplessNow()) return true;
+        const need = 1 + (parseInt(extraPE, 10) || 0);
+        if ((parseInt(character.heroPoints, 10) || 0) < need) {
+            showS7Toast(`💀 Eroe Inerme: ogni Azione costa 1 Punto Eroe${extraPE ? ' (oltre al costo della manovra)' : ''}. Punti Eroe insufficienti.`, "error");
+            return false;
+        }
+        changeHeroPoints(-1);
+        showS7Toast('💀 Azione da Inerme: speso 1 Punto Eroe.', "warning");
+        return true;
+    }
+    function reportRaisesSpent(amount, reason) {
+        const n = parseInt(amount, 10) || 0;
+        if (n <= 0) return;
+        const ctx = getSequenceContext();
+        if (!ctx || ctx.phase !== 'actions') return;
+        pendingRaiseSpend = { expected: currentRaises, at: Date.now() };
+        const eng = getEngineRef();
+        if (eng && eng.isDM) {
+            if (window.seventhSeaInitiative && typeof window.seventhSeaInitiative.applySheetSpend === 'function') {
+                window.seventhSeaInitiative.applySheetSpend(currentTokenId, n, reason || '');
+            }
+            return;
+        }
+        const net = (typeof network !== 'undefined' && network) ? network : window.network;
+        if (net && typeof net.send === 'function') {
+            net.send({ type: 'S7_RAISES_SPEND', payload: { tokenId: currentTokenId, amount: n, reason: reason || '', id: 'sp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) } });
+        }
+    }
+    function syncRaisesFromSequence() {
+        const ctx = getSequenceContext();
+        if (!ctx || ctx.phase === 'rolls') return;
+        const auth = ctx.p.s7Raises;
+        if (typeof auth !== 'number') return;
+        // spesa appena fatta qui e non ancora confermata dal Master: non tornare indietro nel frattempo
+        if (pendingRaiseSpend) {
+            if (auth === pendingRaiseSpend.expected || Date.now() - pendingRaiseSpend.at > 1500) pendingRaiseSpend = null;
+            else if (auth > currentRaises) return;
+        }
+        if (auth === currentRaises) return;
+        currentRaises = auth;
+        const el = document.getElementById('total-raises-num');
+        if (el) el.innerText = currentRaises;
+        try { renderDuelingStyle(); } catch (e) {}
+    }
+    try {
+        window.addEventListener('s7-sequence-updated', syncRaisesFromSequence); // console del Master
+        const netRef = (typeof network !== 'undefined' && network) ? network : window.network;
+        if (netRef && typeof netRef.addListener === 'function') {
+            netRef.addListener((data) => { if (data && data.type === 'STATE_SYNC') syncRaisesFromSequence(); }); // schermo del giocatore
+        }
+    } catch (e) {}
+
     function spendRaise() {
+        if (!canSpendRaisesNow()) return;
         if (currentRaises <= 0) {
             showS7Toast("Non hai più Incrementi da spendere!", "error");
             return;
         }
+        if (!payHelplessActionCost(0)) return;
         currentRaises--;
         const el = document.getElementById('total-raises-num');
         if (el) el.innerText = currentRaises;
+        reportRaisesSpent(1, 'Spendi 1 Incremento');
     }
 
     function resetDice() {
@@ -7904,14 +8310,20 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
     };
     Object.assign(window, exportedFns);
 
-    function loadTokenIntoS7Sheet(token) {
+    // keepDiceModifier = true quando la STESSA scheda già aperta viene solo aggiornata (refreshIfOpen):
+    // il modificatore dadi impostato dal giocatore non deve azzerarsi per un sync in arrivo dal Master.
+    function loadTokenIntoS7Sheet(token, keepDiceModifier = false, keepLockState = false) {
         if (!token) return;
+        const prevLocked = isLocked;
         window._s7LoadingFromToken = true;
-        customDiceModifier = 0;
+        const preservedDiceModifier = keepDiceModifier ? customDiceModifier : 0;
+        customDiceModifier = preservedDiceModifier;
         updateCustomDiceModifierUI();
         try {
             if (token.pcSheet && token.pcSheet.traits && typeof token.pcSheet.traits === 'object') {
                 character = JSON.parse(JSON.stringify(token.pcSheet));
+                rememberRev(displayedRev);
+                displayedRev = character._s7Rev;
                 if (character.wealth === undefined) character.wealth = 0;
                 if (character.secretSociety === undefined) character.secretSociety = "Nessuna";
                 if (character.favorPoints === undefined) character.favorPoints = 0;
@@ -7920,6 +8332,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                 isLocked = !!character.isLocked;
             } else {
                 doSetBlankSheet();
+                displayedRev = undefined;
                 if (token.name && token.name !== 'Nuovo Eroe') {
                     character.name = token.name;
                 }
@@ -7927,8 +8340,11 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                 isLocked = false;
             }
 
+            // Ricaricamento della stessa scheda aperta: il lucchetto resta come l'utente l'ha lasciato su questo dispositivo
+            if (keepLockState) isLocked = prevLocked;
+
             const jArea = document.getElementById('s7-adventure-journal');
-            if (jArea) {
+            if (jArea && document.activeElement !== jArea && !s7JournalTimer) {
                 jArea.value = token.adventureJournal || (character && character.adventureJournal) || '';
             }
 
@@ -7939,11 +8355,18 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
 
             syncDropdownsWithCharacter();
             updateLockUI();
+            if (keepDiceModifier) {
+                customDiceModifier = preservedDiceModifier;
+                updateCustomDiceModifierUI();
+            }
             renderSeventhSeaSheet();
         } finally {
             window._s7LoadingFromToken = false;
         }
         window.saveCharacterToVttToken(false);
+        pendingRemoteRev = undefined;
+        markConfirmedBaseline();
+        refreshPendingBadge();
     }
 
     function exportSingleCharacterJson(token) {
@@ -8015,24 +8438,148 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                 showS7Toast('Seleziona prima il token del tuo Eroe sulla mappa!', "error");
                 return;
             }
+            const winNow = document.getElementById('seventh-sea-sheet-window');
+            if (winNow && winNow.style.display !== 'none' && hasPendingEdits()) {
+                // Scheda aperta con modifiche non inviate: stessa scheda = non ricaricare; altra scheda = chiedi prima
+                if (target.id === currentTokenId) return;
+                showUnsavedModal(() => seventhSeaSheetManager.open(target));
+                return;
+            }
+            flushAllPendingSends(); // spedisci le modifiche in attesa dell'Eroe precedente prima di cambiare
             currentTokenId = target.id;
             const win = ensureS7ModalDOM();
             win.style.display = 'flex';
             loadTokenIntoS7Sheet(target);
         },
 
-        close() {
+        // Punti Eroe scalati dal Master (es. Azione di un Eroe Inerme decisa dal tracker): ritorna i PE rimasti, null se insufficienti
+        applyExternalHeroPoints(tokenId, delta, sourceLabel) {
+            const eng = getEngineRef();
+            if (!eng || !eng.isDM) return null;
+            const tok = (eng.tokens || []).find(t => String(t.id) === String(tokenId));
+            const d = parseInt(delta, 10) || 0;
+            if (!tok || !d || !tok.pcSheet || !tok.pcSheet.traits) return null;
             const win = document.getElementById('seventh-sea-sheet-window');
+            const openHere = currentTokenId === tok.id && win && win.style.display !== 'none';
+            const cur = openHere ? (parseInt(character.heroPoints, 10) || 0) : (parseInt(tok.pcSheet.heroPoints, 10) || 0);
+            if (cur + d < 0) return null;
+            if (openHere) {
+                const prevLoading = window._s7LoadingFromToken;
+                window._s7LoadingFromToken = true;           // niente invio raggruppato: lo spediamo subito qui sotto
+                changeHeroPoints(d);
+                window._s7LoadingFromToken = prevLoading;
+                commitCharacterToToken(tok, true);
+                if (s7SendTimer) { clearTimeout(s7SendTimer); s7SendTimer = null; }
+                sendSheetNow(tok);
+            } else {
+                const sh = JSON.parse(JSON.stringify(tok.pcSheet));
+                sh.heroPoints = cur + d;
+                sh.updatedAt = Date.now();
+                sh._s7Rev = newS7Rev();
+                tok.pcSheet = sh;
+                sendSheetNow(tok);
+            }
+            return cur + d;
+        },
+
+        // Ferite inflitte dal Master a un Eroe (Turno degli Sgherri, attacchi dei Malvagi): stesse regole di "+1 Ferita"
+        // (Ferite Drammatiche a 5/10/15/20, 25 con Duro da Uccidere), poi revisione nuova e invio come una modifica della scheda.
+        // opts.dramatic = 1: Ferita Drammatica in più (arma da fuoco, p. 180): riempie la prossima stella della Spirale
+        applyExternalWounds(tokenId, amount, sourceLabel, opts = {}) {
+            const eng = getEngineRef();
+            if (!eng || !eng.isDM) return null;
+            const tok = (eng.tokens || []).find(t => String(t.id) === String(tokenId));
+            const n = Math.max(0, parseInt(amount, 10) || 0);
+            const extraDw = (opts && opts.dramatic) ? 1 : 0;
+            if (!tok || (!n && !extraDw) || !tok.pcSheet || !tok.pcSheet.traits) return null;
+            const nextStar = (w, maxW) => Math.min(maxW, (Math.floor(w / 5) + 1) * 5);
+            const win = document.getElementById('seventh-sea-sheet-window');
+            const openHere = currentTokenId === tok.id && win && win.style.display !== 'none';
+            const label = sourceLabel ? ` (${sourceLabel})` : '';
+            if (openHere) {
+                const before = parseInt(character.currentWounds, 10) || 0;
+                let target = before + n;
+                if (extraDw) target = nextStar(target, isDuroDaUccidere() ? 25 : 20);
+                addWound(target - before);
+                commitCharacterToToken(tok, true);
+                if (s7SendTimer) { clearTimeout(s7SendTimer); s7SendTimer = null; }
+                sendSheetNow(tok);
+                showS7Toast(`🩸 ${tok.name || 'Eroe'} subisce ${n} Ferite${label}.`, "danger");
+            } else {
+                const sh = JSON.parse(JSON.stringify(tok.pcSheet));
+                const duro = (window.seventhSeaRules && typeof window.seventhSeaRules.hasAdvantage === 'function')
+                    ? window.seventhSeaRules.hasAdvantage(sh, 'Duro Da Uccidere') : false;
+                const maxW = duro ? 25 : 20;
+                let cur = Math.max(0, Math.min(maxW, (parseInt(sh.currentWounds, 10) || 0) + n));
+                if (extraDw) cur = nextStar(cur, maxW);
+                sh.currentWounds = cur;
+                if (!Array.isArray(sh.dramaticWounds)) sh.dramaticWounds = [false, false, false, false, false];
+                while (sh.dramaticWounds.length < 5) sh.dramaticWounds.push(false);
+                (duro ? [5, 10, 15, 20, 25] : [5, 10, 15, 20]).forEach((th, i) => { sh.dramaticWounds[i] = cur >= th; });
+                sh.updatedAt = Date.now();
+                sh._s7Rev = newS7Rev();
+                tok.pcSheet = sh;
+                tok.hasPcSheet = true;
+                tok.hpMax = maxW;
+                tok.hpCurrent = Math.max(0, maxW - cur);
+                sendSheetNow(tok);
+            }
+            const s = tok.pcSheet;
+            return { wounds: parseInt(s.currentWounds, 10) || 0, dramatic: (s.dramaticWounds || []).filter(Boolean).length };
+        },
+
+        close(force = false) {
+            const win = document.getElementById('seventh-sea-sheet-window');
+            if (!force && win && win.style.display !== 'none' && hasPendingEdits()) {
+                showUnsavedModal(() => seventhSeaSheetManager.close(true));
+                return false;
+            }
+            flushAllPendingSends();
             if (win) win.style.display = 'none';
+            return true;
+        },
+
+        hasPendingEdits() {
+            return hasPendingEdits();
         },
 
         refreshIfOpen(tokenId) {
             const win = document.getElementById('seventh-sea-sheet-window');
             if (!win || win.style.display === 'none') return;
-            if (!tokenId || tokenId === currentTokenId) {
-                const tok = getActiveToken();
-                if (tok) loadTokenIntoS7Sheet(tok);
+            if (tokenId && tokenId !== currentTokenId) return;
+            const tok = getActiveToken();
+            if (!tok) return;
+            const inRev = tok.pcSheet ? tok.pcSheet._s7Rev : undefined;
+            // Una modifica dell'utente è in attesa di partire: la sua versione prevale (e quella in arrivo diventa superata)
+            if (s7SendTimer) {
+                s7SyncStats.flushOnRefresh++;
+                rememberRev(inRev);
+                flushSheetSend();
+                return;
             }
+            // 🔓 Modifiche non inviate: la scheda aperta non si tocca; se è arrivata una versione davvero nuova lo si segnala
+            if (!isLocked && hasPendingEdits()) {
+                if (inRev !== undefined && inRev !== displayedRev && !knownOldRevs.includes(inRev)) {
+                    pendingRemoteRev = inRev;
+                    s7SyncStats.deferredWhileEditing++;
+                    renderSyncNotice();
+                }
+                syncJournalFieldFromToken(tok);
+                return;
+            }
+            // Copia senza revisione mentre la scheda ne mostra una: è la copia vecchia rimessa dal core, non va ricaricata
+            if (inRev === undefined && displayedRev !== undefined) {
+                s7SyncStats.staleSkips++;
+                return;
+            }
+            // Eco della propria modifica, o versione già superata: a video è già tutto aggiornato
+            if (inRev !== undefined && (inRev === displayedRev || knownOldRevs.includes(inRev))) {
+                s7SyncStats.echoSkips++;
+                syncJournalFieldFromToken(tok);
+                return;
+            }
+            s7SyncStats.reloads++;
+            loadTokenIntoS7Sheet(tok, true, true);
         },
 
         commitSheetChanges(token, syncNetwork = true) {

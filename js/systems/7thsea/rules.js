@@ -12,7 +12,10 @@
     // Trova la ripartizione dei dadi che massimizza il totale degli Incrementi (totalRaises).
     // Massimizza prima gli Incrementi totali e, a parità di Incrementi, massimizza i dadi non consumati.
     // Supporta coppie e terne da 15 (2 Incr.) e qualsiasi combinazione >= 10 (1 Incr.).
-    function calculateRaisesFromDice(rawDice, setsOf15 = false) {
+    // raiseTarget: 10 di regola; 15 quando il Master spende 1 Punto Pericolo (+5, p. 176). Con il +5 anche il
+    // Grado 4 sale di 5: un set da 20 vale 2 Incrementi (lettura concordata con l'utente, da confermare in sessione).
+    function calculateRaisesFromDice(rawDice, setsOf15 = false, raiseTarget = 10) {
+        const T = (Number(raiseTarget) === 15) ? 15 : 10;
         const dice = [...rawDice].sort((a, b) => b - a);
         const memo = new Map();
 
@@ -21,7 +24,7 @@
             if (memo.has(key)) return memo.get(key);
 
             const sumPool = pool.reduce((acc, v) => acc + v, 0);
-            if (sumPool < 10) {
+            if (sumPool < T) {
                 const res = { sets: [], remaining: [...pool], totalRaises: 0 };
                 memo.set(key, res);
                 return res;
@@ -33,7 +36,7 @@
             const rest = pool.slice(1);
 
             // 1. Singolo 10 (o superiore se bonus) -> 1 Incremento garantito con 1 solo dado
-            if (first >= 10) {
+            if (first >= T) {
                 const sub = solve(rest);
                 const total = sub.totalRaises + 1;
                 if (total > best.totalRaises ||
@@ -56,7 +59,7 @@
                 // Coppie con somma >= 15 (cercando dai dadi più bassi per risparmiare dadi alti)
                 for (let i = rest.length - 1; i >= 0; i--) {
                     const s2 = first + rest[i];
-                    if (s2 >= 15) {
+                    if (s2 >= T + 5) {
                         const nextPool = rest.filter((_, idx) => idx !== i);
                         const sub = solve(nextPool);
                         const total = sub.totalRaises + 2;
@@ -72,11 +75,11 @@
                 }
 
                 // Terne con somma >= 15 (solo se first < 10 per non sprecare un 10 con 2 altri dadi)
-                if (first < 10) {
+                if (first < T) {
                     for (let i = rest.length - 1; i >= 0; i--) {
                         for (let j = i - 1; j >= 0; j--) {
                             const s3 = first + rest[i] + rest[j];
-                            if (s3 >= 15) {
+                            if (s3 >= T + 5) {
                                 const nextPool = rest.filter((_, idx) => idx !== i && idx !== j);
                                 const sub = solve(nextPool);
                                 const total = sub.totalRaises + 2;
@@ -97,7 +100,7 @@
             // 3. Coppie con somma >= 10 (1 Incremento - QUALSIASI somma >= 10 è valida, es. 9+8=17, 9+6=15)
             for (let i = rest.length - 1; i >= 0; i--) {
                 const s2 = first + rest[i];
-                if (s2 >= 10) {
+                if (s2 >= T) {
                     const nextPool = rest.filter((_, idx) => idx !== i);
                     const sub = solve(nextPool);
                     const total = sub.totalRaises + 1;
@@ -116,7 +119,7 @@
             for (let i = rest.length - 1; i >= 0; i--) {
                 for (let j = i - 1; j >= 0; j--) {
                     const s3 = first + rest[i] + rest[j];
-                    if (s3 >= 10) {
+                    if (s3 >= T) {
                         const nextPool = rest.filter((_, idx) => idx !== i && idx !== j);
                         const sub = solve(nextPool);
                         const total = sub.totalRaises + 1;
@@ -154,15 +157,15 @@
         const finalSets = [...sol.sets];
         let totalRaises = sol.totalRaises;
 
-        while (remaining.reduce((acc, v) => acc + v, 0) >= 10 && remaining.length >= 4) {
+        while (remaining.reduce((acc, v) => acc + v, 0) >= T && remaining.length >= 4) {
             const grp = [];
             let s = 0;
-            while (remaining.length > 0 && s < 10) {
+            while (remaining.length > 0 && s < T) {
                 const d = remaining.shift();
                 grp.push(d);
                 s += d;
             }
-            if (s >= 10) {
+            if (s >= T) {
                 finalSets.push({ dice: grp, sum: s, raises: 1, isFifteen: false });
                 totalRaises += 1;
             } else {
@@ -175,8 +178,19 @@
             dice,
             sets: finalSets,
             remaining,
-            totalRaises
+            totalRaises,
+            raiseTarget: T
         };
+    }
+
+    // Valore per fare un Incremento nei tiri degli Eroi: 15 se il Master ha speso il Punto Pericolo del +5
+    // (engine.initiative.s7Plus5, arriva anche ai giocatori con lo STATE_SYNC), altrimenti 10.
+    function currentRaiseTarget() {
+        try {
+            const eng = (typeof engine !== 'undefined' && engine) ? engine : (typeof window !== 'undefined' ? window.engine : null);
+            const h = eng && eng.initiative ? eng.initiative.s7Plus5 : null;
+            return (h && h.active) ? 15 : 10;
+        } catch (e) { return 10; }
     }
 
     // Trova l'indice del dado che conviene ritirare (Grado 3):
@@ -208,9 +222,10 @@
         const poolCount = Math.max(1, traitVal + skillVal + extraBonus + dwBonus);
 
         // Grado 5 o 3ª Ferita Drammatica: i 10 esplodono a catena (+1d10)
-        const explodeTens = (skillVal >= 5) || !!dramaticWounds[2];
+        // Oppure richiesto esplicitamente dal chiamante (es. checkbox Antagonista nel Compendio)
+        const explodeTens = (skillVal >= 5) || !!dramaticWounds[2] || options.explodeTens === true;
         // Grado 4: set di 15 valgono 2 Incrementi
-        const setsOf15 = (skillVal >= 4);
+        const setsOf15 = (skillVal >= 4) || options.setsOf15 === true;
         // Grado 3: può ritirare 1 dado
         const canReroll = (skillVal >= 3);
 
@@ -243,7 +258,8 @@
             }
         }
 
-        const calc = calculateRaisesFromDice(rolled, setsOf15);
+        const raiseTarget = (Number(options.raiseTarget) === 15) ? 15 : 10;
+        const calc = calculateRaisesFromDice(rolled, setsOf15, raiseTarget);
 
         return {
             traitName,
@@ -262,7 +278,8 @@
             dice: calc.dice,
             sets: calc.sets,
             remaining: calc.remaining,
-            totalRaises: calc.totalRaises
+            totalRaises: calc.totalRaises,
+            raiseTarget
         };
     }
 
@@ -338,7 +355,7 @@
             : '';
 
         const bonusStr = (result.dwBonus ? ' +1 FD' : '') + (result.extraBonus ? ` +${result.extraBonus} Vant.` : '') + customModStr;
-        const formulaLabel = `${result.traitName} (${result.traitVal}) + ${result.skillName} (${result.skillVal})${bonusStr} = ${result.dice ? result.dice.length : 0}d10`;
+        const formulaLabel = `${result.traitName} (${result.traitVal}) + ${result.skillName} (${result.skillVal})${bonusStr} = ${result.dice ? result.dice.length : 0}d10${Number(result.raiseTarget) === 15 ? ' · ☠️ 15 per Incremento' : ''}`;
 
         const htmlMsg = `
             <div style="border-left:3px solid #10b981;padding-left:6px;margin:2px 0;">
@@ -367,11 +384,20 @@
             chatLog.scrollTop = chatLog.scrollHeight;
         }
 
+        // Dati strutturati per la Sequenza d'Azione (js/systems/7thsea/initiative.js): Incrementi e token di chi tira
+        const rollId = 'roll_s7_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+        const s7Risk = { totalRaises: Number(result.totalRaises) || 0, tokenId: (result.tokenId !== undefined && result.tokenId !== null) ? result.tokenId : null, name: heroName || '', unused: Array.isArray(result.remaining) ? result.remaining.length : 0 };
+        try {
+            if (typeof window !== 'undefined' && window.seventhSeaInitiative && typeof window.seventhSeaInitiative.onRiskRoll === 'function') {
+                window.seventhSeaInitiative.onRiskRoll(s7Risk, rollId); // tiro fatto sulla console del Master
+            }
+        } catch (iniErr) { console.warn('[7thSea] Sequenza d\'Azione:', iniErr); }
         try {
             const net = (typeof network !== 'undefined' && network) ? network : (typeof window !== 'undefined' ? window.network : null);
             if (net && net.mode) {
                 const payload = {
-                    id: 'roll_s7_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                    id: rollId,
+                    s7Risk: s7Risk,
                     sender: heroName || 'Eroe',
                     formula: `Rischio ${formulaLabel}`,
                     result: `${result.totalRaises} Incrementi`,
@@ -713,6 +739,7 @@
 
     const seventhSeaRules = {
         calculateRaisesFromDice,
+        currentRaiseTarget,
         findBestRerollCandidateIndex,
         rollSeventhSeaRisk,
         applyWoundsToSheet,

@@ -57,7 +57,14 @@
             <h2 style="color: #ffcc00; margin-top: 0; margin-bottom: 4px;">Unisciti alla Partita</h2>
             <div style="margin-bottom: 12px;"><span style="font-size: 10.5px; background: #263238; color: #4dd0e1; border: 1px solid #00acc1; padding: 2px 8px; border-radius: 10px; font-weight: bold;">Beta 1.5</span></div>
             
-            <input type="text" id="login-room" placeholder="Codice Stanza (es: ABCD-1234)" style="width: 100%; padding: 8px; margin-bottom: 10px; box-sizing: border-box; background: #333; color: white; border: 1px solid #555; text-transform: uppercase;">
+            <div id="login-rejoin-container" style="display: none; margin-bottom: 12px; text-align: left;">
+                <div style="font-size: 11px; color: #81c784; font-weight: bold; margin-bottom: 5px;"><span>↩️ Rientra in campagna</span></div>
+                <div id="login-rejoin-list"></div>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: #bbb; margin-top: 4px; cursor: pointer;"><input type="checkbox" id="login-auto-rejoin" style="margin: 0;"> <span>Entra automaticamente su questo dispositivo</span></label>
+                <hr style="border-color: #444; margin: 10px 0 0 0;">
+            </div>
+
+            <input type="text" id="login-room" placeholder="Codice Campagna (es: STRAHD-2026)" style="width: 100%; padding: 8px; margin-bottom: 10px; box-sizing: border-box; background: #333; color: white; border: 1px solid #555; text-transform: uppercase;">
 
             <div id="login-char-container" style="display:none; margin-bottom: 10px; text-align: left;">
                 <label style="font-size: 11px; color: #ffcc00; font-weight: bold; margin-bottom: 3px; display: block;">Scegli il tuo Personaggio:</label>
@@ -418,19 +425,19 @@
 
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
     <script src="js/engine.js?v=153"></script>
-    <script src="js/network.js?v=10"></script>
+    <script src="js/network.js?v=13"></script>
     <script src="js/dice.js?v=127"></script>
     <script src="js/audio.js?v=117"></script>
-    <script src="js/pcsheet.js?v=9"></script>
+    <script src="js/pcsheet.js?v=11"></script>
     <script src="js/compendium.js?v=24"></script>
     <script src="js/systems/system_manager.js?v=1"></script>
     <script src="js/systems/dnd5e/adapter.js?v=1"></script>
     <script src="js/systems/7thsea/data.js?v=1"></script>
-    <script src="js/systems/7thsea/rules.js?v=1"></script>
-    <script src="js/systems/7thsea/sheet.js?v=1"></script>
-    <script src="js/systems/7thsea/compendium.js?v=1"></script>
-    <script src="js/player.js?v=163"></script>
-<script src="js/lang.js?v=15"></script>
+    <script src="js/systems/7thsea/rules.js?v=5"></script>
+    <script src="js/systems/7thsea/sheet.js?v=13"></script>
+    <script src="js/systems/7thsea/compendium.js?v=2"></script>
+    <script src="js/player.js?v=170"></script>
+<script src="js/lang.js?v=19"></script>
 
     
 
