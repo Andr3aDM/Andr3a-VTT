@@ -203,9 +203,9 @@ document.getElementById('btn-host-online').addEventListener('click', async () =>
 
 const btnCloseRoom = document.getElementById('btn-close-room');
 if (btnCloseRoom) {
-    btnCloseRoom.addEventListener('click', () => {
+    btnCloseRoom.addEventListener('click', async () => {
         const confirmMsg = typeof window.t === 'function' ? window.t('Terminare la sessione online e disconnettere tutti i giocatori?') : 'Terminare la sessione online e disconnettere tutti i giocatori?';
-        if (confirm(confirmMsg)) {
+        if (await vttConfirm(confirmMsg, { danger: true, okLabel: 'Conferma' })) {
             network.closeRoom();
             try { sessionStorage.removeItem('vtt_dm_room_active'); } catch (e) {}
             const btn = document.getElementById('btn-host-online');
@@ -386,11 +386,11 @@ function renderOnlinePlayersList() {
         `).join('');
 
         div.querySelectorAll('.btn-kick-player').forEach(b => {
-            b.addEventListener('click', (e) => {
+            b.addEventListener('click', async (e) => {
                 const pid = e.currentTarget.getAttribute('data-pid');
                 const pName = e.currentTarget.getAttribute('data-name');
                 const confirmPrompt = typeof window.t === 'function' ? window.t(`Espellere ${pName} dalla stanza?`) : `Espellere ${pName} dalla stanza?`;
-                if (confirm(confirmPrompt)) {
+                if (await vttConfirm(confirmPrompt, { danger: true, okLabel: 'Conferma' })) {
                     network.kickPlayer(pid);
                 }
             });
@@ -1931,11 +1931,14 @@ function openNewCampaignModal() {
             const sysInp = modal.querySelector('#new-campaign-system-select');
             const name = (nameInp ? nameInp.value : '').trim();
             if (!name) {
-                alert('Inserisci un nome per la nuova campagna!');
+                vttWarn('Inserisci un nome per la nuova campagna!');
                 return;
             }
             const chosenSys = (sysInp && sysInp.value) ? sysInp.value : 'dnd5e';
             closeFn();
+            // Modifiche token in sospeso: salvate nella campagna attuale prima di passare a quella nuova
+            flushTokenFieldEdits();
+            flushCampaignTokensSaveNow(currentCampaignId);
 
             // Chiudi eventuali schede aperte della campagna precedente
             if (window.pcSheetManager && typeof window.pcSheetManager.close === 'function') window.pcSheetManager.close();
@@ -1991,7 +1994,7 @@ document.getElementById('btn-new-campaign').addEventListener('click', () => {
 
 document.getElementById('btn-delete-campaign').addEventListener('click', async () => {
     const id = document.getElementById('campaign-select').value;
-    if (id && confirm('Eliminare questa campagna?')) {
+    if (id && await vttConfirm('Eliminare questa campagna?', { danger: true })) {
         await vttDB.deleteCampaign(id);
         if (localStorage.getItem('vtt_last_campaign_id') === id) {
             localStorage.removeItem('vtt_last_campaign_id');
@@ -2061,6 +2064,8 @@ function updateLoadedMapIndicator() {
 document.getElementById('campaign-select').addEventListener('change', async (e) => {
     const id = e.target.value;
     const oldCampaignId = currentCampaignId;
+    flushTokenFieldEdits();
+    flushCampaignTokensSaveNow(oldCampaignId);
     checkUnsavedMapChanges(async () => {
         // Chiudi eventuali schede aperte della campagna precedente per evitare qualsiasi contaminazione tra sistemi
         if (window.pcSheetManager && typeof window.pcSheetManager.close === 'function') window.pcSheetManager.close();
@@ -2192,8 +2197,8 @@ document.getElementById('folder-select').addEventListener('change', (e) => {
 
 document.getElementById('btn-new-folder').addEventListener('click', async () => {
     const campaignId = document.getElementById('campaign-select').value;
-    if (!campaignId) return alert('Seleziona prima una campagna!');
-    const folderName = prompt('Nome della nuova cartella (es. "Barovia", "Terre di Confine"):');
+    if (!campaignId) return vttWarn('Seleziona prima una campagna!');
+    const folderName = await vttPrompt('Nome della nuova cartella (es. "Barovia", "Terre di Confine"):');
     if (!folderName || !folderName.trim()) return;
     const trimmed = folderName.trim();
     try {
@@ -2203,17 +2208,17 @@ document.getElementById('btn-new-folder').addEventListener('click', async () => 
         await refreshMaps(campaignId);
     } catch (err) {
         console.error(err);
-        alert('Errore durante la creazione della cartella.');
+        vttWarn('Errore durante la creazione della cartella.');
     }
 });
 
 document.getElementById('btn-delete-folder').addEventListener('click', async () => {
     const campaignId = document.getElementById('campaign-select').value;
-    if (!campaignId) return alert('Seleziona prima una campagna!');
+    if (!campaignId) return vttWarn('Seleziona prima una campagna!');
     if (!currentSelectedFolder || currentSelectedFolder === '__none__') {
-        return alert('Seleziona dal menu a tendina una cartella creata da te da eliminare (non puoi eliminare "Tutte le Mappe" o "Senza Cartella")!');
+        return vttWarn('Seleziona dal menu a tendina una cartella creata da te da eliminare (non puoi eliminare "Tutte le Mappe" o "Senza Cartella")!');
     }
-    if (confirm(`Sei sicuro di voler eliminare la cartella "${currentSelectedFolder}"?\nLe mappe al suo interno NON verranno cancellate ma spostate in "Senza Cartella (Generale)".`)) {
+    if (await vttConfirm(`Sei sicuro di voler eliminare la cartella "${currentSelectedFolder}"?\nLe mappe al suo interno NON verranno cancellate ma spostate in "Senza Cartella (Generale)".`, { danger: true })) {
         await vttDB.deleteFolderFromCampaign(campaignId, currentSelectedFolder);
         currentSelectedFolder = "";
         await refreshFolders(campaignId);
@@ -2242,16 +2247,16 @@ function getEngineMapState() {
 async function performSaveNewMap() {
     const campaignId = document.getElementById('campaign-select')?.value;
     if (!campaignId) {
-        alert('Seleziona una campagna dal menu a tendina prima di salvare!');
+        vttWarn('Seleziona una campagna dal menu a tendina prima di salvare!');
         return false;
     }
     if (!currentMapBase64) {
-        alert('Devi caricare una mappa prima di poterla salvare!');
+        vttWarn('Devi caricare una mappa prima di poterla salvare!');
         return false;
     }
 
     const defaultName = currentLoadedMapName ? `${currentLoadedMapName} (Copia)` : 'Nuova Mappa';
-    const name = prompt('Nome di questo nuovo salvataggio (es. "Taverna - Inizio Combattimento"):', defaultName);
+    const name = await vttPrompt('Nome di questo nuovo salvataggio (es. "Taverna - Inizio Combattimento"):', defaultName);
     if (!name) return false;
 
     const state = getEngineMapState();
@@ -2291,7 +2296,7 @@ async function performOverwriteMap() {
         campaignId = existingMap.campaignId;
     }
     if (!campaignId) {
-        alert('Seleziona una campagna!');
+        vttWarn('Seleziona una campagna!');
         return false;
     }
     if (!currentMapBase64) return false;
@@ -2328,15 +2333,17 @@ function checkUnsavedMapChanges(onProceed, onCancel = null) {
     const btnCancel = document.getElementById('btn-unsaved-cancel');
 
     if (!modal || !btnSaveNew || !btnDiscard || !btnCancel) {
-        if (confirm(`Ci sono modifiche non salvate alla mappa "${currentLoadedMapName || 'attuale'}"!\nVuoi salvare prima di procedere?`)) {
-            performOverwriteMap().then(saved => {
-                if (saved) onProceed();
-                else if (typeof onCancel === 'function') onCancel();
-            });
-        } else {
-            markMapDirty(false);
-            onProceed();
-        }
+        vttConfirm(`Ci sono modifiche non salvate alla mappa "${currentLoadedMapName || 'attuale'}"!\nVuoi salvare prima di procedere?`, { okLabel: 'Salva', cancelLabel: 'Non salvare' }).then(wantSave => {
+            if (wantSave) {
+                performOverwriteMap().then(saved => {
+                    if (saved) onProceed();
+                    else if (typeof onCancel === 'function') onCancel();
+                });
+            } else {
+                markMapDirty(false);
+                onProceed();
+            }
+        });
         return;
     }
 
@@ -2421,7 +2428,7 @@ document.getElementById('btn-save-map').addEventListener('click', async () => {
 document.getElementById('btn-load-map').addEventListener('click', async () => {
     const select = document.getElementById('map-select');
     const targetMapId = select ? select.value : null;
-    if (!targetMapId) return alert('Seleziona una mappa da caricare!');
+    if (!targetMapId) return vttWarn('Seleziona una mappa da caricare!');
     
     // Se la mappa selezionata è già quella attualmente caricata e non ci sono modifiche non salvate
     if (targetMapId === currentLoadedMapId && !isMapDirty) {
@@ -2432,7 +2439,7 @@ document.getElementById('btn-load-map').addEventListener('click', async () => {
 
     checkUnsavedMapChanges(async () => {
         const mapData = await vttDB.getMap(targetMapId);
-        if (!mapData) return alert('Impossibile leggere la mappa dal database.');
+        if (!mapData) return vttWarn('Impossibile leggere la mappa dal database.');
         
         isSuppressingDirty = true;
         currentLoadedMapId = mapData.id;
@@ -2548,7 +2555,7 @@ document.getElementById('btn-load-map').addEventListener('click', async () => {
 // -- EXPORT / IMPORT --
 document.getElementById('btn-export-campaign').addEventListener('click', async () => {
     const id = document.getElementById('campaign-select').value;
-    if (!id) return alert('Seleziona una campagna da esportare!');
+    if (!id) return vttWarn('Seleziona una campagna da esportare!');
     
     const data = await vttDB.exportCampaign(id);
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
@@ -2571,10 +2578,10 @@ document.getElementById('import-upload').addEventListener('change', (e) => {
             try {
                 const data = JSON.parse(ev.target.result);
                 await vttDB.importCampaign(data);
-                alert('Campagna importata con successo!');
+                vttNotify('Campagna importata con successo!');
                 refreshCampaigns();
             } catch (err) {
-                alert('Errore durante l\'importazione. Il file selezionato non è valido.');
+                vttWarn('Errore durante l\'importazione. Il file selezionato non è valido.');
                 console.error(err);
             }
         };
@@ -2586,8 +2593,8 @@ document.getElementById('import-upload').addEventListener('change', (e) => {
 document.getElementById('btn-delete-map').addEventListener('click', async () => {
     const select = document.getElementById('map-select');
     const id = select.value;
-    if (!id) return alert('Seleziona una mappa da eliminare!');
-    if (confirm('Sei sicuro di voler eliminare questa mappa?')) {
+    if (!id) return vttWarn('Seleziona una mappa da eliminare!');
+    if (await vttConfirm('Sei sicuro di voler eliminare questa mappa?', { danger: true })) {
         await vttDB.deleteMap(id);
         if (currentLoadedMapId === id) {
             currentLoadedMapId = null;
@@ -2603,7 +2610,7 @@ document.getElementById('btn-move-map').addEventListener('click', async () => {
     const campaignId = document.getElementById('campaign-select').value;
     const select = document.getElementById('map-select');
     const mapId = select.value;
-    if (!campaignId || !mapId) return alert('Seleziona prima una mappa dal menu a tendina da spostare!');
+    if (!campaignId || !mapId) return vttWarn('Seleziona prima una mappa dal menu a tendina da spostare!');
 
     const campaign = await vttDB.getCampaign(campaignId);
     const folders = (campaign && Array.isArray(campaign.folders)) ? campaign.folders : [];
@@ -2615,7 +2622,7 @@ document.getElementById('btn-move-map').addEventListener('click', async () => {
     });
     promptMsg += "\nInserisci il numero della cartella (es. 1) oppure scrivi direttamente il nome:";
 
-    const choice = prompt(promptMsg);
+    const choice = await vttPrompt(promptMsg);
     if (choice === null) return;
 
     const trimmed = choice.trim();
@@ -2632,7 +2639,7 @@ document.getElementById('btn-move-map').addEventListener('click', async () => {
             if (found) {
                 targetFolder = found;
             } else {
-                if (confirm(`La cartella "${trimmed}" non esiste ancora. Vuoi crearla e spostare qui la mappa?`)) {
+                if (await vttConfirm(`La cartella "${trimmed}" non esiste ancora. Vuoi crearla e spostare qui la mappa?`, { okLabel: 'Conferma' })) {
                     await vttDB.addFolderToCampaign(campaignId, trimmed);
                     targetFolder = trimmed;
                     await refreshFolders(campaignId);
@@ -2645,7 +2652,7 @@ document.getElementById('btn-move-map').addEventListener('click', async () => {
 
     await vttDB.updateMapFolder(mapId, targetFolder);
     await refreshMaps(campaignId, mapId);
-    alert(`Mappa spostata con successo ${targetFolder ? `nella cartella "${targetFolder}"` : 'in "Senza Cartella (Generale)"'}!`);
+    vttNotify(`Mappa spostata con successo ${targetFolder ? `nella cartella "${targetFolder}"` : 'in "Senza Cartella (Generale)"'}!`);
 });
 
 // Gestione Ancoraggio Oggetti alla Griglia
@@ -3197,6 +3204,55 @@ function upsertTokenInCampaign(token, skipGalleryRefresh = false) {
 }
 window.upsertTokenInCampaign = upsertTokenInCampaign;
 
+// --- Modifiche digitate nel pannello token (nome, PV, PV temp, CA) ---
+// Il valore va subito nel token e nel tracker e la mappa si ridisegna 1 volta per frame; la copia nei token
+// della Campagna (upsert con copie profonde) e l'invio ai giocatori partono dopo 300 ms di pausa o all'uscita
+// dal campo. Prima: a ogni tasto upsert + tracker (che rifaceva renderAll+syncState) + renderAll + syncState.
+const _tokenFieldEdits = { tokens: new Map(), timer: null, trackerRaf: false };
+function queueTokenFieldEdit(tokens, opts) {
+    (tokens || []).forEach(t => { if (t && t.id) _tokenFieldEdits.tokens.set(t.id, t); });
+    if (opts && opts.tracker && typeof renderTrackerList === 'function' && !_tokenFieldEdits.trackerRaf) {
+        _tokenFieldEdits.trackerRaf = true;
+        requestAnimationFrame(() => {
+            _tokenFieldEdits.trackerRaf = false;
+            renderTrackerList({ skipRenderAndSync: true });
+        });
+    }
+    engine.requestTokenLayerRender();
+    if (_tokenFieldEdits.timer) clearTimeout(_tokenFieldEdits.timer);
+    _tokenFieldEdits.timer = setTimeout(flushTokenFieldEdits, 300);
+}
+function flushTokenFieldEdits() {
+    if (_tokenFieldEdits.timer) { clearTimeout(_tokenFieldEdits.timer); _tokenFieldEdits.timer = null; }
+    if (_tokenFieldEdits.tokens.size === 0) return false;
+    const list = Array.from(_tokenFieldEdits.tokens.values());
+    _tokenFieldEdits.tokens.clear();
+    // Solo token ancora sulla mappa: un token rimosso nel frattempo non deve ricomparire nei token della Campagna
+    list.forEach(t => { if (engine.tokens.includes(t)) upsertTokenInCampaign(t); });
+    syncState();
+    return true;
+}
+window.flushTokenFieldEdits = flushTokenFieldEdits;
+
+// Scrive SUBITO i token della Campagna se un salvataggio e' in attesa (cambio campagna, chiusura pagina):
+// il timer di 180 ms leggerebbe la campagna gia' cambiata e i token gia' sostituiti.
+function flushCampaignTokensSaveNow(campId) {
+    if (!campaignTokensSaveTimer) return false;
+    clearTimeout(campaignTokensSaveTimer);
+    campaignTokensSaveTimer = null;
+    const id = campId || currentCampaignId || document.getElementById('campaign-select')?.value || '';
+    if (!id) return false;
+    try { vttDB.saveCampaignTokens(id, currentCampaignTokens.slice()).catch(e => console.warn('Salvataggio token campagna:', e)); } catch (e) { console.warn('Salvataggio token campagna:', e); }
+    return true;
+}
+window.flushCampaignTokensSaveNow = flushCampaignTokensSaveNow;
+function flushPendingTokenSaves() {
+    flushTokenFieldEdits();
+    flushCampaignTokensSaveNow();
+}
+window.addEventListener('pagehide', flushPendingTokenSaves);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPendingTokenSaves(); });
+
 document.getElementById('campaign-system-select')?.addEventListener('change', async (e) => {
     if (currentCampaignId) {
         const lockedSys = (window.systemManager && window.systemManager.getActiveSystemId()) || 'dnd5e';
@@ -3378,7 +3434,7 @@ function exportAllCampaignCharactersSeparateFiles() {
     }
     const pcList = Array.from(pcTokensMap.values());
     if (pcList.length === 0) {
-        alert(typeof window.t === 'function' ? window.t('Nessun Personaggio Giocatore (PG) trovato nella campagna da esportare!') : 'Nessun Personaggio Giocatore (PG) trovato nella campagna da esportare!');
+        vttWarn(typeof window.t === 'function' ? window.t('Nessun Personaggio Giocatore (PG) trovato nella campagna da esportare!') : 'Nessun Personaggio Giocatore (PG) trovato nella campagna da esportare!');
         return;
     }
 
@@ -3709,13 +3765,13 @@ function createTokenCard(name, src, count = 1, allowDelete = false, id = null, i
         delBtn.onclick = async (e) => {
             e.stopPropagation();
             if (sourceType === 'campaign') {
-                if (confirm(`Rimuovere "${name}" dai token salvati nella Campagna?`)) {
+                if (await vttConfirm(`Rimuovere "${name}" dai token salvati nella Campagna?`, { danger: true, okLabel: 'Conferma' })) {
                     currentCampaignTokens = currentCampaignTokens.filter(x => x.id !== id && x.src !== src);
                     scheduleSaveCampaignTokens();
                     updateMapTokensGallery();
                 }
             } else {
-                if (confirm(`Rimuovere "${name}" dalla libreria salvata?`)) {
+                if (await vttConfirm(`Rimuovere "${name}" dalla libreria salvata?`, { danger: true, okLabel: 'Conferma' })) {
                     await vttDB.deleteToken(id);
                     savedTokensLibrary = savedTokensLibrary.filter(x => x.id !== id);
                     updateLibraryGallery();
@@ -3865,8 +3921,8 @@ document.getElementById('token-file-input')?.addEventListener('change', async (e
 });
 
 document.getElementById('btn-clear-token-library')?.addEventListener('click', async () => {
-    if (!savedTokensLibrary || savedTokensLibrary.length === 0) return alert('La libreria è già vuota!');
-    if (confirm('Sei sicuro di voler svuotare tutta la libreria di token salvata? (I token già presenti sulle mappe non verranno eliminati)')) {
+    if (!savedTokensLibrary || savedTokensLibrary.length === 0) return vttWarn('La libreria è già vuota!');
+    if (await vttConfirm('Sei sicuro di voler svuotare tutta la libreria di token salvata? (I token già presenti sulle mappe non verranno eliminati)', { danger: true, okLabel: 'Conferma' })) {
         await vttDB.clearTokens();
         savedTokensLibrary = [];
         updateLibraryGallery();
@@ -4544,7 +4600,6 @@ document.getElementById('token-name-edit').addEventListener('input', (e) => {
             const p = engine.initiative.participants.find(x => x.tokenId === targets[0].id);
             if (p) p.name = rawVal || window.getSmartTokenName(targets[0]);
         }
-        upsertTokenInCampaign(targets[0]);
     } else {
         const base = rawVal.replace(/\s+\d+$/, '').trim();
         targets.forEach((t, idx) => {
@@ -4554,12 +4609,9 @@ document.getElementById('token-name-edit').addEventListener('input', (e) => {
                 const p = engine.initiative.participants.find(x => x.tokenId === t.id);
                 if (p) p.name = t.name || window.getSmartTokenName(t);
             }
-            upsertTokenInCampaign(t);
         });
     }
-    if (engine.initiative && typeof renderTrackerList === 'function') renderTrackerList();
-    engine.renderAll();
-    syncState();
+    queueTokenFieldEdit(targets, { tracker: !!engine.initiative });
 });
 
 document.getElementById('token-name-visibility').addEventListener('change', (e) => {
@@ -4703,7 +4755,7 @@ document.getElementById('btn-delete-token').addEventListener('click', () => {
 });
 
 // Pulsante esplicito per rimuovere il token direttamente e definitivamente dal Roster della Campagna
-document.getElementById('btn-delete-from-campaign')?.addEventListener('click', () => {
+document.getElementById('btn-delete-from-campaign')?.addEventListener('click', async () => {
     const targets = getSelectedTargetTokens();
     if (targets.length === 0) return;
     const names = targets.map(t => t.name || 'Token').join(', ');
@@ -4711,7 +4763,7 @@ document.getElementById('btn-delete-from-campaign')?.addEventListener('click', (
         ? window.t(`Rimuovere definitivamente ${names} dal Roster della Campagna attiva?`)
         : `Rimuovere definitivamente ${names} dal Roster della Campagna attiva?`;
     
-    if (confirm(confirmMsg)) {
+    if (await vttConfirm(confirmMsg, { danger: true, okLabel: 'Conferma' })) {
         targets.forEach(tok => {
             currentCampaignTokens = currentCampaignTokens.filter(x => x.id !== tok.id && x.src !== tok.src);
             engine.tokens = engine.tokens.filter(t => t.id !== tok.id);
@@ -4752,17 +4804,12 @@ function updateTokenHP(e) {
         targetTokens.forEach(token => {
             token.hpTemp = tempVal;
             if (token.pcSheet) token.pcSheet.hpTemp = tempVal;
-            upsertTokenInCampaign(token);
             if (engine.initiative && engine.initiative.participants) {
                 const pItem = engine.initiative.participants.find(p => p.tokenId === token.id);
                 if (pItem) pItem.hpTemp = tempVal;
             }
         });
-        if (engine.initiative && engine.initiative.participants && typeof renderTrackerList === 'function') {
-            renderTrackerList();
-        }
-        engine.renderAll();
-        syncState(true);
+        queueTokenFieldEdit(targetTokens, { tracker: !!(engine.initiative && engine.initiative.participants) });
         return;
     }
 
@@ -4797,7 +4844,6 @@ function updateTokenHP(e) {
             token.pcSheet.hpTemp = tempVal;
         }
         token.hpVisibleToPlayers = isVisible;
-        upsertTokenInCampaign(token);
         if (engine.initiative && engine.initiative.participants) {
             const pItem = engine.initiative.participants.find(p => p.tokenId === token.id);
             if (pItem) {
@@ -4808,11 +4854,7 @@ function updateTokenHP(e) {
         }
     });
 
-    if (engine.initiative && engine.initiative.participants && typeof renderTrackerList === 'function') {
-        renderTrackerList();
-    }
-    engine.renderAll();
-    syncState();
+    queueTokenFieldEdit(targetTokens, { tracker: !!(engine.initiative && engine.initiative.participants) });
 }
 
 
@@ -4866,14 +4908,18 @@ document.getElementById('token-ac')?.addEventListener('input', (e) => {
     const targetTokens = getSelectedTargetTokens();
     targetTokens.forEach(t => {
         t.ac = val;
-        upsertTokenInCampaign(t);
         if (engine.initiative && engine.initiative.participants) {
             const p = engine.initiative.participants.find(x => x.tokenId === t.id);
             if (p) p.ac = val;
         }
     });
-    if (engine.initiative && typeof renderTrackerList === 'function') renderTrackerList();
-    syncState();
+    queueTokenFieldEdit(targetTokens, { tracker: !!engine.initiative });
+});
+
+// Uscita dal campo (change = blur o Invio): salva e invia subito, senza aspettare i 300 ms
+['token-name-edit', 'token-hp-current', 'token-hp-max', 'token-hp-temp', 'token-ac'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => flushTokenFieldEdits());
 });
 
 // Listener apertura Scheda Statistiche Compendio
@@ -6014,7 +6060,7 @@ function handleStart(e) {
             id: Date.now() + '_' + Math.random(),
             color: '#00ffcc',
             active: true,
-            points: [{x: worldPos.x, y: worldPos.y, t: Date.now()}]
+            points: [{x: Math.round(worldPos.x * 10) / 10, y: Math.round(worldPos.y * 10) / 10, t: Date.now()}]
         };
         const colors = ['#ff0055', '#00ffcc', '#ffff00', '#ff8800', '#ff00ff', '#55ff00'];
         activeLaser.color = colors[Math.floor(Math.random() * colors.length)];
@@ -6255,7 +6301,7 @@ function handleMove(e) {
             }
         }
 
-        engine.renderAll();
+        engine.requestRenderAll();
         if (Date.now() - (window.lastGridMoveSend || 0) > 40) {
             window.lastGridMoveSend = Date.now();
             network.send({
@@ -6274,16 +6320,16 @@ function handleMove(e) {
         engine.ruler.endY = worldPos.y;
         engine.renderUI();
     } else if (currentTool === 'laser' && activeLaser) {
-        activeLaser.points.push({x: worldPos.x, y: worldPos.y, t: Date.now()});
+        engine.addLaserPoint(activeLaser, worldPos.x, worldPos.y);
         if (Date.now() - lastLaserSync > 40) {
             network.send({ type: 'LASER_SYNC', payload: activeLaser });
             lastLaserSync = Date.now();
         }
     } else if (currentTool.startsWith('draw-')) {
         activeStroke.points.push(worldPos);
-        // Disegno a mano libera: a ogni punto basta ridisegnare i livelli disegni, non token e targhette.
+        // Disegno a mano libera: a ogni punto si aggiunge solo l'ultimo segmento (prima: tutti i tratti).
         // Il ridisegno completo avviene al rilascio (handleEnd -> needsFullRender).
-        engine.renderDrawings();
+        engine.appendStrokeSegment(currentTool === 'draw-public' ? 'drawPublic' : 'drawPrivate', activeStroke);
         if (currentTool === 'draw-public') {
             if (Date.now() - (window.lastDrawLiveSend || 0) > 40) {
                 window.lastDrawLiveSend = Date.now();
@@ -6645,11 +6691,11 @@ function handleEnd(e) {
 
 const btnAddToInit = document.getElementById('btn-add-to-init');
 if(btnAddToInit) {
-    btnAddToInit.addEventListener('click', () => {
-        if (!engine.initiative || !engine.initiative.participants) return alert("Avvia prima l'iniziativa col tasto giallo in alto!");
-        if (!engine.selectedTokens || engine.selectedTokens.size === 0) return alert("Seleziona almeno un token prima!");
+    btnAddToInit.addEventListener('click', async () => {
+        if (!engine.initiative || !engine.initiative.participants) return vttWarn("Avvia prima l'iniziativa col tasto giallo in alto!");
+        if (!engine.selectedTokens || engine.selectedTokens.size === 0) return vttWarn("Seleziona almeno un token prima!");
         
-        let roll = prompt("Inserisci il valore di Iniziativa per il/i token selezionati:", "10");
+        let roll = await vttPrompt("Inserisci il valore di Iniziativa per il/i token selezionati:", "10");
         if (roll === null) return;
         
         let count = 0;
@@ -6691,7 +6737,7 @@ if(btnAddToInit) {
 
 
 let toastHideTimeout = null;
-function showToast(msg) {
+function showToast(msg, durationMs) {
     if (typeof window.t === 'function') msg = window.t(msg);
     let t = document.getElementById('toast-msg');
     if(!t) {
@@ -6730,7 +6776,7 @@ function showToast(msg) {
     toastHideTimeout = setTimeout(() => {
         t.style.opacity = '0';
         toastHideTimeout = null;
-    }, 3200);
+    }, durationMs || 3200);
 }
 
 

@@ -23,6 +23,9 @@ class VTTEngine {
             drawPrivate: this.createCanvas('draw-private-layer', 3),
             tokens: this.createCanvas('tokens-layer', 4),
             tokenEffects: this.createCanvas('token-effects-layer', 5),
+            // Parti pulsanti degli anelli (alone colorato + filo bianco): disegnate una volta, la pulsazione
+            // e' un'animazione CSS di opacita' eseguita dal browser (GPU) -> zero ridisegni al secondo.
+            tokenPulse: this.createCanvas('token-pulse-layer', 5),
             tokenOverlays: this.createCanvas('token-overlays-layer', 6),
             fog: this.createCanvas('fog-layer', 7)
         };
@@ -30,6 +33,7 @@ class VTTEngine {
         if (this.isDM) {
             this.layers.fog.style.opacity = '0.55';
         }
+        this._setupPulseAnimation();
 
         this.layers.ui = document.createElement('canvas');
         this.layers.ui.id = 'ui-layer';
@@ -46,6 +50,7 @@ class VTTEngine {
             drawPrivate: this.layers.drawPrivate.getContext('2d'),
             tokens: this.layers.tokens.getContext('2d'),
             tokenEffects: this.layers.tokenEffects.getContext('2d'),
+            tokenPulse: this.layers.tokenPulse.getContext('2d'),
             tokenOverlays: this.layers.tokenOverlays.getContext('2d'),
             fog: this.layers.fog.getContext('2d'),
             ui: this.layers.ui.getContext('2d')
@@ -79,6 +84,25 @@ class VTTEngine {
 
         window.addEventListener('resize', () => this.resizeUI());
         this.resizeUI();
+    }
+
+    // Pulsazione degli anelli via CSS: stessa forma della vecchia pulse = (sin(now/200)+1)/2 (periodo ~1257 ms,
+    // opacita' 0.75 -> 1 -> 0.75). Animazione CSS standard di opacita': Chrome, Edge, Firefox, Safari iOS/macOS,
+    // Android. Il ritardo negativo allinea la fase all'orologio, cosi' il cambio colore (AoE multiple) cade al minimo.
+    _setupPulseAnimation() {
+        const PERIOD = 2 * Math.PI * 200;
+        this._pulsePeriodMs = PERIOD;
+        if (!document.getElementById('vtt-pulse-style')) {
+            const st = document.createElement('style');
+            st.id = 'vtt-pulse-style';
+            st.textContent = '@keyframes vttTokenPulse { 0% { opacity: 0.75; } 50% { opacity: 1; } 100% { opacity: 0.75; } }';
+            (document.head || document.documentElement).appendChild(st);
+        }
+        const minPhase = (1.5 * Math.PI) * 200; // istante (mod periodo) in cui la vecchia pulse valeva 0
+        const delay = -(((Date.now() - minPhase) % PERIOD) + PERIOD) % PERIOD;
+        const c = this.layers.tokenPulse;
+        c.style.animation = `vttTokenPulse ${Math.round(PERIOD)}ms ease-in-out ${Math.round(delay)}ms infinite`;
+        c.style.willChange = 'opacity';
     }
 
     createCanvas(id, zIndex) {
@@ -200,6 +224,57 @@ class VTTEngine {
         this.renderTokenEffects();
         this.renderTokenOverlays();
         this.renderUI();
+    }
+
+    // Aggiunge un punto alla scia del laser. Scia di 5 s invariata, ma: coordinate arrotondate (meta' dei byte
+    // per punto nel LASER_SYNC), nessun punto se il mouse si e' mosso meno di ~3 px sullo schermo, massimo 300 punti.
+    // Misura 13/11/2026 (misura_scenari.js, G): 5 s di laser = ~260 punti e 16 KB inviati ogni 40-50 ms.
+    addLaserPoint(laser, x, y) {
+        if (!laser || !Array.isArray(laser.points)) return false;
+        const pts = laser.points;
+        const last = pts[pts.length - 1];
+        const minDist = 3 / (this.scale || 1);
+        if (last && Math.abs(last.x - x) < minDist && Math.abs(last.y - y) < minDist) return false;
+        pts.push({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, t: Date.now() });
+        if (pts.length > 300) pts.splice(0, pts.length - 300);
+        return true;
+    }
+
+    // Ridisegno completo al massimo una volta per frame (spostamento griglia, ecc.)
+    requestRenderAll() {
+        if (this._renderAllPending) return;
+        this._renderAllPending = true;
+        requestAnimationFrame(() => {
+            this._renderAllPending = false;
+            this.renderAll();
+        });
+    }
+
+    // Disegno a mano libera: aggiunge SOLO l'ultimo segmento del tratto sul suo livello, invece di ridisegnare
+    // tutti i tratti della mappa a ogni movimento. Colori pieni + estremi arrotondati: risultato identico al
+    // tratto intero. Il ridisegno completo resta al rilascio. Misura 13/11 (scenario E): ~14 ms/mossa con 200 tratti.
+    appendStrokeSegment(layerKey, stroke) {
+        if (!this.mapImage || !stroke || !Array.isArray(stroke.points) || stroke.points.length < 2) return;
+        const layer = this.layers[layerKey];
+        const ctx = this.ctx[layerKey];
+        if (!layer || !ctx) return;
+        // Livello ancora 1x1 (allocazione pigra): il primo ridisegno completo lo porta a misura mappa
+        if (layer.width !== this.mapImage.width || layer.height !== this.mapImage.height) {
+            this.renderDrawings();
+            return;
+        }
+        const n = stroke.points.length;
+        const a = stroke.points[n - 2], b = stroke.points[n - 1];
+        ctx.save();
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = stroke.color;
+        ctx.lineWidth = stroke.width;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+        ctx.restore();
     }
 
     requestTokenLayerRender() {
@@ -920,10 +995,30 @@ class VTTEngine {
         }
     }
 
+    // Firma leggera di cio' che gli anelli mostrano (turno corrente + bersagli AoE con colori).
+    _effectsSignature() {
+        let sig = '';
+        const I = this.initiative;
+        if (I && I.active && I.participants && I.participants.length > 0) {
+            const cp = I.participants[I.currentTurnIndex];
+            sig += 'T' + (cp && cp.tokenId);
+        }
+        if (this._tokensWithAoE && this._tokensWithAoE.size > 0) {
+            this._tokensWithAoE.forEach((cols, id) => { sig += '|' + id + ':' + (cols && cols.join ? cols.join(',') : ''); });
+        }
+        return sig;
+    }
+
     renderTokenEffects() {
         if (!this.mapImage || !this.ctx.tokenEffects) return;
+        this._lastEffectsSig = this._effectsSignature();
         const ctx = this.ctx.tokenEffects;
+        const pctx = this.ctx.tokenPulse;
         this.clearDirtyRects(ctx, this._dirtyEffectRects, this.layers.tokenEffects.width, this.layers.tokenEffects.height);
+        if (!this._dirtyPulseRects) this._dirtyPulseRects = [];
+        this.clearDirtyRects(pctx, this._dirtyPulseRects, this.layers.tokenPulse.width, this.layers.tokenPulse.height);
+        if (this._pulseColorTimer) { clearTimeout(this._pulseColorTimer); this._pulseColorTimer = null; }
+        let needsColorCycle = false;
 
         let hasActiveInitiative = (this.initiative && this.initiative.active && this.initiative.participants.length > 0);
         let turnToken = null;
@@ -944,7 +1039,7 @@ class VTTEngine {
         }
 
         const now = Date.now();
-        const pulse = (Math.sin(now / 200) + 1) / 2; // Dissolvenza pulsante fluida da 0 a 1
+        const pulse = 1; // la pulsazione ora e' l'opacita' CSS del layer tokenPulse (0.75 -> 1)
 
             // Raccogli tutti i token che necessitano di anelli
             const tokensWithRings = new Set();
@@ -969,12 +1064,14 @@ class VTTEngine {
                 const cy = token.y + token.height / 2;
                 const R = token.width / 2;
                 const ringBoxHalf = Math.ceil(R + 20);
-                this._dirtyEffectRects.push({
+                const ringBox = {
                     x: Math.floor(cx - ringBoxHalf),
                     y: Math.floor(cy - ringBoxHalf),
                     w: ringBoxHalf * 2,
                     h: ringBoxHalf * 2
-                });
+                };
+                this._dirtyEffectRects.push(ringBox);
+                this._dirtyPulseRects.push({ x: ringBox.x, y: ringBox.y, w: ringBox.w, h: ringBox.h });
                 const isCurrentTurn = (turnToken && turnToken.id === token.id);
                 const aoeColors = (this._tokensWithAoE && this._tokensWithAoE.get(token.id)) || null;
 
@@ -982,6 +1079,7 @@ class VTTEngine {
                 if (aoeColors && aoeColors.length > 0) {
                     let aoeColor = aoeColors[0];
                     if (aoeColors.length > 1) {
+                        needsColorCycle = true;
                         const cycleIndex = Math.floor((now / 200 - Math.PI * 1.5) / (2 * Math.PI));
                         const safeIndex = ((cycleIndex % aoeColors.length) + aoeColors.length) % aoeColors.length;
                         aoeColor = aoeColors[safeIndex];
@@ -997,11 +1095,11 @@ class VTTEngine {
                     ctx.stroke();
 
                     if (useFastNeon) {
-                        ctx.strokeStyle = this.hexToRgba(aoeColor, 0.35 * (0.75 + pulse * 0.25));
-                        ctx.lineWidth = 9;
-                        ctx.beginPath();
-                        ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
-                        ctx.stroke();
+                        pctx.strokeStyle = this.hexToRgba(aoeColor, 0.35);
+                        pctx.lineWidth = 9;
+                        pctx.beginPath();
+                        pctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
+                        pctx.stroke();
 
                         ctx.strokeStyle = this.hexToRgba(aoeColor, 0.85);
                         ctx.lineWidth = 4.5;
@@ -1023,11 +1121,11 @@ class VTTEngine {
                         ctx.shadowColor = '#ffffff';
                         ctx.shadowBlur = 4;
                     }
-                    ctx.strokeStyle = `rgba(255, 255, 255, ${0.75 + pulse * 0.25})`;
-                    ctx.lineWidth = 1.6;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
-                    ctx.stroke();
+                    pctx.strokeStyle = 'rgba(255, 255, 255, 1)';
+                    pctx.lineWidth = 1.6;
+                    pctx.beginPath();
+                    pctx.arc(cx, cy, r_aoe, 0, Math.PI * 2);
+                    pctx.stroke();
 
                     ctx.restore();
                 }
@@ -1044,11 +1142,11 @@ class VTTEngine {
                     ctx.stroke();
 
                     if (useFastNeon) {
-                        ctx.strokeStyle = `rgba(0, 255, 0, ${0.35 * (0.75 + pulse * 0.25)})`;
-                        ctx.lineWidth = 7.5;
-                        ctx.beginPath();
-                        ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
-                        ctx.stroke();
+                        pctx.strokeStyle = 'rgba(0, 255, 0, 0.35)';
+                        pctx.lineWidth = 7.5;
+                        pctx.beginPath();
+                        pctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
+                        pctx.stroke();
 
                         ctx.strokeStyle = `rgba(0, 255, 0, 0.85)`;
                         ctx.lineWidth = 3.5;
@@ -1070,16 +1168,25 @@ class VTTEngine {
                         ctx.shadowColor = '#ffffff';
                         ctx.shadowBlur = 3;
                     }
-                    ctx.strokeStyle = `rgba(255, 255, 255, ${0.7 + pulse * 0.3})`;
-                    ctx.lineWidth = 1.3;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
-                    ctx.stroke();
+                    pctx.strokeStyle = 'rgba(255, 255, 255, 1)';
+                    pctx.lineWidth = 1.3;
+                    pctx.beginPath();
+                    pctx.arc(cx, cy, r_turn, 0, Math.PI * 2);
+                    pctx.stroke();
 
                     ctx.restore();
                 }
 
             });
+
+        // Token in piu' AoE di colori diversi: l'anello alterna i colori. Si ridisegna solo al prossimo cambio
+        // colore (circa ogni 1,26 s, al minimo della pulsazione), non 30 volte al secondo.
+        if (needsColorCycle) {
+            const P = this._pulsePeriodMs || (2 * Math.PI * 200);
+            const minPhase = (1.5 * Math.PI) * 200;
+            const toNext = P - ((((Date.now() - minPhase) % P) + P) % P) + 5;
+            this._pulseColorTimer = setTimeout(() => { this._pulseColorTimer = null; this.renderTokenEffects(); }, toNext);
+        }
 
         // 4. BADGE E MANIGLIE AoE: Disegnati su layer tokenEffects (livello 5)
         // Più in alto dei token (livello 4), MA sotto la nebbia (livello 6)!
@@ -1697,10 +1804,14 @@ class VTTEngine {
         const w = this.mapImage.width;
         const h = this.mapImage.height;
 
-        if (this.publicStrokes && this.publicStrokes.length > 0) {
+        // _liveStroke: tratto del Giocatore ancora in corso (non ancora in publicStrokes): resta visibile
+        // anche se nel frattempo arriva un ridisegno completo (es. STATE_SYNC del Master).
+        const live = (this._liveStroke && !(this.publicStrokes || []).includes(this._liveStroke)) ? this._liveStroke : null;
+        if ((this.publicStrokes && this.publicStrokes.length > 0) || live) {
             this.ensureLayerSize('drawPublic');
             this.ctx.drawPublic.clearRect(0, 0, w, h);
-            this.drawStrokes(this.ctx.drawPublic, this.publicStrokes);
+            this.drawStrokes(this.ctx.drawPublic, this.publicStrokes || []);
+            if (live) this.drawStrokes(this.ctx.drawPublic, [live]);
         } else if (this.layers.drawPublic.width > 1) {
             this.ctx.drawPublic.clearRect(0, 0, this.layers.drawPublic.width, this.layers.drawPublic.height);
         }
@@ -1860,11 +1971,20 @@ class VTTEngine {
         
         let hasActiveInitiative = (this.initiative && this.initiative.active && this.initiative.participants.length > 0);
         const hasAoEHighlights = this._tokensWithAoE && this._tokensWithAoE.size > 0;
+        // L'anello del turno pulsa solo se il turno corrente e' di un token presente (e visibile al giocatore).
+        // Turno su una voce senza token (es. Fase Tiri 7th Sea, PNG senza pedina): niente da animare, niente loop.
+        // Misura 13/11/2026 (TEST/misura_scenari.js, scenario C): il loop a vuoto costava ~40% CPU a scena ferma.
+        if (hasActiveInitiative) {
+            const cp = this.initiative.participants[this.initiative.currentTurnIndex];
+            const tt = (cp && cp.isToken && cp.tokenId) ? this.tokens.find(tok => tok.id === cp.tokenId) : null;
+            hasActiveInitiative = !!(tt && (this.isDM || tt.visible));
+        }
 
-        // Disegna anelli Turno (verde, interno), AoE e Overlays su layer tokenEffects solo durante il loop di animazione
-        // (renderTokensLayer e renderAll chiamano già renderTokenEffects direttamente, evitando doppi ridisegni su drag/pan/zoom!)
-        if (fromAnimLoop && (hasActiveInitiative || hasAoEHighlights)) {
-            this.renderTokenEffects();
+        // Anelli Turno/AoE: non piu' ridisegnati in loop (la pulsazione e' CSS sul layer tokenPulse).
+        // renderTokensLayer/renderAll li ridisegnano gia'; qui, per sicurezza, si ridisegnano solo se
+        // il turno o l'insieme dei bersagli AoE e' cambiato senza passare da quei metodi.
+        if (hasActiveInitiative || hasAoEHighlights || this._lastEffectsSig) {
+            if (this._effectsSignature() !== this._lastEffectsSig) this.renderTokenEffects();
         }
 
         if (this.lasso) {
@@ -1880,7 +2000,7 @@ class VTTEngine {
         }
         
         // Loop di animazione UI a 30fps: fluidità perfetta per l'occhio, ventole spente, zero lag su mouse e RAM stabile
-        if (hasActivePings || hasActiveInitiative || hasActiveLasers || hasAoEHighlights) {
+        if (hasActivePings || hasActiveLasers) {
             if (!this._uiAnimFrameId) {
                 this._uiAnimFrameId = requestAnimationFrame(() => {
                     this._uiAnimFrameId = null;
@@ -1983,17 +2103,47 @@ class VTTEngine {
             ctx.strokeStyle = 'black';
         }
 
-        ctx.beginPath();
-        if (points.length > 0) {
-            ctx.moveTo(points[0].x, points[0].y);
-            for (let i = 1; i < points.length; i++) {
-                ctx.lineTo(points[i].x, points[i].y);
+        if (shape !== 'circle') {
+            // Pennello QUADRATO: riempie esattamente l'area spazzata dal quadrato DRITTO dell'anteprima tra un punto
+            // e il successivo (inviluppo convesso dei due quadrati). Prima era una linea spessa con estremi squadrati,
+            // che in diagonale/curva si orientava lungo il movimento: bordi storti, diversi dall'anteprima.
+            ctx.fillStyle = isErase ? 'rgba(0,0,0,1)' : 'black';
+            const h = size / 2;
+            const pts = (points.length === 1) ? [points[0], points[0]] : points;
+            for (let i = 1; i < pts.length; i++) {
+                this._fillSquareSweep(ctx, pts[i - 1], pts[i], h);
             }
-            ctx.stroke();
+        } else {
+            ctx.beginPath();
+            if (points.length > 0) {
+                ctx.moveTo(points[0].x, points[0].y);
+                for (let i = 1; i < points.length; i++) {
+                    ctx.lineTo(points[i].x, points[i].y);
+                }
+                ctx.stroke();
+            }
         }
         
         ctx.globalCompositeOperation = 'source-over';
         this._fogStateAll = 'mixed';
+    }
+
+    // Riempie l'inviluppo convesso di due quadrati allineati agli assi (lato 2h) centrati in a e b.
+    _fillSquareSweep(ctx, a, b, h) {
+        const c = [
+            [a.x - h, a.y - h], [a.x + h, a.y - h], [a.x + h, a.y + h], [a.x - h, a.y + h],
+            [b.x - h, b.y - h], [b.x + h, b.y - h], [b.x + h, b.y + h], [b.x - h, b.y + h]
+        ].sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+        const cross = (o, p, q) => (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
+        const lower = [], upper = [];
+        for (const p of c) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+        for (let i = c.length - 1; i >= 0; i--) { const p = c[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+        const hull = lower.slice(0, -1).concat(upper.slice(0, -1));
+        ctx.beginPath();
+        ctx.moveTo(hull[0][0], hull[0][1]);
+        for (let i = 1; i < hull.length; i++) ctx.lineTo(hull[i][0], hull[i][1]);
+        ctx.closePath();
+        ctx.fill();
     }
 
     applyFogImage(base64Image) {

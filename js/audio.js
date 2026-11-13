@@ -652,7 +652,7 @@
             const src = (inputUrl && inputUrl.value.trim()) ? inputUrl.value.trim() : selectedFileBase64;
             const loop = document.getElementById('bgm-loop-check').checked;
             if (!src) {
-                alert("Incolla prima un URL audio (es. mp3) oppure carica un file dal PC!");
+                vttWarn("Incolla prima un URL audio (es. mp3) oppure carica un file dal PC!");
                 return;
             }
 
@@ -759,7 +759,7 @@
             const title = inputTitle.value.trim() || 'Nuova Traccia';
             const src = (inputUrl && inputUrl.value.trim()) ? inputUrl.value.trim() : selectedFileBase64;
             if (!src) {
-                alert("Inserisci un link audio o scegli un file prima di salvare in playlist!");
+                vttWarn("Inserisci un link audio o scegli un file prima di salvare in playlist!");
                 return;
             }
 
@@ -768,7 +768,7 @@
                 localStorage.setItem('vtt_audio_playlist', JSON.stringify(savedPlaylist));
             } catch(err) {
                 console.warn("Spazio localStorage limitato:", err);
-                alert("Attenzione: i file audio caricati dal PC sono troppo grandi per essere memorizzati permanentemente nella cache del browser. Usa link diretti (.mp3/.ogg) per salvarli nella Playlist permanente!");
+                vttWarn("Attenzione: i file audio caricati dal PC sono troppo grandi per essere memorizzati permanentemente nella cache del browser. Usa link diretti (.mp3/.ogg) per salvarli nella Playlist permanente!");
             }
             renderPlaylist();
             inputTitle.value = '';

@@ -6493,10 +6493,10 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         renderStories();
     }
 
-    function removeStory(sIdx) {
+    async function removeStory(sIdx) {
         if (!character.stories || !character.stories[sIdx]) return;
         const title = character.stories[sIdx].title || 'questa Storia';
-        if (confirm(`Sei sicuro di voler eliminare o abbandonare "${title}"?`)) {
+        if (await vttConfirm(`Sei sicuro di voler eliminare o abbandonare "${title}"?`, { danger: true, okLabel: 'Conferma' }) && character.stories && character.stories[sIdx]) {
             character.stories.splice(sIdx, 1);
             renderStories();
             showS7Toast("Storia rimossa.", "info");
@@ -7570,9 +7570,25 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         if (!currentRollState || !currentRollState.canReroll || currentRollState.hasRerolled) return;
         const rawDice = currentRollState.diceObjects.map(d => d.val);
         const rem = currentRollState.calc ? currentRollState.calc.remaining : [];
-        const candIdx = (window.seventhSeaRules && typeof window.seventhSeaRules.findBestRerollCandidateIndex === 'function')
-            ? window.seventhSeaRules.findBestRerollCandidateIndex(rawDice, rem)
-            : 0;
+        const R = window.seventhSeaRules;
+        let candIdx = 0;
+        if (R && typeof R.chooseRerollIndex === 'function') {
+            // Calcolo esatto sul dado che dà più Incrementi in media (anche con set da 15, +1 ai dadi, soglia 15, esplosioni)
+            const pick = R.chooseRerollIndex(rawDice, {
+                setsOf15: currentRollState.setsOf15,
+                raiseTarget: currentRollState.raiseTarget || 10,
+                plusOnePerDie: currentRollState.plusOnePerDie,
+                explodeTens: currentRollState.explodeTens
+            });
+            if (!pick.improves) {
+                // nessun ritiro può dare un Incremento in più: si rischierebbe solo di perderne (ritiro ancora disponibile a mano)
+                showS7Toast(`🎲 Nessun ritiro può darti un Incremento in più: conviene tenere il tiro. Se vuoi rischiare comunque, clicca a mano il dado da ritirare.`, "info");
+                return;
+            }
+            candIdx = pick.index;
+        } else if (R && typeof R.findBestRerollCandidateIndex === 'function') {
+            candIdx = R.findBestRerollCandidateIndex(rawDice, rem);
+        }
 
         if (candIdx >= 0 && candIdx < currentRollState.diceObjects.length) {
             rerollRiskDie(candIdx);

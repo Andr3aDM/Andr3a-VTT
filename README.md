@@ -422,6 +422,7 @@ In una campagna 7th Sea il pannello token nasconde i campi propri di D&D (CA, PV
 2. Regola eventuali dadi bonus/malus con **Dadi ±** e attiva i Vantaggi che danno dadi extra.
 3. **Lancia Rischio 🎲:** il programma calcola automaticamente la combinazione migliore di dadi in gruppi da 10 (**Incrementi**), evidenziandoli in verde, e mostra i dadi non usati.
 4. Le regole dei gradi sono applicate da sole: **Grado 3** ritiro di un dado, **Grado 4** gruppi da 15 valgono 2 Incrementi, **Grado 5** i 10 esplodono. Dove previsto puoi spendere Punti Eroe per ritirare i dadi non abbinati.
+   - **Ritiro del Grado 3:** clicca il dado da ritirare oppure **Auto-Ritira Peggiore**. Il pulsante prova tutti i risultati possibili e ritira il dado che dà più Incrementi in media (anche con set da 15, +1 ai dadi ed esplosioni): per questo non sempre sceglie il dado più basso, che spesso fa già parte di un Incremento. Se nessun ritiro può darti un Incremento in più, consiglia di tenere il tiro (puoi comunque ritirare a mano).
 5. Il risultato viene inviato in chat.
 
 ### 16.3 Ferite
@@ -990,6 +991,7 @@ In a 7th Sea campaign the token panel hides D&D-specific fields (AC, temporary H
 2. Adjust any bonus/penalty dice with **Dadi ±** and enable the Advantages that grant extra dice.
 3. **Lancia Rischio 🎲:** the program automatically finds the best grouping of dice into sets of 10 (**Raises**), highlighting them in green, and shows the unused dice.
 4. Rank rules are applied automatically: **Rank 3** reroll one die, **Rank 4** sets of 15 are worth 2 Raises, **Rank 5** 10s explode. Where allowed you can spend Hero Points to reroll unmatched dice.
+   - **Rank 3 reroll:** click the die to reroll or **Auto-Ritira Peggiore**. The button tries every possible result and rerolls the die that gives the most Raises on average (also with sets of 15, +1 per die and exploding 10s): that is why it does not always pick the lowest die, which is often already part of a Raise. If no reroll can give you an extra Raise, it suggests keeping the roll (you can still reroll by hand).
 5. The result is posted to chat.
 
 ### 16.3 Wounds

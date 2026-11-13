@@ -1674,13 +1674,13 @@
 
             // Assegnazione a token selezionato
             document.getElementById('btn-assign-statblock')?.addEventListener('click', () => {
-                if (!currentMonster) return alert("Seleziona o cerca prima un mostro!");
+                if (!currentMonster) return vttWarn("Seleziona o cerca prima un mostro!");
                 this.assignToSelectedToken(currentMonster);
             });
 
             // Crea nuovo token sulla mappa
             document.getElementById('btn-spawn-statblock-token')?.addEventListener('click', () => {
-                if (!currentMonster) return alert("Seleziona o cerca prima un mostro!");
+                if (!currentMonster) return vttWarn("Seleziona o cerca prima un mostro!");
                 this.spawnAsToken(currentMonster);
             });
 
@@ -1798,7 +1798,7 @@
                 window._autoSpawnNextJsonImport = false;
                 const textarea = document.getElementById('json-import-textarea');
                 let raw = textarea ? textarea.value.trim() : '';
-                if (!raw) return alert("Incolla prima il JSON o il testo della scheda!");
+                if (!raw) return vttWarn("Incolla prima il JSON o il testo della scheda!");
 
                 // Pulizia BOM, caratteri invisibili e fence markdown ```json ... ```
                 raw = raw.replace(/^[\uFEFF\xA0\u200B-\u200D]+/, '').trim();
@@ -1842,10 +1842,10 @@
                             showPlayerToast(`Scheda "${normalized.name}" importata con successo!`);
                         }
                     } else {
-                        alert("Formato scheda o JSON non riconosciuto o incompleto. Verifica il testo o il JSON incollato.");
+                        vttWarn("Formato scheda o JSON non riconosciuto o incompleto. Verifica il testo o il JSON incollato.");
                     }
                 } catch (err) {
-                    alert("Errore nella lettura della scheda: " + err.message);
+                    vttWarn("Errore nella lettura della scheda: " + err.message);
                 }
             });
 
@@ -2047,7 +2047,7 @@
         },
 
         async toggleTranslation() {
-            if (!currentMonster && !rawMonster) return alert("Seleziona o cerca prima un mostro!");
+            if (!currentMonster && !rawMonster) return vttWarn("Seleziona o cerca prima un mostro!");
 
             const btn = document.getElementById('btn-translate-statblock');
             const textSpan = document.getElementById('btn-translate-statblock-text');
@@ -2067,7 +2067,7 @@
                 } catch (err) {
                     console.error("Translation error:", err);
                     isItalianMode = false;
-                    alert("Errore durante la traduzione: " + err.message);
+                    vttWarn("Errore durante la traduzione: " + err.message);
                 } finally {
                     if (btn) {
                         btn.disabled = false;
@@ -3555,7 +3555,7 @@
             }
 
             if (targetTokens.length === 0) {
-                alert("Seleziona prima almeno un token sulla mappa cliccandoci sopra!");
+                vttWarn("Seleziona prima almeno un token sulla mappa cliccandoci sopra!");
                 return;
             }
 

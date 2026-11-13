@@ -428,7 +428,7 @@ document.getElementById('btn-login-online').addEventListener('click', async () =
         console.log("Tentativo di connessione a:", room);
         
         if (typeof network === 'undefined') {
-            alert("Errore critico: network.js non è stato caricato!");
+            vttWarn("Errore critico: network.js non è stato caricato!");
             if (btnLogin) { btnLogin.disabled = false; btnLogin.innerText = "Connetti Online"; }
             return;
         }
@@ -468,7 +468,7 @@ document.getElementById('btn-login-online').addEventListener('click', async () =
             }
         });
     } catch(e) {
-        alert("Errore nel tentativo di connessione: " + e.message);
+        vttWarn("Errore nel tentativo di connessione: " + e.message);
     }
 });
 
@@ -570,41 +570,80 @@ function renderRejoinList() {
     } catch (e) {}
     const urlRoom = urlParams.get('room');
     if (entry && urlRoom && vttRoomCode.key(urlRoom) !== vttRoomCode.key(entry.code)) entry = null; // link a un'altra stanza
-    if (!entry && !urlRoom && localStorage.getItem(REJOIN_AUTO_KEY) === '1') {
+    // Casella "Entra automaticamente": vale anche aprendo un link con il codice (es. dal pulsante del Master o da un
+    // link salvato), purche' in memoria ci sia un accesso per QUELLA stanza. Link a un'altra stanza: nessun ingresso.
+    let fromCheckbox = false;
+    if (!entry && localStorage.getItem(REJOIN_AUTO_KEY) === '1') {
         const l = readRejoinList();
-        if (l.length) entry = l[0];
+        entry = urlRoom ? (l.find(e => vttRoomCode.key(e.code) === vttRoomCode.key(urlRoom)) || null) : (l[0] || null);
+        fromCheckbox = !!entry;
     }
     if (!entry) return;
 
     window.__vttSkipInitialRoomQuery = true; // niente connessione in più per l'elenco dei personaggi
     const status = document.getElementById('login-status');
+    // Conto alla rovescia di 3 s, per poter annullare o spegnere l'ingresso automatico senza cercare la casella.
+    // (Il rientro dopo un calo di rete durante il gioco resta immediato: e' un'altra procedura, in network.js.)
+    const AUTO_SECONDS = 3;
+    let left = AUTO_SECONDS;
     let cancelled = false;
+    let span = null;
+    let tick = null;
+    const label = () => `${trP('↩️ Rientro automatico come')} ${entry.name} ${trP('tra')} ${left}… `;
+    const stop = () => {
+        cancelled = true;
+        if (tick) { clearInterval(tick); tick = null; }
+        if (status) status.textContent = '';
+        window.__vttSkipInitialRoomQuery = false;
+        try { sessionStorage.removeItem(PLAYER_SESSION_KEY); } catch (e) {}
+        const r = document.getElementById('login-room');
+        const code = r ? vttRoomCode.display(r.value) : '';
+        if (vttRoomCode.isValid(code)) queryAndPopulateCharacters(code);
+    };
     if (status) {
         status.style.color = '#81c784';
         status.textContent = '';
-        const span = document.createElement('span');
-        span.textContent = `${trP('↩️ Rientro automatico come')} ${entry.name}… `;
+        span = document.createElement('span');
+        span.id = 'login-autojoin-label';
+        span.textContent = label();
+        const btnCss = 'background:#333; color:#fff; border:1px solid #777; border-radius:4px; padding:2px 8px; cursor:pointer; font-size:11px; margin:2px 4px 0 0;';
         const cancel = document.createElement('button');
         cancel.type = 'button';
+        cancel.id = 'login-autojoin-cancel';
         cancel.textContent = trP('Annulla');
-        cancel.style.cssText = 'background:#333; color:#fff; border:1px solid #777; border-radius:4px; padding:2px 8px; cursor:pointer; font-size:11px;';
-        cancel.addEventListener('click', () => {
-            cancelled = true;
-            status.textContent = '';
-            window.__vttSkipInitialRoomQuery = false;
-            try { sessionStorage.removeItem(PLAYER_SESSION_KEY); } catch (e) {}
-            const r = document.getElementById('login-room');
-            const code = r ? vttRoomCode.display(r.value) : '';
-            if (vttRoomCode.isValid(code)) queryAndPopulateCharacters(code);
-        });
+        cancel.style.cssText = btnCss;
+        cancel.addEventListener('click', stop);
         status.appendChild(span);
         status.appendChild(cancel);
+        if (fromCheckbox) {
+            const never = document.createElement('button');
+            never.type = 'button';
+            never.id = 'login-autojoin-never';
+            never.textContent = trP('Non entrare più in automatico');
+            never.style.cssText = btnCss;
+            never.addEventListener('click', () => {
+                try { localStorage.removeItem(REJOIN_AUTO_KEY); } catch (e) {}
+                const auto = document.getElementById('login-auto-rejoin');
+                if (auto) auto.checked = false;
+                stop();
+            });
+            status.appendChild(never);
+        }
     }
-    setTimeout(() => { if (!cancelled) startRejoin(entry); }, 1200);
+    tick = setInterval(() => {
+        if (cancelled) return;
+        left--;
+        if (left > 0) {
+            if (span) span.textContent = label();
+            return;
+        }
+        clearInterval(tick); tick = null;
+        startRejoin(entry);
+    }, 1000);
 })();
 
 let playerToastTimeout = null;
-function showPlayerToast(msg) {
+function showPlayerToast(msg, durationMs) {
     if (typeof window.t === 'function') msg = window.t(msg);
     let t = document.getElementById('player-toast-msg');
     if (!t) {
@@ -641,7 +680,7 @@ function showPlayerToast(msg) {
     playerToastTimeout = setTimeout(() => {
         t.style.opacity = '0';
         playerToastTimeout = null;
-    }, 3200);
+    }, durationMs || 3200);
 }
 window.showToast = showPlayerToast;
 
@@ -1675,6 +1714,7 @@ function pHandleStart(e) {
         activeToken = null;
         activeLaser = null;
         activeStroke = null;
+        if (engine._liveStroke) { engine._liveStroke = null; engine._lastDrawSig = null; engine.renderDrawings(); }
 
         const rect = getPlayerUiRect();
         const t0 = e.touches[0];
@@ -1723,7 +1763,7 @@ function pHandleStart(e) {
             id: Date.now() + '_' + Math.random(),
             color: '#00ffcc',
             active: true,
-            points: [{x: worldPos.x, y: worldPos.y, t: Date.now()}]
+            points: [{x: Math.round(worldPos.x * 10) / 10, y: Math.round(worldPos.y * 10) / 10, t: Date.now()}]
         };
         const colors = ['#ff0055', '#00ffcc', '#ffff00', '#ff8800', '#ff00ff', '#55ff00'];
         activeLaser.color = colors[Math.floor(Math.random() * colors.length)];
@@ -1999,7 +2039,7 @@ function pHandleMove(e) {
         }
     }
     else if (currentTool === 'laser' && activeLaser) {
-        activeLaser.points.push({x: worldPos.x, y: worldPos.y, t: Date.now()});
+        engine.addLaserPoint(activeLaser, worldPos.x, worldPos.y);
         if (Date.now() - lastLaserSync > 50) {
             network.send({ type: 'LASER_SYNC', payload: activeLaser });
             lastLaserSync = Date.now();
@@ -2007,22 +2047,11 @@ function pHandleMove(e) {
     }
     else if (currentTool === 'draw' && activeStroke) {
         activeStroke.points.push(worldPos);
-        engine.renderAll();
-        
-        // Render locale temporaneo
-        if (engine.ensureLayerSize) engine.ensureLayerSize('drawPublic');
-        engine._lastDrawSig = null;
-        const ctx = engine.ctx.drawPublic;
-        ctx.beginPath();
-        ctx.strokeStyle = activeStroke.color;
-        ctx.lineWidth = 10; // Raddoppiato da 5 a 10
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        activeStroke.points.forEach((pt, i) => {
-            if (i === 0) ctx.moveTo(pt.x, pt.y);
-            else ctx.lineTo(pt.x, pt.y);
-        });
-        ctx.stroke();
+        // Tratto in corso: solo l'ultimo segmento (prima: renderAll + tutto il tratto a ogni movimento).
+        // engine._liveStroke lo tiene visibile anche se arriva un ridisegno completo durante il disegno.
+        engine._liveStroke = activeStroke;
+        engine._lastDrawSig = null; // al rilascio il ridisegno completo sostituisce il disegno provvisorio
+        engine.appendStrokeSegment('drawPublic', activeStroke);
     }
     else if (currentTool === 'ruler') {
         engine.ruler.endX = worldPos.x;
@@ -2224,6 +2253,7 @@ function pHandleEnd(e) {
     }
     else if (currentTool === 'draw' && activeStroke) {
         if (!activeStroke.owner) activeStroke.owner = network.playerName || 'local';
+        engine._liveStroke = null;
         engine.publicStrokes.push(activeStroke);
         engine.renderAll();
         network.send({
@@ -2486,7 +2516,7 @@ function openLocalPlayerPcSheet() {
         targetTok = ownedList.find(t => (t.pcSheet || t.hasPcSheet) && !t.isEvocation) || ownedList.find(t => !t.isEvocation) || null;
     }
     if (!targetTok) {
-        alert(typeof window.t === 'function' ? window.t('Nessun token ti è ancora stato assegnato dal Master sulla mappa!') : 'Nessun token ti è ancora stato assegnato dal Master sulla mappa!');
+        vttWarn(typeof window.t === 'function' ? window.t('Nessun token ti è ancora stato assegnato dal Master sulla mappa!') : 'Nessun token ti è ancora stato assegnato dal Master sulla mappa!');
         return;
     }
     engine.selectedTokenId = targetTok.id;

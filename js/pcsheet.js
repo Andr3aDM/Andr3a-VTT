@@ -1238,7 +1238,7 @@
     function applyRawJsonToCurrentToken(rawText, sourceUrlInput = '') {
         const token = getActiveToken();
         if (!token) {
-            alert(tr('Seleziona prima un token!', 'Please select a token first!'));
+            vttWarn(tr('Seleziona prima un token!', 'Please select a token first!'));
             return false;
         }
         try {
@@ -1277,7 +1277,7 @@
             }
             return true;
         } catch (err) {
-            alert(tr('Impossibile leggere i dati della scheda: ', 'Could not parse character sheet data: ') + err.message);
+            vttWarn(tr('Impossibile leggere i dati della scheda: ', 'Could not parse character sheet data: ') + err.message);
             return false;
         }
     }
@@ -1305,7 +1305,7 @@
 
         const charId = extractCharacterId(rawVal);
         if (!charId) {
-            alert(tr('Inserisci un Link o ID numerico valido (es. 165409901) oppure incolla il JSON.', 'Enter a valid Link or numeric ID (e.g. 165409901) or paste the JSON.'));
+            vttWarn(tr('Inserisci un Link o ID numerico valido (es. 165409901) oppure incolla il JSON.', 'Enter a valid Link or numeric ID (e.g. 165409901) or paste the JSON.'));
             return;
         }
 
@@ -1568,7 +1568,7 @@
                 const rawVal = (urlInput ? urlInput.value.trim() : '') || (tok?.pcSheet?.sourceUrl || '');
                 const charId = extractCharacterId(rawVal);
                 if (!charId) {
-                    alert(tr('Inserisci prima il Link o ID numerico del personaggio nella casella!', 'Please enter the character Link or numeric ID in the box first!'));
+                    vttWarn(tr('Inserisci prima il Link o ID numerico del personaggio nella casella!', 'Please enter the character Link or numeric ID in the box first!'));
                     if (urlInput) urlInput.focus();
                     return;
                 }
@@ -2448,7 +2448,7 @@
                         window.showToast(`✅ Backup ripristinato con successo per "${token.name}"!`);
                     }
                 } catch (err) {
-                    alert('File di backup non valido o danneggiato: ' + err.message);
+                    vttWarn('File di backup non valido o danneggiato: ' + err.message);
                 }
             };
             reader.readAsText(file);
@@ -2487,7 +2487,7 @@
         open(token = null) {
             const target = token || getActiveToken();
             if (!target) {
-                alert(tr('Seleziona prima un token sulla mappa!', 'Select a token on the map first!'));
+                vttWarn(tr('Seleziona prima un token sulla mappa!', 'Select a token on the map first!'));
                 return;
             }
             const win = ensureModalDOM();

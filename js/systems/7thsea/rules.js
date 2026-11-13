@@ -207,6 +207,66 @@
         return dice.lastIndexOf(minVal);
     }
 
+    // Ritiro del Grado 3 con calcolo esatto: per ogni dado prova tutti i 10 risultati possibili (con +1 ai dadi,
+    // set da 15, soglia 15 del Pericolo e 10 che esplodono) e sceglie quello con la media di Incrementi più alta;
+    // a parità meno rischio di perderne, poi il dado più basso. improves = false se nessun ritiro può dare di più.
+    // Le riserve molto grandi costano di più: i candidati si valutano in ordine di priorità (prima il più basso
+    // tra i dadi avanzati, poi gli altri dal più basso) entro un tempo massimo (budgetMs, 80 ms).
+    function chooseRerollIndex(dice, opts = {}) {
+        if (!Array.isArray(dice) || dice.length === 0) return { index: -1, improves: false, base: 0, ev: 0, pLose: 0, pGain: 0, partial: false };
+        const s15 = !!opts.setsOf15;
+        const T = (Number(opts.raiseTarget) === 15) ? 15 : 10;
+        const plus = !!opts.plusOnePerDie;
+        const explode = !!opts.explodeTens;
+        const budget = Number(opts.budgetMs) > 0 ? Number(opts.budgetMs) : 80;
+        const face = (x) => plus ? Math.min(10, x + 1) : x;
+        const raisesOf = (arr) => calculateRaisesFromDice(arr, s15, T).totalRaises;
+        const calc = calculateRaisesFromDice(dice, s15, T);
+        const base = calc.totalRaises;
+        const t0 = Date.now();
+        const values = [...new Set(dice)].sort((a, b) => a - b);
+        const remMin = (calc.remaining && calc.remaining.length) ? Math.min(...calc.remaining) : null;
+        // Riserve oltre 12 dadi (rare): niente calcolo esatto, troppo lento su PC datati. Regola prudente:
+        // il dado avanzato più basso (non può far perdere nulla); se sono tutti usati, con i set da 15 il più basso,
+        // altrimenti non ritirare (senza set da 15 un ritiro non può migliorare un tiro senza dadi avanzati).
+        if (dice.length > 12) {
+            if (remMin !== null) return { index: dice.lastIndexOf(remMin), ev: base, pLose: 0, pGain: 0, base, improves: true, partial: true };
+            if (s15) return { index: dice.lastIndexOf(values[0]), ev: base, pLose: 0, pGain: 0, base, improves: true, partial: true };
+            return { index: dice.lastIndexOf(values[0]), ev: base, pLose: 0, pGain: 0, base, improves: false, partial: true };
+        }
+        if (remMin !== null) { values.splice(values.indexOf(remMin), 1); values.unshift(remMin); }
+        let best = null, partial = false;
+        for (let k = 0; k < values.length; k++) {
+            if (k > 0 && Date.now() - t0 > budget) { partial = true; break; }
+            const v = values[k];
+            const i = dice.lastIndexOf(v);
+            const rest = dice.filter((_, j) => j !== i);
+            let tot = 0, lose = 0, gain = 0;
+            for (let x = 1; x <= 10; x++) {
+                const nv = face(x);
+                let r;
+                if (nv === 10 && explode) {
+                    let sub = 0;   // il 10 esplode: media sul dado in più (un livello)
+                    for (let y = 1; y <= 10; y++) sub += raisesOf(rest.concat([10, face(y)]));
+                    r = sub / 10;
+                } else {
+                    r = raisesOf(rest.concat([nv]));
+                }
+                tot += r;
+                if (r < base - 1e-9) lose++;
+                if (r > base + 1e-9) gain++;
+            }
+            const ev = tot / 10, pLose = lose / 10, pGain = gain / 10;
+            const better = !best || ev > best.ev + 1e-9 ||
+                (Math.abs(ev - best.ev) <= 1e-9 && (pLose < best.pLose - 1e-9 || (Math.abs(pLose - best.pLose) <= 1e-9 && v < dice[best.index])));
+            if (better) best = { index: i, ev, pLose, pGain };
+        }
+        let improves = best.ev > base + 1e-9;
+        // valutazione interrotta senza miglioramenti: un dado avanzato si può sempre ritirare senza rischio
+        if (!improves && partial && remMin !== null) { best = { index: dice.lastIndexOf(remMin), ev: base, pLose: 0, pGain: 0 }; improves = true; }
+        return { index: best.index, ev: best.ev, pLose: best.pLose, pGain: best.pGain, base, improves, partial };
+    }
+
     function rollSeventhSeaRisk(options = {}) {
         const traitName = options.traitName || 'Grazia';
         const traitVal = typeof options.traitVal === 'number' ? options.traitVal : 2;
@@ -741,6 +801,7 @@
         calculateRaisesFromDice,
         currentRaiseTarget,
         findBestRerollCandidateIndex,
+        chooseRerollIndex,
         rollSeventhSeaRisk,
         applyWoundsToSheet,
         endSceneHeal,
