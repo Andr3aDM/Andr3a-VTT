@@ -8622,6 +8622,34 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                 id: '7thsea',
                 name: '7th Sea (2ª Edizione)',
                 badge: '⛵ 7th Sea 2e',
+                optionLabel: '⛵ 7th Sea (2ª Edizione)',
+                // Interfaccia: etichetta della campagna; CA e PV temporanei non esistono in 7th Sea
+                ui: {
+                    badge: '⛵ 7th Sea (2ª Ed.)',
+                    badgeBg: '#3e2723',
+                    badgeColor: '#ffd54f',
+                    badgeBorder: '#d4af37',
+                    hideAc: true,
+                    hideTempHp: true,
+                    // Pannello token del Master: pulsanti Scheda Antagonista / Scheda Eroe
+                    statblockIcon: '⚔️',
+                    statblockLabel: '⚔️ Antagonista',
+                    statblockTitle: 'Apri o Crea Scheda Antagonista / Sgherri 7th Sea',
+                    pcIcon: '⚓',
+                    pcLabel: '⚓ Scheda Eroe',
+                    pcTitle: 'Apri o Crea Scheda Eroe 7th Sea',
+                    pcTitleNamed: 'Apri Scheda Eroe 7th Sea: {name}',
+                    // Pannello token del Giocatore
+                    playerPcLabel: '⚓ Apri Scheda Eroe',
+                    playerPcTitle: 'Apri la Scheda del tuo Eroe',
+                    playerStatblockLabel: '⚔️ Scheda Antagonista',
+                    // In 7th Sea un token "personaggi" senza scheda apre la scheda Eroe vergine col doppio clic
+                    pcWithoutSheet: true
+                },
+                // Una scheda 7th Sea ha i Tratti e le Ferite Drammatiche
+                matchesSheet(pcSheet) {
+                    return !!(pcSheet && pcSheet.traits && pcSheet.dramaticWounds);
+                },
                 getSheetManager() {
                     return seventhSeaSheetManager;
                 },

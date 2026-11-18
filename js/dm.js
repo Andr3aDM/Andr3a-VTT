@@ -359,6 +359,126 @@ network.onGetCharacters(() => {
     return result;
 });
 
+// --- REGISTRO DIAGNOSTICO DEI GIOCATORI (js/diagnostica.js sul Giocatore) ---
+// Spento per impostazione. Acceso dal Master: i giocatori tengono gli ultimi 10 minuti di eventi;
+// il pulsante 🩺 accanto a ogni giocatore scarica il suo registro come file.
+let diagPlayersOn = false;
+try { diagPlayersOn = localStorage.getItem('vtt_diag_players_on') === '1'; } catch (e) {}
+const diagPending = new Map(); // reqId -> { pid, name, parts, total, timer }
+
+function sendDiagStateTo(peerId) {
+    if (network.mode !== 'host' || !peerId || peerId === 'local') return;
+    network.send({ type: 'DIAG_SET', payload: { on: diagPlayersOn } }, peerId);
+}
+
+function setDiagPlayersOn(on) {
+    diagPlayersOn = !!on;
+    try { localStorage.setItem('vtt_diag_players_on', diagPlayersOn ? '1' : '0'); } catch (e) {}
+    const chk = document.getElementById('chk-diag-players');
+    if (chk) chk.checked = diagPlayersOn;
+    if (network.mode === 'host') {
+        for (const pid in network.connections) sendDiagStateTo(pid);
+    }
+    renderOnlinePlayersList();
+    if (typeof showToast === 'function') {
+        const msg = diagPlayersOn ? '🩺 Registro diagnostico acceso per i giocatori (ultimi 10 minuti).' : '🩺 Registro diagnostico spento.';
+        showToast(typeof window.t === 'function' ? window.t(msg) : msg);
+    }
+}
+
+function initDiagPlayersToggle() {
+    const list = document.getElementById('online-players');
+    if (!list || document.getElementById('diag-players-row')) return;
+    const row = document.createElement('label');
+    row.id = 'diag-players-row';
+    row.title = 'Registra gli ultimi 10 minuti di eventi sui dispositivi dei giocatori, per capire eventuali problemi. Spento non consuma risorse.';
+    row.style.cssText = 'display:flex; align-items:center; gap:5px; margin-top:5px; font-size:11px; color:#bbb; cursor:pointer;';
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.id = 'chk-diag-players';
+    chk.checked = diagPlayersOn;
+    chk.style.margin = '0';
+    chk.addEventListener('change', () => setDiagPlayersOn(chk.checked));
+    const txt = document.createElement('span');
+    txt.textContent = '🩺 Registro diagnostico giocatori';
+    row.appendChild(chk);
+    row.appendChild(txt);
+    list.parentNode.insertBefore(row, list.nextSibling);
+}
+
+function diagSafeFileName(name) {
+    return String(name || 'giocatore').replace(/[^a-z0-9àèéìòù_-]+/gi, '_').slice(0, 40) || 'giocatore';
+}
+
+function requestPlayerDiag(pid, pName) {
+    if (network.mode !== 'host' || !network.connections[pid]) return;
+    const reqId = 'diag_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const entry = { pid, name: pName, parts: [], total: 0, timer: null };
+    entry.timer = setTimeout(() => {
+        diagPending.delete(reqId);
+        if (typeof showToast === 'function') {
+            const pfx = typeof window.t === 'function' ? window.t('🩺 Nessuna risposta alla diagnosi da:') : '🩺 Nessuna risposta alla diagnosi da:';
+            showToast(`${pfx} ${pName}`);
+        }
+    }, 30000);
+    diagPending.set(reqId, entry);
+    network.send({ type: 'DIAG_REQUEST', payload: { reqId } }, pid);
+    if (typeof showToast === 'function') {
+        const pfx = typeof window.t === 'function' ? window.t('🩺 Richiesta diagnosi inviata a:') : '🩺 Richiesta diagnosi inviata a:';
+        showToast(`${pfx} ${pName}`);
+    }
+}
+
+function receiveDiagPart(payload, peerId) {
+    const entry = payload ? diagPending.get(payload.reqId) : null;
+    if (!entry || entry.pid !== peerId) return;
+    const total = Math.max(1, Math.min(500, parseInt(payload.total, 10) || 1));
+    const idx = parseInt(payload.idx, 10);
+    if (!(idx >= 0 && idx < total) || typeof payload.chunk !== 'string') return;
+    entry.total = total;
+    entry.parts[idx] = payload.chunk;
+    for (let i = 0; i < total; i++) if (entry.parts[i] === undefined) return;
+    clearTimeout(entry.timer);
+    diagPending.delete(payload.reqId);
+    let report;
+    try { report = JSON.parse(entry.parts.join('')); } catch (e) { report = { errore: 'registro non leggibile', testo: entry.parts.join('').slice(0, 2000) }; }
+    // Vista del Master nello stesso momento: connessioni e token di questo giocatore
+    const low = String(entry.name || '').trim().toLowerCase();
+    report.master = {
+        ora: new Date().toISOString(),
+        connessioni: Object.keys(network.connections || {}).map(k => {
+            const c = network.connections[k];
+            return { peer: k, nome: c.name, aperta: !!(c.conn && c.conn.open), ultimoDatoMs: c.lastSeen ? Date.now() - c.lastSeen : null };
+        }),
+        tokenDelGiocatore: engine.tokens.filter(t => getTokenOwners(t).some(o => o.toLowerCase() === low)).map(t => ({
+            id: t.id, nome: t.name, x: Math.round(t.x), y: Math.round(t.y), w: Math.round(t.width), h: Math.round(t.height),
+            visibile: t.visible !== false, evocazione: !!t.isEvocation, proprietari: getTokenOwners(t)
+        })),
+        tokenInMappa: engine.tokens.length
+    };
+    try {
+        const d = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const fname = `diagnosi_${diagSafeFileName(entry.name)}_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+        const blob = new Blob([JSON.stringify(report, null, 1)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fname;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        window._lastDiagReport = report; // per i test
+    } catch (e) { console.warn('Diagnosi: salvataggio non riuscito', e); }
+    if (typeof showToast === 'function') {
+        const pfx = typeof window.t === 'function' ? window.t('🩺 Diagnosi scaricata:') : '🩺 Diagnosi scaricata:';
+        showToast(`${pfx} ${entry.name}`);
+    }
+}
+window.requestPlayerDiag = requestPlayerDiag;
+window.setDiagPlayersOn = setDiagPlayersOn;
+
 function renderOnlinePlayersList() {
     const div = document.getElementById('online-players');
     if (!div) return;
@@ -381,10 +501,18 @@ function renderOnlinePlayersList() {
         div.innerHTML = uniquePlayers.map(p => `
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
                 <span>🟢 ${escapeHTML(p.name)}</span>
+                <span style="display:flex; gap:3px;">
+                ${diagPlayersOn ? `<button class="btn-diag-player" data-pid="${escapeHTML(p.peerId)}" data-name="${escapeHTML(p.name)}" style="background:#00695c; color:white; border:none; border-radius:3px; padding:1px 5px; font-size:10px; cursor:pointer;" title="Scarica il registro diagnostico di questo giocatore">🩺</button>` : ''}
                 <button class="btn-kick-player" data-pid="${escapeHTML(p.peerId)}" data-name="${escapeHTML(p.name)}" style="background:#b71c1c; color:white; border:none; border-radius:3px; padding:1px 5px; font-size:10px; cursor:pointer;" title="Espelli giocatore">🚫 Espelli</button>
+                </span>
             </div>
         `).join('');
 
+        div.querySelectorAll('.btn-diag-player').forEach(b => {
+            b.addEventListener('click', (e) => {
+                requestPlayerDiag(e.currentTarget.getAttribute('data-pid'), e.currentTarget.getAttribute('data-name'));
+            });
+        });
         div.querySelectorAll('.btn-kick-player').forEach(b => {
             b.addEventListener('click', async (e) => {
                 const pid = e.currentTarget.getAttribute('data-pid');
@@ -397,6 +525,8 @@ function renderOnlinePlayersList() {
         });
     }
 }
+
+initDiagPlayersToggle();
 
 network.onConnect((playerName, pid, isReconnect) => {
     if (playerName) {
@@ -480,6 +610,7 @@ network.onMessage((data, peerId) => {
         }
         // Nuovo ingresso (o ricarica pagina) di questo peer: deve ricevere di nuovo tutte le schede una volta
         forgetPcSheetSendsTo(peerId);
+        sendDiagStateTo(peerId);
         // Invia SUBITO la mappa compressa per prima cosa assoluta (0ms black screen)
         const mapPayload = getNetworkMapPayload();
         if (mapPayload) {
@@ -494,6 +625,8 @@ network.onMessage((data, peerId) => {
         setTimeout(() => {
             syncState(true, true, peerId);
         }, 150);
+    } else if (data.type === 'DIAG_REPORT_PART') {
+        receiveDiagPart(data.payload, peerId);
     } else if (data.type === 'REQUEST_TOKEN_IMAGE') {
         const reqKey = data.imgKey;
         if (reqKey) {
@@ -1018,6 +1151,15 @@ network.onMessage((data, peerId) => {
             engine.renderTokensLayer();
             window.broadcastPcSheetSync(token);
             syncState(true, false);
+        }
+    } else if (data.type === 'SYS_MSG') {
+        // Canale dei moduli (Fase C): messaggio di un sistema di gioco consegnato al suo adattatore, con il nome di chi
+        // lo invia (dalla connessione; in locale dal messaggio). Il nucleo non ne conosce il contenuto.
+        const smod = window.systemManager;
+        const sysAdapter = (smod && typeof smod.getAdapter === 'function') ? smod.getAdapter(data.sys) : null;
+        if (sysAdapter && typeof sysAdapter.onNetworkMessage === 'function') {
+            const senderName = (peerId === 'local') ? ((data.payload && data.payload.player) || null) : (network.connections[peerId] ? network.connections[peerId].name : null);
+            try { sysAdapter.onNetworkMessage(data, { peerId, senderName, isDM: true }); } catch (e) { console.warn('SYS_MSG:', e); }
         }
     } else if (data.type === 'PLAYER_UPDATE_TOKEN_JOURNAL') {
         const payload = data.payload || {};
@@ -1562,6 +1704,13 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
     if (sheetsBeforeState) sendPendingPcSheets();
 
     const hpDisplayStyle = document.getElementById('hp-display-style') ? document.getElementById('hp-display-style').value : 'bar';
+    // Dati del sistema di gioco condivisi coi Giocatori (es. Monete): solo se l'adattatore ne ha. Per 5e e 7th Sea
+    // non ce ne sono e il pacchetto resta identico al byte (nessuna chiave "sys").
+    let sysShared = null;
+    try {
+        const sysAdapter = (window.systemManager && typeof window.systemManager.getAdapter === 'function') ? window.systemManager.getAdapter(window.systemManager.getActiveSystemId()) : null;
+        if (sysAdapter && typeof sysAdapter.getSharedState === 'function') sysShared = sysAdapter.getSharedState();
+    } catch (e) { console.warn('getSharedState error:', e); sysShared = null; }
     const conditionDisplayStyle = document.getElementById('condition-display-style') ? document.getElementById('condition-display-style').value : 'concentric';
     network.send({
         type: 'STATE_SYNC',
@@ -1580,7 +1729,8 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
             lockMap: typeof isLockMapActive !== 'undefined' ? isLockMapActive : false,
             sharedImageId: engine.sharedImageId || null,
             syncHandout: typeof isSyncHandoutActive !== 'undefined' ? isSyncHandoutActive : false,
-            sharedImageRect: getDmHandoutRect()
+            sharedImageRect: getDmHandoutRect(),
+            ...(sysShared ? { sys: sysShared } : {})
         }
     }, targetPeerId);
 
@@ -1840,16 +1990,50 @@ if (tokenPanel) {
 
 // -- LOGICA CAMPAGNE E SALVATAGGI --
 
+// Fase B (B3): una campagna il cui modulo di gioco non e' incluso in questa versione non viene MAI aperta.
+// Il controllo avviene prima che diventi la campagna attiva: niente token caricati, niente salvataggi, database intatto.
+const campaignInfoById = new Map(); // id -> { name, system }, aggiornata da refreshCampaigns
+function isCampaignModuleAvailable(campObj) {
+    if (!campObj || !window.systemManager || typeof window.systemManager.isRegistered !== 'function') return true;
+    return window.systemManager.isRegistered(campObj.system || 'dnd5e');
+}
+function warnCampaignModuleMissing(campObj) {
+    const sm = window.systemManager;
+    const modName = (sm && typeof sm.displayName === 'function') ? sm.displayName(campObj.system) : String(campObj.system);
+    vttWarn(`Questa versione del programma non include il modulo «${modName}» usato dalla campagna «${campObj.name}»: la campagna non viene aperta.`);
+}
+
+// I moduli dei sistemi (system_manager.js, adattatori, 7th Sea...) si caricano DOPO dm.js: il database puo' essere
+// pronto prima che si siano registrati. Le campagne si aprono solo quando la pagina ha finito di caricare gli script,
+// cosi' "modulo presente/assente" e il sistema attivo sono sempre decisi con tutti i moduli gia' registrati.
+function waitForSystemModules() {
+    if (document.readyState !== 'loading') return Promise.resolve();
+    return new Promise(resolve => document.addEventListener('DOMContentLoaded', () => resolve(), { once: true }));
+}
+
 async function refreshCampaigns(autoSelectLast = false) {
+    await waitForSystemModules();
     const campaigns = await vttDB.getCampaigns();
     const select = document.getElementById('campaign-select');
-    const prevValue = select.value || (autoSelectLast ? (localStorage.getItem('vtt_last_campaign_id') || '') : '');
+    let prevValue = select.value || (autoSelectLast ? (localStorage.getItem('vtt_last_campaign_id') || '') : '');
     select.innerHTML = '<option value="">-- Seleziona Campagna --</option>';
+    campaignInfoById.clear();
     campaigns.forEach(c => {
         const opt = document.createElement('option');
         opt.value = c.id; opt.textContent = c.name;
         select.appendChild(opt);
+        campaignInfoById.set(c.id, { name: c.name, system: c.system });
     });
+    // Ultima campagna (o quella selezionata) di un modulo non incluso: avviso, non si apre e non si sceglie altro da soli
+    let skipAutoFirst = false;
+    const prevCamp = prevValue ? campaigns.find(c => c.id === prevValue) : null;
+    if (prevCamp && !isCampaignModuleAvailable(prevCamp)) {
+        warnCampaignModuleMissing(prevCamp);
+        if (localStorage.getItem('vtt_last_campaign_id') === prevValue) localStorage.removeItem('vtt_last_campaign_id');
+        prevValue = '';
+        select.value = '';
+        skipAutoFirst = true;
+    }
     if (prevValue && campaigns.some(c => c.id === prevValue)) {
         select.value = prevValue;
         currentCampaignId = prevValue;
@@ -1857,8 +2041,9 @@ async function refreshCampaigns(autoSelectLast = false) {
         await refreshFolders(prevValue);
         await refreshMaps(prevValue, currentLoadedMapId || "");
         await loadCampaignTokensFor(prevValue);
-    } else if (autoSelectLast && campaigns.length > 0 && !select.value) {
-        const firstId = campaigns[0].id;
+    } else if (autoSelectLast && !skipAutoFirst && !select.value && campaigns.some(isCampaignModuleAvailable)) {
+        // La prima campagna DISPONIBILE (con tutti i moduli inclusi e' la prima della lista, come prima)
+        const firstId = campaigns.find(isCampaignModuleAvailable).id;
         select.value = firstId;
         currentCampaignId = firstId;
         localStorage.setItem('vtt_last_campaign_id', firstId);
@@ -1889,6 +2074,32 @@ function updateCampaignSystemLockUI(hasActiveCampaign) {
     }
 }
 
+// Voci del menu "Sistema di gioco" generate dai sistemi registrati (Fase B): un modulo assente non compare,
+// un modulo nuovo compare da solo. Testo = optionLabel dell'adattatore. Il valore scelto resta se esiste ancora.
+function fillSystemSelectOptions(sel) {
+    if (!sel || !window.systemManager || typeof window.systemManager.listSystems !== 'function') return;
+    const ids = window.systemManager.listSystems();
+    if (!ids.length) return;
+    const keep = sel.value;
+    sel.innerHTML = '';
+    ids.forEach(id => {
+        const a = window.systemManager.getAdapter(id) || {};
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = a.optionLabel || a.name || id;
+        sel.appendChild(opt);
+    });
+    if (keep && ids.indexOf(keep) >= 0) sel.value = keep;
+}
+// Menu fisso della barra campagne: generato quando tutti i moduli si sono registrati, poi il valore
+// torna quello del sistema attivo (updateSystemUI lo reimposta)
+function initToolbarSystemOptions() {
+    fillSystemSelectOptions(document.getElementById('campaign-system-select'));
+    if (window.systemManager && typeof window.systemManager.updateSystemUI === 'function') window.systemManager.updateSystemUI();
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initToolbarSystemOptions);
+else setTimeout(initToolbarSystemOptions, 0);
+
 function openNewCampaignModal() {
     let modal = document.getElementById('modal-new-campaign');
     if (!modal) {
@@ -1903,13 +2114,13 @@ function openNewCampaignModal() {
                 </div>
                 <div>
                     <label style="display:block; font-size:12px; color:#ccc; font-weight:bold; margin-bottom:5px;">Nome della Campagna:</label>
-                    <input type="text" id="new-campaign-name-input" placeholder="Es. Cronache di Théah, La Maledizione di Strahd..." style="width:100%; padding:8px 10px; background:#111318; color:white; border:1px solid #444; border-radius:5px; font-size:13px; box-sizing:border-box; outline:none;">
+                    <input type="text" id="new-campaign-name-input" placeholder="Es. Cronache di Théah, La Torre del Corvo..." style="width:100%; padding:8px 10px; background:#111318; color:white; border:1px solid #444; border-radius:5px; font-size:13px; box-sizing:border-box; outline:none;">
                 </div>
                 <div>
                     <label style="display:block; font-size:12px; color:#fcd34d; font-weight:bold; margin-bottom:5px;">Sistema di Gioco (Definitivo):</label>
                     <select id="new-campaign-system-select" style="width:100%; padding:8px 10px; background:#14161f; color:#fcd34d; border:1px solid #d4af37; border-radius:5px; font-size:13px; font-weight:bold; cursor:pointer; box-sizing:border-box;">
-                        <option value="dnd5e">⚔️ D&D 5ª Edizione (Default)</option>
-                        <option value="7thsea">⛵ 7th Sea (2ª Edizione - Need Games)</option>
+                        <option value="dnd5e">⚔️ 5ª Edizione (5e) (Default)</option>
+                        <option value="7thsea">⛵ 7th Sea (2ª Edizione)</option>
                     </select>
                 </div>
                 <div style="background:#261c14; border:1px solid #ff9800; border-radius:6px; padding:8px 10px; font-size:11px; color:#ffcc80; line-height:1.4;">
@@ -1971,7 +2182,8 @@ function openNewCampaignModal() {
             if (campSel) campSel.value = '';
             await refreshCampaigns(true);
             if (typeof showToast === 'function') {
-                const sysLabel = chosenSys === '7thsea' ? '⛵ 7th Sea 2e' : '⚔️ D&D 5e';
+                const chosenAdapter = (window.systemManager && typeof window.systemManager.getAdapter === 'function') ? window.systemManager.getAdapter(chosenSys) : null;
+                const sysLabel = (chosenAdapter && chosenAdapter.badge) || '⚔️ 5e';
                 showToast(`📁 Campagna "${name}" creata [${sysLabel} - Sistema Bloccato]!`);
             }
         });
@@ -1980,6 +2192,7 @@ function openNewCampaignModal() {
     const nameInp = modal.querySelector('#new-campaign-name-input');
     const sysInp = modal.querySelector('#new-campaign-system-select');
     const toolbarSys = document.getElementById('campaign-system-select');
+    fillSystemSelectOptions(sysInp);
     if (nameInp) nameInp.value = '';
     if (sysInp && toolbarSys && !toolbarSys.disabled) {
         sysInp.value = toolbarSys.value || 'dnd5e';
@@ -2064,6 +2277,13 @@ function updateLoadedMapIndicator() {
 document.getElementById('campaign-select').addEventListener('change', async (e) => {
     const id = e.target.value;
     const oldCampaignId = currentCampaignId;
+    // Campagna di un modulo non incluso: avviso, il menu torna alla campagna di prima, il tavolo resta com'era
+    const pickedInfo = id ? campaignInfoById.get(id) : null;
+    if (pickedInfo && !isCampaignModuleAvailable(pickedInfo)) {
+        warnCampaignModuleMissing(pickedInfo);
+        e.target.value = oldCampaignId || '';
+        return;
+    }
     flushTokenFieldEdits();
     flushCampaignTokensSaveNow(oldCampaignId);
     checkUnsavedMapChanges(async () => {
@@ -2198,7 +2418,7 @@ document.getElementById('folder-select').addEventListener('change', (e) => {
 document.getElementById('btn-new-folder').addEventListener('click', async () => {
     const campaignId = document.getElementById('campaign-select').value;
     if (!campaignId) return vttWarn('Seleziona prima una campagna!');
-    const folderName = await vttPrompt('Nome della nuova cartella (es. "Barovia", "Terre di Confine"):');
+    const folderName = await vttPrompt('Nome della nuova cartella (es. "Valle delle Nebbie", "Terre di Confine"):');
     if (!folderName || !folderName.trim()) return;
     const trimmed = folderName.trim();
     try {
@@ -3274,6 +3494,23 @@ async function loadCampaignTokensFor(campaignId) {
         try {
             loaded = await vttDB.getCampaignTokens(campaignId) || [];
             const campObj = await vttDB.getCampaign(campaignId);
+            // Sicurezza in piu' (B3): se per una strada imprevista arriva qui una campagna di un modulo non incluso,
+            // viene scartata prima di diventare attiva: nessun token caricato e nessun salvataggio possibile.
+            if (campObj && !isCampaignModuleAvailable(campObj)) {
+                warnCampaignModuleMissing(campObj);
+                // Se la campagna aperta e' un'altra, non si tocca nulla (i suoi token in memoria restano suoi)
+                if (currentCampaignId && currentCampaignId !== campaignId) return;
+                currentCampaignId = '';
+                const campSelEl = document.getElementById('campaign-select');
+                if (campSelEl && campSelEl.value === campaignId) campSelEl.value = '';
+                const mapMgrEl = document.getElementById('map-manager');
+                if (mapMgrEl) mapMgrEl.style.display = 'none';
+                if (localStorage.getItem('vtt_last_campaign_id') === campaignId) localStorage.removeItem('vtt_last_campaign_id');
+                currentCampaignTokens = [];
+                updateCampaignSystemLockUI(false);
+                updateMapTokensGallery();
+                return;
+            }
             if (campObj && window.systemManager) {
                 window.systemManager.setActiveSystem(campObj.system || 'dnd5e');
             }
@@ -4111,11 +4348,15 @@ window.updateSelectedTokenControls = function(ent) {
     const hpModInput = document.getElementById('token-hp-mod');
     if (hpModInput) hpModInput.value = '';
 
-    const is7thSea = !!(window.systemManager && window.systemManager.getActiveSystemId() === '7thsea');
+    // Testi e caselle del sistema di gioco attivo, forniti dal suo adattatore (Fase B: nessun "if 7th Sea" nel nucleo)
+    const sysUi = (window.systemManager && typeof window.systemManager.ui === 'function') ? window.systemManager.ui() : {
+        hideAc: false, hideTempHp: false, statblockIcon: '📜', statblockLabel: '📜 Mostro', statblockTitle: 'Cerca e assegna scheda statistiche mostro',
+        pcIcon: '🧙', pcLabel: '🧙 Scheda PG', pcTitle: 'Apri o Importa Scheda Personaggio (PG)', pcTitleNamed: 'Apri Scheda PG: {name} (Liv. {level})'
+    };
     const acBox = document.getElementById('token-ac-box');
     const tempHpBox = document.getElementById('token-temp-hp-box');
-    if (acBox) acBox.style.display = is7thSea ? 'none' : 'flex';
-    if (tempHpBox) tempHpBox.style.display = is7thSea ? 'none' : 'flex';
+    if (acBox) acBox.style.display = sysUi.hideAc ? 'none' : 'flex';
+    if (tempHpBox) tempHpBox.style.display = sysUi.hideTempHp ? 'none' : 'flex';
 
     // CA (Classe Armatura)
     const acInput = document.getElementById('token-ac');
@@ -4124,10 +4365,13 @@ window.updateSelectedTokenControls = function(ent) {
     // Pulsante Scheda Mostro / Antagonista
     const btnStat = document.getElementById('btn-open-statblock');
     const isEvoc = ent.isEvocation || ent.category === 'evocazioni';
-    if (btnStat) {
+    if (btnStat && sysUi.hideStatblockButton) {
+        // Sistemi senza schede degli avversari (es. Non Cedere al Sonno: il GM tira solo il Dolore)
+        btnStat.style.display = 'none';
+    } else if (btnStat) {
         btnStat.style.display = 'flex';
         if (ent.statblock && ent.statblock.name) {
-            btnStat.innerHTML = `<span>${is7thSea ? '⚔️' : '📜'} ${escapeHTML(ent.statblock.name)}</span>`;
+            btnStat.innerHTML = `<span>${sysUi.statblockIcon} ${escapeHTML(ent.statblock.name)}</span>`;
             btnStat.style.background = '#00897b';
             btnStat.title = `Visualizza Scheda: ${ent.statblock.name}`;
         } else if (isEvoc) {
@@ -4135,9 +4379,9 @@ window.updateSelectedTokenControls = function(ent) {
             btnStat.style.background = '#0277bd';
             btnStat.title = 'Assegna o cerca scheda mostro/creatura per questa evocazione';
         } else {
-            btnStat.innerHTML = `<span>${is7thSea ? '⚔️ Antagonista' : '📜 Mostro'}</span>`;
+            btnStat.innerHTML = `<span>${sysUi.statblockLabel}</span>`;
             btnStat.style.background = '#0277bd';
-            btnStat.title = is7thSea ? 'Apri o Crea Scheda Antagonista / Sgherri 7th Sea' : 'Cerca e assegna scheda statistiche mostro';
+            btnStat.title = sysUi.statblockTitle;
         }
     }
 
@@ -4149,17 +4393,18 @@ window.updateSelectedTokenControls = function(ent) {
         } else {
             btnPc.style.display = 'flex';
             if (ent.pcSheet && ent.pcSheet.name) {
-                btnPc.innerHTML = `<span>${is7thSea ? '⚓' : '🧙'} ${escapeHTML(ent.pcSheet.name)}</span>`;
+                btnPc.innerHTML = `<span>${sysUi.pcIcon} ${escapeHTML(ent.pcSheet.name)}</span>`;
                 btnPc.style.background = '#4a148c';
                 btnPc.style.borderColor = '#ffd54f';
-                btnPc.title = is7thSea
-                    ? `Apri Scheda Eroe 7th Sea: ${ent.pcSheet.name}`
-                    : `Apri Scheda PG: ${ent.pcSheet.name} (Liv. ${ent.pcSheet.level || 1})`;
+                // {level} prima di {name}: un nome che contiene "{level}" resta scritto com'e'
+                btnPc.title = String(sysUi.pcTitleNamed)
+                    .replace('{level}', () => String(ent.pcSheet.level || 1))
+                    .replace('{name}', () => String(ent.pcSheet.name));
             } else {
-                btnPc.innerHTML = `<span>${is7thSea ? '⚓ Scheda Eroe' : '🧙 Scheda PG'}</span>`;
+                btnPc.innerHTML = `<span>${sysUi.pcLabel}</span>`;
                 btnPc.style.background = '#6a1b9a';
                 btnPc.style.borderColor = '#ab47bc';
-                btnPc.title = is7thSea ? 'Apri o Crea Scheda Eroe 7th Sea' : 'Apri o Importa Scheda Personaggio (PG)';
+                btnPc.title = sysUi.pcTitle;
             }
         }
     }
@@ -5618,14 +5863,17 @@ function openTokenStatblock(token) {
 
     const isEvoc = token.isEvocation || token.category === 'evocazioni';
     // Non aprire MAI la scheda PG per evocazioni, mostri o token senza scheda PG!
-    const is7thSeaCamp = window.systemManager && window.systemManager.getActiveSystemId() === '7thsea';
-    const isRealPc = !isEvoc && !token.statblock && (token.pcSheet || (inferTokenCategory(token) === 'personaggi' && (token.pcSheet || token.hasPcSheet || is7thSeaCamp)));
+    // Sistemi come 7th Sea aprono la scheda Eroe vergine anche su un token "personaggi" senza scheda (impostazione dell'adattatore)
+    const pcWithoutSheet = !!(window.systemManager && typeof window.systemManager.ui === 'function' && window.systemManager.ui().pcWithoutSheet);
+    const isRealPc = !isEvoc && !token.statblock && (token.pcSheet || (inferTokenCategory(token) === 'personaggi' && (token.pcSheet || token.hasPcSheet || pcWithoutSheet)));
     if (isRealPc) {
         if (window.pcSheetManager) {
             window.pcSheetManager.open(token);
             return;
         }
     }
+    // Sistemi senza schede degli avversari: il doppio clic su un token non personaggio non apre nulla
+    if (window.systemManager && typeof window.systemManager.ui === 'function' && window.systemManager.ui().hideStatblockButton) return;
 
     if (window.compendium) {
         window.compendium.open(token.statblock || null);

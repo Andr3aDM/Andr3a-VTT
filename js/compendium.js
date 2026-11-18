@@ -413,98 +413,207 @@
         'VGM': 'VGM', 'MTF': 'MTF', 'BGG': 'BGG', 'TCE': 'TCE', 'XGE': 'XGE'
     };
 
-    // Gruppi Leggendari (Effetti Regionali & Tana ufficiali per Draghi e creature iconiche 5eTools)
-    const LEGENDARY_GROUPS_DB = {
-        'gold dragon': {
-            regional_desc: "The region containing an adult or ancient gold dragon's lair is altered by its presence, creating the following effects:",
-            regional_footer: "If the dragon dies or moves its lair elsewhere, these effects end immediately.",
-            regional_effects: [
-                { name: "Dream Messenger", desc: "While in its lair, the dragon can cast {@spell Dream|XPHB}, requiring no Material components and using Charisma as the spellcasting ability. When casting the spell this way, the dragon can target any creature within 6 miles." },
-                { name: "Foretelling Fog", desc: "The area within 1 mile of the lair is Lightly Obscured by opalescent fog. While in that area, creatures can't be surprised, as the fog swirls into shapes that warn of danger." }
-            ]
-        },
-        'red dragon': {
-            regional_desc: "The region containing an adult or ancient red dragon's lair is altered by its presence, creating the following effects:",
-            regional_footer: "If the dragon dies or moves its lair elsewhere, these effects end immediately.",
-            regional_effects: [
-                { name: "Burning Heat", desc: "The area within 1 mile of the lair is an area of extreme heat. Any water in the area other than magical water is superheated." },
-                { name: "Sulfurous Haze", desc: "The area within 1 mile of the lair is Lightly Obscured by foul-smelling sulfur smoke, and fiery fissures open across the terrain." }
-            ]
-        },
-        'black dragon': {
-            regional_desc: "The region containing an adult or ancient black dragon's lair is altered by its presence, creating the following effects:",
-            regional_footer: "If the dragon dies or moves its lair elsewhere, these effects end immediately.",
-            regional_effects: [
-                { name: "Accrid Miasma", desc: "The area within 1 mile of the lair is Lightly Obscured by foul fog, and standing water within 1 mile is tainted and acidic." },
-                { name: "Tangled Mire", desc: "Overgrown vegetation and thick mud within 1 mile of the lair form Difficult Terrain." }
-            ]
-        },
-        'blue dragon': {
-            regional_desc: "The region containing an adult or ancient blue dragon's lair is altered by its presence, creating the following effects:",
-            regional_footer: "If the dragon dies or moves its lair elsewhere, these effects end immediately.",
-            regional_effects: [
-                { name: "Mirage Terrain", desc: "While in its lair, the dragon can cast {@spell Hallucinatory Terrain|XPHB}, requiring no Material components." },
-                { name: "Thunderstorms", desc: "Dust devils and electrical storms rage within 1 mile of the lair, making the area Lightly Obscured." }
-            ]
-        },
-        'green dragon': {
-            regional_desc: "The region containing an adult or ancient green dragon's lair is altered by its presence, creating the following effects:",
-            regional_footer: "If the dragon dies or moves its lair elsewhere, these effects end immediately.",
-            regional_effects: [
-                { name: "Labyrinthine Woods", desc: "Thickets within 1 mile of the lair form natural mazes and Difficult Terrain, blocking line of sight." },
-                { name: "Whispering Wildlife", desc: "Rodents and birds within 1 mile of the lair act as eyes and ears for the dragon, which can cast {@spell Animal Messenger|XPHB} at will." }
-            ]
-        },
-        'white dragon': {
-            regional_desc: "The region containing an adult or ancient white dragon's lair is altered by its presence, creating the following effects:",
-            regional_footer: "If the dragon dies or moves its lair elsewhere, these effects end immediately.",
-            regional_effects: [
-                { name: "Freezing Fog", desc: "Chilly fog Lightly Obscures the area within 1 mile of the lair, and extreme cold prevails." },
-                { name: "Icy Walls", desc: "Icy surfaces and freezing precipitation coat the terrain within 1 mile of the lair." }
-            ]
-        },
-        'silver dragon': {
-            regional_desc: "The region containing an adult or ancient silver dragon's lair is altered by its presence, creating the following effects:",
-            regional_footer: "If the dragon dies or moves its lair elsewhere, these effects end immediately.",
-            regional_effects: [
-                { name: "Cloud Refuge", desc: "While in its lair, the dragon can cast {@spell Control Weather|XPHB} requiring no Material components." },
-                { name: "Gentle Winds", desc: "High winds within 1 mile of the lair cushion falling creatures, which take half damage from falling." }
-            ]
-        },
-        'bronze dragon': {
-            regional_desc: "The region containing an adult or ancient bronze dragon's lair is altered by its presence, creating the following effects:",
-            regional_footer: "If the dragon dies or moves its lair elsewhere, these effects end immediately.",
-            regional_effects: [
-                { name: "Phantom Mirage", desc: "While in its lair, the dragon can cast {@spell Mirage Arcane|XPHB} and {@spell Control Weather|XPHB} requiring no Material components." },
-                { name: "Underwater Breathing", desc: "Friendly creatures chosen by the dragon within 1 mile of the lair can breathe underwater." }
-            ]
-        },
-        'brass dragon': {
-            regional_desc: "The region containing an adult or ancient brass dragon's lair is altered by its presence, creating the following effects:",
-            regional_footer: "If the dragon dies or moves its lair elsewhere, these effects end immediately.",
-            regional_effects: [
-                { name: "Desert Mirage", desc: "While in its lair, the dragon can cast {@spell Major Image|XPHB} within 1 mile of the lair." },
-                { name: "Revealing Tracks", desc: "Creatures leave clear tracks in the sand within 1 mile of the lair, and water sources remain pure." }
-            ]
-        },
-        'copper dragon': {
-            regional_desc: "The region containing an adult or ancient copper dragon's lair is altered by its presence, creating the following effects:",
-            regional_footer: "If the dragon dies or moves its lair elsewhere, these effects end immediately.",
-            regional_effects: [
-                { name: "Stone Carvings", desc: "Magical carvings of the dragon's visage appear on stone surfaces within 1 mile of the lair." },
-                { name: "Sylvan Laughter", desc: "Tiny beasts within 1 mile of the lair can speak and understand Draconic." }
-            ]
-        },
-        'deep dragon': {
-            regional_desc: "The region containing an adult or ancient deep dragon's lair is altered by its presence, creating the following effects:",
-            regional_footer: "If the dragon dies or moves its lair elsewhere, these effects end immediately.",
-            regional_effects: [
-                { name: "Preservation of Knowledge", desc: "Books and other written forms of communication within 1 mile of the lair become magically protected and can't be damaged by nonmagical means." },
-                { name: "Restless Sleep", desc: "When a creature finishes a Long Rest within 1 mile of the lair, it must succeed on a Constitution saving throw or fail to reduce its Exhaustion level." },
-                { name: "Verdant Growth", desc: "Vegetation and fungi within 1 mile of the dragon's lair grow faster and cover a greater area than normal." }
-            ]
+    // ==========================================
+    // GRUPPI LEGGENDARI (effetti regionali): DATI DELL'UTENTE, NON NEL CODICE
+    // ==========================================
+    // I testi degli effetti regionali vengono dai manuali e NON sono inclusi nel programma pubblicato.
+    // Il Master carica una volta un proprio file .json dalla finestra "Incolla JSON o Testo Scheda":
+    // resta salvato solo nel suo browser (localStorage) e viene usato quando un mostro importato indica
+    // soltanto il nome del proprio gruppo leggendario. Formati accettati:
+    //   1) semplice:  { "gruppi": { "nome gruppo": { regional_desc, regional_footer, regional_effects: [{ name, desc }] } } }
+    //                 (anche senza l'involucro "gruppi")
+    //   2) stile 5eTools: { "legendaryGroup": [ { name, regionalEffects: [ "intro", { items: [...] }, "chiusura" ] } ] }
+    const LEGENDARY_GROUPS_KEY = 'vtt_legendary_groups';
+    let userLegendaryGroups = null;
+
+    function loadUserLegendaryGroups() {
+        if (userLegendaryGroups) return userLegendaryGroups;
+        userLegendaryGroups = {};
+        try {
+            const raw = (typeof localStorage !== 'undefined') ? localStorage.getItem(LEGENDARY_GROUPS_KEY) : null;
+            const parsed = raw ? JSON.parse(raw) : null;
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) userLegendaryGroups = parsed;
+        } catch (e) {
+            userLegendaryGroups = {};
         }
-    };
+        return userLegendaryGroups;
+    }
+
+    function getUserLegendaryGroup(name) {
+        const key = String(name || '').trim().toLowerCase();
+        if (!key) return null;
+        const groups = loadUserLegendaryGroups();
+        return Object.prototype.hasOwnProperty.call(groups, key) ? groups[key] : null;
+    }
+
+    function countUserLegendaryGroups() {
+        return Object.keys(loadUserLegendaryGroups()).length;
+    }
+
+    // Riduce a testo una voce (stringa, elenco o oggetto con entries/items). I tag tra graffe restano:
+    // li ripulisce clean5eToolsText al momento dell'uso, esattamente come per i JSON dei mostri.
+    function legendaryFlatText(val) {
+        if (val === null || val === undefined) return '';
+        if (typeof val === 'string') return val.trim();
+        if (typeof val === 'number') return String(val);
+        if (Array.isArray(val)) return val.map(legendaryFlatText).filter(Boolean).join(' ');
+        if (typeof val === 'object') {
+            const body = legendaryFlatText(val.entries || val.items || val.entry || val.text || val.desc || '');
+            return (val.name && body) ? `${val.name}. ${body}` : body;
+        }
+        return '';
+    }
+
+    function convertLegendaryRegionalEntries(entries) {
+        const res = { regional_desc: '', regional_footer: '', regional_effects: [] };
+        const list = Array.isArray(entries) ? entries : [entries];
+        let seenEffects = false;
+        const pushEffect = (name, desc) => {
+            const d = legendaryFlatText(desc);
+            if (!d) return;
+            seenEffects = true;
+            res.regional_effects.push({ name: String(name || 'Effetto'), desc: d });
+        };
+        list.forEach(e => {
+            if (!e) return;
+            if (typeof e === 'object' && Array.isArray(e.items)) {
+                e.items.forEach(it => {
+                    if (!it) return;
+                    if (typeof it === 'string') pushEffect('', it);
+                    else if (typeof it === 'object') pushEffect(it.name, it.entries || it.entry || it.text || it.desc || '');
+                });
+            } else if (typeof e === 'object' && e.name && (e.entries || e.entry)) {
+                pushEffect(e.name, e.entries || e.entry);
+            } else {
+                const txt = legendaryFlatText(e);
+                if (!txt) return;
+                if (!seenEffects) res.regional_desc = res.regional_desc ? `${res.regional_desc} ${txt}` : txt;
+                else res.regional_footer = res.regional_footer ? `${res.regional_footer} ${txt}` : txt;
+            }
+        });
+        return res;
+    }
+
+    // Restituisce { 'nome gruppo': {...} } con i soli gruppi che hanno effetti regionali, oppure null
+    function normalizeLegendaryGroupsData(data) {
+        if (!data || typeof data !== 'object') return null;
+        const out = {};
+        const addGroup = (name, g) => {
+            const key = String(name || '').trim().toLowerCase();
+            if (!key || key === '__proto__' || !g || typeof g !== 'object') return;
+            let entry = null;
+            if (Array.isArray(g.regional_effects)) {
+                entry = {
+                    regional_desc: legendaryFlatText(g.regional_desc),
+                    regional_footer: legendaryFlatText(g.regional_footer),
+                    regional_effects: g.regional_effects
+                        .filter(e => e && typeof e === 'object')
+                        .map(e => ({ name: String(e.name || 'Effetto'), desc: legendaryFlatText(e.desc) }))
+                        .filter(e => e.desc)
+                };
+            } else if (g.regionalEffects || g.regional) {
+                entry = convertLegendaryRegionalEntries(g.regionalEffects || g.regional);
+            }
+            if (entry && entry.regional_effects.length > 0) out[key] = entry;
+        };
+        const list = Array.isArray(data) ? data : (Array.isArray(data.legendaryGroup) ? data.legendaryGroup : null);
+        if (list) {
+            list.forEach(g => addGroup(g && (g.name || g.nome), g));
+        } else {
+            const map = (data.gruppi && typeof data.gruppi === 'object' && !Array.isArray(data.gruppi)) ? data.gruppi : data;
+            Object.keys(map).forEach(k => addGroup(k, map[k]));
+        }
+        return Object.keys(out).length > 0 ? out : null;
+    }
+
+    // Aggiunge i gruppi del file a quelli già caricati (stesso nome = sostituito). Non lancia mai eccezioni.
+    function importLegendaryGroupsData(data) {
+        const incoming = normalizeLegendaryGroupsData(data);
+        if (!incoming) return { ok: false, error: 'File dei gruppi leggendari non riconosciuto: nessun effetto regionale trovato.' };
+        const merged = Object.assign({}, loadUserLegendaryGroups(), incoming);
+        try {
+            localStorage.setItem(LEGENDARY_GROUPS_KEY, JSON.stringify(merged));
+        } catch (e) {
+            return { ok: false, error: 'Il file dei gruppi leggendari è troppo grande per essere salvato in questo browser.' };
+        }
+        userLegendaryGroups = merged;
+        return { ok: true, added: Object.keys(incoming).length, total: Object.keys(merged).length };
+    }
+
+    function importLegendaryGroupsText(text) {
+        let data = null;
+        try {
+            data = JSON.parse(String(text || '').replace(/^[﻿\xA0​-‍]+/, '').trim());
+        } catch (e) {
+            return { ok: false, error: 'Il file scelto non è un JSON valido.' };
+        }
+        return importLegendaryGroupsData(data);
+    }
+
+    function clearUserLegendaryGroups() {
+        try { localStorage.removeItem(LEGENDARY_GROUPS_KEY); } catch (e) {}
+        userLegendaryGroups = {};
+    }
+
+    function refreshLegendaryGroupsUI() {
+        if (typeof document === 'undefined') return;
+        const status = document.getElementById('legendary-groups-status');
+        if (!status) return;
+        const n = countUserLegendaryGroups();
+        status.textContent = n > 0 ? `Gruppi leggendari caricati: ${n}` : 'Gruppi leggendari: nessun file caricato';
+        const clearBtn = document.getElementById('btn-clear-legendary-groups');
+        if (clearBtn) clearBtn.style.display = n > 0 ? '' : 'none';
+    }
+
+    function setupLegendaryGroupsUI() {
+        const loadBtn = document.getElementById('btn-load-legendary-groups');
+        const input = document.getElementById('legendary-groups-file-input');
+        const clearBtn = document.getElementById('btn-clear-legendary-groups');
+        if (!loadBtn || !input) return;
+        const warn = (m) => { if (typeof window.vttWarn === 'function') window.vttWarn(m); else console.warn(m); };
+        const info = (m) => { if (typeof window.vttNotify === 'function') window.vttNotify(m); };
+        loadBtn.addEventListener('click', () => input.click());
+        input.addEventListener('change', () => {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                const res = importLegendaryGroupsText(reader.result);
+                input.value = '';
+                refreshLegendaryGroupsUI();
+                if (res.ok) info(`Gruppi leggendari caricati: ${res.total}`);
+                else warn(res.error);
+            };
+            reader.onerror = () => { input.value = ''; warn('Impossibile leggere il file dei gruppi leggendari.'); };
+            reader.readAsText(file);
+        });
+        if (clearBtn) {
+            clearBtn.addEventListener('click', async () => {
+                const ok = (typeof window.vttConfirm === 'function')
+                    ? await window.vttConfirm('Rimuovere i gruppi leggendari caricati in questo browser?', { danger: true, okLabel: 'Conferma' })
+                    : true;
+                if (!ok) return;
+                clearUserLegendaryGroups();
+                refreshLegendaryGroupsUI();
+                info('Gruppi leggendari rimossi.');
+            });
+        }
+        refreshLegendaryGroupsUI();
+    }
+
+    if (typeof window !== 'undefined') {
+        window.vttLegendaryGroups = {
+            importData: importLegendaryGroupsData,
+            importText: importLegendaryGroupsText,
+            clear: () => { clearUserLegendaryGroups(); refreshLegendaryGroupsUI(); },
+            count: countUserLegendaryGroups,
+            get: getUserLegendaryGroup
+        };
+    }
+    if (typeof document !== 'undefined') {
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupLegendaryGroupsUI);
+        else setupLegendaryGroupsUI();
+    }
 
     // ==========================================
     // DATABASE INCANTESIMI RAPIDO + CACHE TOOLTIP HOVER
@@ -969,11 +1078,11 @@
                     positionSpellTooltip(e);
                 }
             } else if (activeTooltipSpellKey === cleanKey) {
-                tip.innerHTML = `<div style="color:#4fc3f7; font-weight:bold;">✨ ${escapeHTML(spellKey)}</div><div style="color:#bbb; font-size:10.5px;">${isItalianMode ? 'Incantesimo D&D 5e' : 'D&D 5e Spell'}</div>`;
+                tip.innerHTML = `<div style="color:#4fc3f7; font-weight:bold;">✨ ${escapeHTML(spellKey)}</div><div style="color:#bbb; font-size:10.5px;">${isItalianMode ? 'Incantesimo 5e' : '5e Spell'}</div>`;
             }
         } catch (_) {
             if (activeTooltipSpellKey === cleanKey) {
-                tip.innerHTML = `<div style="color:#4fc3f7; font-weight:bold;">✨ ${escapeHTML(spellKey)}</div><div style="color:#bbb; font-size:10.5px;">${isItalianMode ? 'Incantesimo D&D 5e' : 'D&D 5e Spell'}</div>`;
+                tip.innerHTML = `<div style="color:#4fc3f7; font-weight:bold;">✨ ${escapeHTML(spellKey)}</div><div style="color:#bbb; font-size:10.5px;">${isItalianMode ? 'Incantesimo 5e' : '5e Spell'}</div>`;
             }
         }
     }
@@ -2097,7 +2206,7 @@
                 else btn.innerHTML = "<span>🇬🇧 Originale EN</span>";
             } else {
                 btn.style.background = '#6a1b9a';
-                btn.title = "Traduci la scheda con la terminologia ufficiale D&D in Italiano";
+                btn.title = "Traduci la scheda in italiano con la terminologia ufficiale della 5e";
                 if (textSpan) textSpan.textContent = "🇮🇹 Traduci IT";
                 else btn.innerHTML = "<span>🇮🇹 Traduci IT</span>";
             }
@@ -2879,7 +2988,7 @@
             const legGroupRaw = m.legendaryGroup || m.gruppo_leggendario;
             if (legGroupRaw && regionalEffects.length === 0) {
                 const groupName = (typeof legGroupRaw === 'string' ? legGroupRaw : (legGroupRaw.name || legGroupRaw.nome || '')).trim().toLowerCase();
-                const groupData = LEGENDARY_GROUPS_DB[groupName];
+                const groupData = getUserLegendaryGroup(groupName);
                 if (groupData) {
                     if (groupData.regional_desc) regionalDesc = this.clean5eToolsText(groupData.regional_desc);
                     if (groupData.regional_footer) regionalFooter = this.clean5eToolsText(groupData.regional_footer);
@@ -3824,7 +3933,8 @@
                 if (placeholder) {
                     placeholder.style.display = 'block';
                     const tokenName = selectedToken.name || (selectedToken.originalName ? selectedToken.originalName.replace(/\.[^/.]+$/, "") : 'questo token');
-                    const isS7Active = typeof window !== 'undefined' && window.systemManager && window.systemManager.getActiveSystemId() === '7thsea';
+                    const isS7Active = typeof window !== 'undefined' && window.systemManager && window.systemManager.getActiveSystemId() === '7thsea' &&
+                        (typeof window.systemManager.isRegistered !== 'function' || window.systemManager.isRegistered('7thsea'));
                     if (isS7Active) {
                         placeholder.innerHTML = `
                             <div style="text-align: center; color: #ccc; padding: 25px 15px;">

@@ -100,6 +100,10 @@ class NetworkManager {
     }
 
     onMessage(cb) { this.onMessageCallback = cb; }
+    // Identificativo di questo giocatore nei tiri (senderPeerId): letto da playerId (prima era sempre vuoto).
+    // Per il Master resta null come prima. Un valore assegnato a mano (es. dai test) ha la precedenza.
+    get myPeerId() { return this._myPeerIdOverride || this.playerId || null; }
+    set myPeerId(v) { this._myPeerIdOverride = v || null; }
     onConnect(cb) { this.onConnectCallback = cb; }
     onDisconnect(cb) { this.onDisconnectCallback = cb; }
     onGetCharacters(cb) { this.onGetCharactersCallback = cb; }

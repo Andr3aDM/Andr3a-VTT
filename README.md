@@ -1,7 +1,7 @@
 # Andr3a VTT — Manuale d'uso / User Manual
 *Tavolo virtuale leggero per giocare di ruolo dal vivo, su TV o online — Lightweight virtual tabletop for in-person, TV and online play*
 
-Versione dell'interfaccia: **Beta 1.5** · Sistemi di gioco: **D&D 5ª Edizione** e **7th Sea 2ª Edizione**
+Versione dell'interfaccia: **Beta 1.5** · Sistemi di gioco: **5ª Edizione (5e)** e **7th Sea 2ª Edizione**
 
 ---
 
@@ -22,11 +22,12 @@ Versione dell'interfaccia: **Beta 1.5** · Sistemi di gioco: **D&D 5ª Edizione*
 12. [Immagini condivise handout](#12-immagini-condivise-handout)
 13. [Audio musica ed effetti](#13-audio-musica-ed-effetti)
 14. [Schermo del Giocatore](#14-schermo-del-giocatore)
-15. [Sistema D&D 5e scheda PG e compendio mostri](#15-sistema-dd-5e-scheda-pg-e-compendio-mostri)
+15. [Sistema 5e scheda PG e compendio mostri](#15-sistema-5e-scheda-pg-e-compendio-mostri)
 16. [Sistema 7th Sea 2e](#16-sistema-7th-sea-2e) — con la [guida passo passo all'iniziativa (Sequenza d'Azione)](#168-guida-pratica-la-prima-sequenza-passo-passo)
 17. [Tablet e touchscreen](#17-tablet-e-touchscreen)
 18. [Scorciatoie e comandi rapidi](#18-scorciatoie-e-comandi-rapidi)
 19. [Salvataggi, prestazioni e limiti noti](#19-salvataggi-prestazioni-e-limiti-noti)
+20. [Licenze, crediti e avvisi](#20-licenze-crediti-e-avvisi)
 
 **Part II — English Manual**
 1. [Overview](#1-overview)
@@ -43,11 +44,12 @@ Versione dell'interfaccia: **Beta 1.5** · Sistemi di gioco: **D&D 5ª Edizione*
 12. [Shared images handouts](#12-shared-images-handouts)
 13. [Audio music and sound effects](#13-audio-music-and-sound-effects)
 14. [Player screen](#14-player-screen)
-15. [D&D 5e system character sheet and monster compendium](#15-dd-5e-system-character-sheet-and-monster-compendium)
+15. [5e system character sheet and monster compendium](#15-5e-system-character-sheet-and-monster-compendium)
 16. [7th Sea 2e system](#16-7th-sea-2e-system) — with the [step-by-step initiative guide (Action Sequence)](#168-practical-guide-your-first-sequence-step-by-step)
 17. [Tablets and touchscreens](#17-tablets-and-touchscreens)
 18. [Shortcuts and quick controls](#18-shortcuts-and-quick-controls)
 19. [Saving, performance and known limits](#19-saving-performance-and-known-limits)
+20. [Licences, credits and notices](#20-licences-credits-and-notices)
 
 ---
 
@@ -65,13 +67,13 @@ Versione dell'interfaccia: **Beta 1.5** · Sistemi di gioco: **D&D 5ª Edizione*
 Il programma è diviso in due parti che restano separate di proposito:
 
 - **Il core**, comune a tutti i giochi: mappe, griglia, token, movimento, nebbia, disegni, zone d'effetto, iniziativa, dadi, chat, audio, rete e salvataggi.
-- **I sistemi di gioco**, ognuno con il proprio ecosistema di schede, regole e compendi. Oggi sono due: **D&D 5ª Edizione** e **7th Sea 2ª Edizione**. Ogni campagna è legata a un solo sistema (vedi cap. 4) e il programma apre automaticamente la scheda e il compendio giusti. Una modifica a un sistema non tocca l'altro né il core.
+- **I sistemi di gioco**, ognuno con il proprio ecosistema di schede, regole e compendi. Oggi sono due: **5ª Edizione (5e)** e **7th Sea 2ª Edizione**. Ogni campagna è legata a un solo sistema (vedi cap. 4) e il programma apre automaticamente la scheda e il compendio giusti. Una modifica a un sistema non tocca l'altro né il core.
 
 ### Principi di progettazione
 
 - **Leggero e fluido** anche su PC datati, tablet Android e TV: le mappe vengono ottimizzate al caricamento, le animazioni sono limitate a 30 fotogrammi al secondo e la mappa si sposta e si ingrandisce tramite la scheda grafica invece di essere ridisegnata.
 - **Rete essenziale:** durante il gioco viaggiano solo messaggi molto piccoli (posizioni, stato dei token); immagini, schede e mappe vengono inviate a parte, una volta sola, a pezzi.
-- **Bilingue:** l'interfaccia del core e di D&D è disponibile in italiano e inglese.
+- **Bilingue:** l'interfaccia del core e della 5e è disponibile in italiano e inglese.
 
 ---
 
@@ -80,7 +82,7 @@ Il programma è diviso in due parti che restano separate di proposito:
 - **Browser:** Chrome, Edge o un altro browser moderno (consigliato Chrome). Funziona su Windows, Android, iPad e sulle smart TV/box con un browser moderno.
 - **Avvio:** apri `index.html` per la console del Master. Lo schermo giocatori si apre dalla console stessa (cap. 3) oppure, per i giocatori online, dall'indirizzo `player.html` della stessa installazione.
 - **Pubblicazione:** essendo composto solo da file statici, può essere ospitato su qualunque hosting statico (per esempio GitHub Pages) e aperto da qualsiasi dispositivo.
-- **Connessione internet:** non serve per giocare in locale (Master + TV sullo stesso PC). Serve per: il gioco online (il collegamento iniziale tra i dispositivi passa da servizi pubblici gratuiti), la ricerca online nel compendio mostri D&D e le tracce musicali preimpostate in streaming.
+- **Connessione internet:** non serve per giocare in locale (Master + TV sullo stesso PC). Serve per: il gioco online (il collegamento iniziale tra i dispositivi passa da servizi pubblici gratuiti), la ricerca online nel compendio mostri 5e e le tracce musicali preimpostate in streaming.
 - **Dati:** campagne, mappe e token vengono salvati nel browser del Master (IndexedDB). Restano sul dispositivo finché non cancelli i dati del browser: esporta regolarmente le campagne (cap. 4).
 
 ---
@@ -100,7 +102,7 @@ Dalla schermata di accesso dello schermo giocatori è disponibile anche **Usa Sc
 ### 3.2 Multiplayer online (peer-to-peer)
 
 **Lato Master**
-1. Seleziona la campagna. Nel riquadro **🌐 Multiplayer Online (P2P)** il campo **Codice Campagna** mostra il codice fisso di quella campagna: la prima volta ne viene proposto uno casuale (formato `ABCD-1234`), ma puoi scriverne uno tuo (per esempio `STRAHD-2026`, da 6 a 24 lettere o cifre) e confermare con Invio, oppure generarne uno nuovo con 🎲. Il codice è salvato nella campagna e viaggia con l'esportazione; cambiarlo impedisce l'accesso a chi conosce solo quello vecchio.
+1. Seleziona la campagna. Nel riquadro **🌐 Multiplayer Online (P2P)** il campo **Codice Campagna** mostra il codice fisso di quella campagna: la prima volta ne viene proposto uno casuale (formato `ABCD-1234`), ma puoi scriverne uno tuo (per esempio `CORVO-2026`, da 6 a 24 lettere o cifre) e confermare con Invio, oppure generarne uno nuovo con 🎲. Il codice è salvato nella campagna e viaggia con l'esportazione; cambiarlo impedisce l'accesso a chi conosce solo quello vecchio.
 2. Premi **Avvia Stanza**: la stanza si apre sempre con il Codice Campagna, quindi i giocatori usano lo stesso codice in ogni sessione. Se il codice è ancora occupato dalla sessione precedente, il programma riprova da solo per qualche decina di secondi; se è occupato da un'altra stanza, ti chiede di cambiarlo. **Apri Schermo Online** apre uno schermo giocatore già collegato alla stanza, utile per provare.
 3. Durante la sessione la selezione della campagna è bloccata (**🔒 Campagna Bloccata**), così nessuno riceve per errore i dati di un'altra campagna.
 4. L'elenco **giocatori connessi** mostra chi è collegato; il pulsante accanto a ogni nome lo espelle dalla stanza.
@@ -108,7 +110,7 @@ Dalla schermata di accesso dello schermo giocatori è disponibile anche **Usa Sc
 6. Se ricarichi la pagina con la stanza aperta, la stanza riparte da sola con lo stesso codice e i giocatori rientrano senza fare nulla (la mappa va ricaricata come sempre).
 
 **Lato Giocatore**
-1. Apri `player.html` e inserisci il **Codice Campagna**: maiuscole, spazi e trattini non contano (`strahd 2026` vale come `STRAHD-2026`).
+1. Apri `player.html` e inserisci il **Codice Campagna**: maiuscole, spazi e trattini non contano (`corvo 2026` vale come `CORVO-2026`).
 2. Il menu **Scegli il tuo Personaggio** si riempie con i personaggi giocanti della campagna (solo veri PG: mostri, PNG ed evocazioni non compaiono). In alternativa scegli **✍️ Altro nome / Spettatore** e scrivi un nome.
 3. Premi **Connetti Online**. Il Master invia mappa, token, immagini e schede necessarie.
 
@@ -126,7 +128,7 @@ Tutto si trova nel pannello **⚙️ Regia & Campagna** (icona nel dock a destra
 
 ### 4.1 Campagne e sistema di gioco
 
-- **Nuova** apre la finestra **📁 Crea Nuova Campagna**: scegli il nome e il **Sistema di Gioco** (⚔️ D&D 5ª Edizione oppure ⛵ 7th Sea 2ª Edizione).
+- **Nuova** apre la finestra **📁 Crea Nuova Campagna**: scegli il nome e il **Sistema di Gioco** (⚔️ 5ª Edizione (5e) oppure ⛵ 7th Sea 2ª Edizione).
 - Il sistema scelto è **definitivo**: dopo la creazione resta bloccato (**🔒 Fisso**) e il badge accanto al titolo indica il sistema della campagna attiva. In questo modo schede, compendi e regole di un gioco non si mescolano mai con quelli dell'altro.
 - **Elimina** cancella la campagna selezionata.
 - **Esporta (JSON)** salva l'intera campagna (mappe, cartelle, token, schede, Codice Campagna) in un file `.json`; **Importa** la ricarica.
@@ -248,8 +250,8 @@ Nel pannello del token, sezione **❤️ Punti Ferita**:
 
 - PV attuali e massimi (massimo 0 = barra disattivata), campo **Danno (−) / Cura (+)** con i due pulsanti per applicarli.
 - **Visibile a giocatori:** decide se i giocatori vedono la barra.
-- **💙 PV Temp** (solo D&D): punti ferita temporanei, assorbono i danni prima dei PV normali e compaiono come bordo azzurro.
-- **🛡️ CA** (solo D&D): classe armatura del token.
+- **💙 PV Temp** (solo 5e): punti ferita temporanei, assorbono i danni prima dei PV normali e compaiono come bordo azzurro.
+- **🛡️ CA** (solo 5e): classe armatura del token.
 - **Stile:** Barra, Aura (alone colorato attorno al token) o Entrambi. Lo stile predefinito per i giocatori si sceglie nel pannello Libreria Token (**Stile PV (Giocatori)**).
 - **Colori della barra:** azzurro a PV pieni, verde sopra i 2/3, giallo sopra 1/3, rosso sotto; a 0 PV il token diventa grigio con 💀.
 
@@ -277,7 +279,7 @@ Pannello **🪄 Zone d'Effetto (AoE)**:
 
 ## 10. Tracker dell'iniziativa
 
-Si apre con **⚔️ Tracker Iniziativa** in alto. Questo capitolo descrive il tracker classico con il d20 (campagne D&D); nelle campagne **7th Sea** il tracker diventa la **Sequenza d'Azione** con gli Incrementi: vedi [16.7](#167-iniziativa-in-7th-sea-sequenza-dazione-e-sequenza-drammatica) e la guida passo passo [16.8](#168-guida-pratica-la-prima-sequenza-passo-passo).
+Si apre con **⚔️ Tracker Iniziativa** in alto. Questo capitolo descrive il tracker classico con il d20 (campagne 5e); nelle campagne **7th Sea** il tracker diventa la **Sequenza d'Azione** con gli Incrementi: vedi [16.7](#167-iniziativa-in-7th-sea-sequenza-dazione-e-sequenza-drammatica) e la guida passo passo [16.8](#168-guida-pratica-la-prima-sequenza-passo-passo).
 
 - **Partecipanti:** seleziona i token sulla mappa e usa **🔄 Ricarica** per caricarli; oppure usa **⚔️ + Iniz.** dal pannello del token. **+ Aggiungi Entità Extra** aggiunge una voce senza token.
 - **📂 Raggruppa Simili** riunisce i mostri con lo stesso nome in una sola riga.
@@ -369,9 +371,9 @@ Il pannello **✨ Evoca Token** crea token temporanei (armi spirituali, creature
 
 ---
 
-## 15. Sistema D&D 5e: scheda PG e compendio mostri
+## 15. Sistema 5e: scheda PG e compendio mostri
 
-Disponibile nelle campagne create con il sistema **D&D 5ª Edizione**.
+Disponibile nelle campagne create con il sistema **5ª Edizione (5e)**.
 
 ### 15.1 Scheda Personaggio
 
@@ -391,7 +393,8 @@ Si apre con **📜 Mostro** dal pannello token o dal pulsante Compendio della li
 
 - **Ricerca online** (in inglese, es. *Goblin*, *Dragon*) nel database pubblico Open5e del materiale SRD.
 - **📥 Incolla JSON o testo:** incolla un JSON di un mostro, oppure seleziona e copia con il mouse il testo di una scheda da una pagina web (nome, Armor Class, Hit Points, caratteristiche, azioni...) e premi Ctrl+V. Il programma ripulisce i tag di formattazione interni e ripara anche i JSON tradotti automaticamente dal browser. Puoi aggiungere l'immagine del token trascinandola o incollandola con Ctrl+V.
-- **🇮🇹 Traduci IT:** traduce la scheda con la terminologia ufficiale italiana di D&D.
+- **📚 Gruppi leggendari (effetti regionali):** alcuni JSON di mostri indicano solo il nome del proprio gruppo leggendario, senza il testo degli effetti regionali. Quel testo non è incluso nel programma: nella finestra di importazione premi **Carica file…** e scegli un tuo file `.json` dei gruppi leggendari (formato semplice del programma o formato “legendaryGroup”). Il file resta salvato solo nel tuo browser e va caricato una volta per ogni browser; **Rimuovi** lo cancella.
+- **🇮🇹 Traduci IT:** traduce la scheda con la terminologia ufficiale italiana della 5e.
 - **Tiri con un clic** su attacchi, danni e tiri salvezza della scheda. **👁️ Invia tiri ai Giocatori:** se disattivato, i tiri restano segreti per il Master.
 - **⚡ Assegna Token:** collega la scheda (con PV e CA) al token selezionato. **♟️ Crea Token:** crea subito un nuovo token, come **👹 Mostro** (numerato) o **🎭 PNG** (nome singolo), eventualmente **🙈 invisibile** ai giocatori.
 - Anche i giocatori hanno un compendio ridotto per le proprie creature evocate (ricerca, importazione, traduzione, assegnazione al token).
@@ -402,7 +405,7 @@ Si apre con **📜 Mostro** dal pannello token o dal pulsante Compendio della li
 
 Disponibile nelle campagne create con il sistema **7th Sea 2ª Edizione**. Tutti i contenuti provengono dai manuali ufficiali (Manuale Base e Nazioni di Théah Vol. 1 e 2): nessuna regola inventata. Il database comprende 100 Background, 103 Vantaggi, 20 Stili di Duello, 20 Arcani, 9 Stregonerie, 10 Società Segrete e 90 Antagonisti.
 
-In una campagna 7th Sea il pannello token nasconde i campi propri di D&D (CA, PV temporanei) e i pulsanti scheda aprono la scheda Eroe e il compendio Antagonisti.
+In una campagna 7th Sea il pannello token nasconde i campi propri della 5e (CA, PV temporanei) e i pulsanti scheda aprono la scheda Eroe e il compendio Antagonisti.
 
 ### 16.1 Scheda Eroe
 
@@ -454,11 +457,11 @@ Si apre con il pulsante scheda del token o il pulsante Compendio della libreria.
 - **Categorie:** ⚔️ Sgherri (squadre di sgherri, dove la **Forza è anche il numero di PV del token**: ogni Incremento inflitto toglie 1 Forza), 👑 Malvagi (Forza, Influenza, Grado), 🐙 Mostri & Syrneth. La categoria 👥 PNG & Alleati è predisposta ma non ancora popolata.
 - **Archetipi rapidi** (Pirati, Guardie, Assassini, Bruti, Moschettieri, Duellanti, Malvagi, Mostri...) che compilano tratti e capacità speciali, da personalizzare con **✏️ Modifica / Personalizza Scheda**.
 - **Lancia Rischio** per l'antagonista con riserva di d10, opzioni **10 Esplodono** e **Set da 15**, tiro **Solo GM** (segreto) e **Dadi Bonus Nemici** calcolati sull'Eroe bersaglio (per esempio quelli dovuti alla sua 2ª Ferita Drammatica). Sulla console del Master, **☠️ +2 dadi** aggiunge 2 dadi al prossimo tiro spendendo 1 Punto Pericolo (cap. 16.7). Il Rischio dell'antagonista entra da solo nella Sequenza d'Azione.
-- Il compendio usa la stessa finestra di quello D&D: **⚡ Assegna Token** e **♟️ Crea Token** funzionano allo stesso modo, con la **Taglia Token** scelta nella scheda. **⭐ Carica come Scheda PG** permette di usare un antagonista come personaggio.
+- Il compendio usa la stessa finestra di quello della 5e: **⚡ Assegna Token** e **♟️ Crea Token** funzionano allo stesso modo, con la **Taglia Token** scelta nella scheda. **⭐ Carica come Scheda PG** permette di usare un antagonista come personaggio.
 
 ### 16.7 Iniziativa in 7th Sea: Sequenza d'Azione e Sequenza Drammatica
 
-In 7th Sea non si tira 1d20: chi agisce prima lo decidono gli **Incrementi** ottenuti con il Rischio (Manuale Base, cap. 4). Nelle campagne 7th Sea il **Tracker Iniziativa** cambia aspetto da solo: i comandi d20 (Avvia Combattimento, Auto-Roll, Prossimo Turno...) spariscono e al loro posto compare la **barra della Sequenza**. Nelle campagne D&D il tracker resta esattamente quello del capitolo 10.
+In 7th Sea non si tira 1d20: chi agisce prima lo decidono gli **Incrementi** ottenuti con il Rischio (Manuale Base, cap. 4). Nelle campagne 7th Sea il **Tracker Iniziativa** cambia aspetto da solo: i comandi d20 (Avvia Combattimento, Auto-Roll, Prossimo Turno...) spariscono e al loro posto compare la **barra della Sequenza**. Nelle campagne 5e il tracker resta esattamente quello del capitolo 10.
 
 **Chi c'è nel tracker** (il programma lo riconosce dal token):
 
@@ -578,7 +581,7 @@ Esempio: due Eroi, **Kasper** ed **Elena**, affrontano il **Conte** e una Squadr
 - *Un Eroe è Inerme (4 Ferite Drammatiche).* Può ancora agire, ma ogni Azione gli costa 1 Punto Eroe, scalato da solo. Un Malvagio può tentare l'Omicidio: un compagno lo salva con **🛡️ Salva**.
 - *Il programma decide da solo se un'Azione rispetta la Pressione?* No: lo decide il Master con **Rompi (+1)**. Il programma mostra solo un promemoria quando il bersaglio spende Incrementi.
 - *I giocatori vedono i miei Punti Pericolo?* No. Vedono il proprio stato, "?" per i Malvagi e le note sotto il tracker.
-- *Gioco anche a D&D.* Nelle campagne D&D il tracker resta quello classico con il d20: le due modalità non si toccano.
+- *Gioco anche alla 5e.* Nelle campagne 5e il tracker resta quello classico con il d20: le due modalità non si toccano.
 
 ---
 
@@ -615,7 +618,19 @@ Esempio: due Eroi, **Kasper** ed **Elena**, affrontano il **Conte** e una Squadr
 - **Prestazioni:** mappe ottimizzate a 2560 px, animazioni limitate a 30 fps, messaggi di stato inferiori a 3 KB, immagini dei token ridotte prima dell'invio. Il programma è pensato per girare anche su PC con poca memoria.
 - **Limiti noti:**
   - Il collegamento online attraverso reti mobili molto restrittive è ancora in fase di verifica sul campo.
-  - Alcuni messaggi di conferma usano ancora le finestre di dialogo del browser.
+
+---
+
+## 20. Licenze, crediti e avvisi
+
+- **Progetto non ufficiale:** Andr3a VTT è un progetto amatoriale indipendente e non ufficiale, compatibile con la quinta edizione. Non è affiliato, sponsorizzato né approvato dagli editori dei giochi citati; i nomi dei giochi appartengono ai rispettivi proprietari e sono usati solo per indicare la compatibilità.
+- **Materiale di regole (attribuzione):**
+
+  > This work includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
+
+- **Modifiche a quel materiale:** le descrizioni degli incantesimi integrate nel programma sono riassunti e traduzioni in italiano, fatti dagli autori di questo progetto.
+- **Ricerca online:** la ricerca di mostri e incantesimi interroga al momento il servizio pubblico Open5e; quei contenuti non sono ospitati su questo sito.
+- **Contenuti dell'utente:** schede, mostri, mappe, immagini e audio che importi restano nel tuo browser. Sei responsabile dei diritti sul materiale che carichi.
 
 ---
 ---
@@ -634,13 +649,13 @@ Esempio: due Eroi, **Kasper** ed **Elena**, affrontano il **Conte** e una Squadr
 The program is deliberately split into two separate parts:
 
 - **The core**, shared by every game: maps, grid, tokens, movement, fog, drawings, areas of effect, initiative, dice, chat, audio, networking and saving.
-- **The game systems**, each with its own ecosystem of sheets, rules and compendiums. There are currently two: **D&D 5th Edition** and **7th Sea 2nd Edition**. Each campaign is tied to a single system (see ch. 4) and the program automatically opens the right sheet and compendium. A change to one system does not affect the other or the core.
+- **The game systems**, each with its own ecosystem of sheets, rules and compendiums. There are currently two: **5th Edition (5e)** and **7th Sea 2nd Edition**. Each campaign is tied to a single system (see ch. 4) and the program automatically opens the right sheet and compendium. A change to one system does not affect the other or the core.
 
 ### Design principles
 
 - **Light and smooth** even on old PCs, Android tablets and TVs: maps are optimised on load, animations are capped at 30 frames per second, and the map is panned and zoomed by the graphics card instead of being redrawn.
 - **Minimal network traffic:** during play only very small messages travel (positions, token state); images, sheets and maps are sent separately, once, in chunks.
-- **Bilingual:** the core and D&D interface is available in Italian and English.
+- **Bilingual:** the core and 5e interface is available in Italian and English.
 
 ---
 
@@ -649,7 +664,7 @@ The program is deliberately split into two separate parts:
 - **Browser:** Chrome, Edge or another modern browser (Chrome recommended). Works on Windows, Android, iPad and smart TVs/boxes with a modern browser.
 - **Launch:** open `index.html` for the GM console. The player screen is opened from the console itself (ch. 3) or, for online players, from the `player.html` address of the same installation.
 - **Hosting:** since it is made only of static files, it can be hosted on any static host (for example GitHub Pages) and opened from any device.
-- **Internet connection:** not needed for local play (GM + TV on the same PC). Needed for: online play (the initial connection between devices goes through free public services), online search in the D&D monster compendium, and the preset streaming music tracks.
+- **Internet connection:** not needed for local play (GM + TV on the same PC). Needed for: online play (the initial connection between devices goes through free public services), online search in the 5e monster compendium, and the preset streaming music tracks.
 - **Data:** campaigns, maps and tokens are saved in the GM's browser (IndexedDB). They stay on the device until browser data is cleared: export your campaigns regularly (ch. 4).
 
 ---
@@ -669,7 +684,7 @@ The player login screen also offers **Usa Schermo Locale (Offline)**: it opens a
 ### 3.2 Online multiplayer (peer-to-peer)
 
 **GM side**
-1. Select the campaign. In the **🌐 Multiplayer Online (P2P)** box the **Campaign Code** field shows that campaign's fixed code: the first time a random one is suggested (format `ABCD-1234`), but you can type your own (for example `STRAHD-2026`, 6 to 24 letters or digits) and confirm with Enter, or generate a new one with 🎲. The code is saved in the campaign and travels with the export; changing it locks out anyone who only knows the old one.
+1. Select the campaign. In the **🌐 Multiplayer Online (P2P)** box the **Campaign Code** field shows that campaign's fixed code: the first time a random one is suggested (format `ABCD-1234`), but you can type your own (for example `CORVO-2026`, 6 to 24 letters or digits) and confirm with Enter, or generate a new one with 🎲. The code is saved in the campaign and travels with the export; changing it locks out anyone who only knows the old one.
 2. Press **Avvia Stanza** (Start Room): the room always opens with the Campaign Code, so players use the same code every session. If the code is still held by the previous session, the program retries on its own for a few dozen seconds; if it is used by another room, it asks you to change it. **Apri Schermo Online** opens a player screen already joined to the room, useful for testing.
 3. During the session campaign selection is locked (**🔒 Campagna Bloccata**), so nobody receives another campaign's data by mistake.
 4. The **connected players** list shows who is online; the button next to each name kicks that player.
@@ -677,7 +692,7 @@ The player login screen also offers **Usa Schermo Locale (Offline)**: it opens a
 6. If you reload the page with the room open, the room restarts on its own with the same code and players rejoin without doing anything (the map must be reloaded as usual).
 
 **Player side**
-1. Open `player.html` and enter the **Campaign Code**: case, spaces and hyphens do not matter (`strahd 2026` equals `STRAHD-2026`).
+1. Open `player.html` and enter the **Campaign Code**: case, spaces and hyphens do not matter (`corvo 2026` equals `CORVO-2026`).
 2. The **Choose your Character** menu fills with the campaign's player characters (only real PCs: monsters, NPCs and summons are never listed). Alternatively choose **✍️ Altro nome / Spettatore** and type a name.
 3. Press **Connetti Online**. The GM sends the map, tokens, images and the needed sheets.
 
@@ -695,7 +710,7 @@ Everything lives in the **⚙️ Regia & Campagna** panel (icon in the right-han
 
 ### 4.1 Campaigns and game system
 
-- **Nuova** (New) opens the **📁 Crea Nuova Campagna** window: choose a name and the **Game System** (⚔️ D&D 5th Edition or ⛵ 7th Sea 2nd Edition).
+- **Nuova** (New) opens the **📁 Crea Nuova Campagna** window: choose a name and the **Game System** (⚔️ 5th Edition (5e) or ⛵ 7th Sea 2nd Edition).
 - The chosen system is **permanent**: after creation it is locked (**🔒 Fisso**) and the badge next to the title shows the active campaign's system. This way one game's sheets, compendiums and rules never mix with the other's.
 - **Elimina** deletes the selected campaign.
 - **Esporta (JSON)** saves the whole campaign (maps, folders, tokens, sheets, Campaign Code) to a `.json` file; **Importa** loads it back.
@@ -817,8 +832,8 @@ In the token panel, **❤️ Punti Ferita** section:
 
 - Current and maximum HP (maximum 0 = bar off), **Damage (−) / Heal (+)** field with two buttons to apply it.
 - **Visible to players:** decides whether players see the bar.
-- **💙 Temp HP** (D&D only): absorb damage before normal HP and show as a light-blue border.
-- **🛡️ AC** (D&D only): the token's armour class.
+- **💙 Temp HP** (5e only): absorb damage before normal HP and show as a light-blue border.
+- **🛡️ AC** (5e only): the token's armour class.
 - **Style:** Bar, Aura (coloured glow around the token) or Both. The default style for players is chosen in the Token Library panel (**Stile PV (Giocatori)**).
 - **Bar colours:** cyan at full HP, green above 2/3, yellow above 1/3, red below; at 0 HP the token turns grey with 💀.
 
@@ -846,7 +861,7 @@ In the token panel, **❤️ Punti Ferita** section:
 
 ## 10. Initiative tracker
 
-Opened with **⚔️ Tracker Iniziativa** at the top. This chapter describes the classic d20 tracker (D&D campaigns); in **7th Sea** campaigns the tracker becomes the Raise-based **Action Sequence**: see [16.7](#167-7th-sea-initiative-action-sequence-and-dramatic-sequence) and the step-by-step guide [16.8](#168-practical-guide-your-first-sequence-step-by-step).
+Opened with **⚔️ Tracker Iniziativa** at the top. This chapter describes the classic d20 tracker (5e campaigns); in **7th Sea** campaigns the tracker becomes the Raise-based **Action Sequence**: see [16.7](#167-7th-sea-initiative-action-sequence-and-dramatic-sequence) and the step-by-step guide [16.8](#168-practical-guide-your-first-sequence-step-by-step).
 
 - **Participants:** select tokens on the map and use **🔄 Reload** to load them, or use **⚔️ + Init.** from the token panel. **+ Add Extra Entity** adds an entry without a token.
 - **📂 Group Similar** puts monsters with the same name on a single row.
@@ -938,9 +953,9 @@ The **✨ Evoca Token** panel creates temporary tokens (spiritual weapons, summo
 
 ---
 
-## 15. D&D 5e system: character sheet and monster compendium
+## 15. 5e system: character sheet and monster compendium
 
-Available in campaigns created with the **D&D 5th Edition** system.
+Available in campaigns created with the **5th Edition (5e)** system.
 
 ### 15.1 Character sheet
 
@@ -960,7 +975,8 @@ Opened with **📜 Monster** from the token panel or the library's Compendium bu
 
 - **Online search** (in English, e.g. *Goblin*, *Dragon*) in the public Open5e database of SRD content.
 - **📥 Paste JSON or text:** paste a monster JSON, or select and copy a statblock's text from a web page with the mouse (name, Armor Class, Hit Points, abilities, actions...) and press Ctrl+V. The program strips internal formatting tags and also repairs JSON that was machine-translated by the browser. You can add the token image by dropping it or pasting it with Ctrl+V.
-- **🇮🇹 Traduci IT:** translates the sheet into Italian using the official D&D terminology.
+- **📚 Legendary groups (regional effects):** some monster JSON files only name their legendary group, without the regional effects text. That text is not included in the program: in the import window press **Carica file…** and choose your own legendary groups `.json` file (the program's simple format or the “legendaryGroup” format). The file is saved only in your browser and must be loaded once per browser; **Rimuovi** deletes it.
+- **🇮🇹 Traduci IT:** translates the sheet into Italian using the official 5e terminology.
 - **One-click rolls** on the sheet's attacks, damage and saving throws. **👁️ Send rolls to players:** when off, rolls stay secret to the GM.
 - **⚡ Assign Token:** links the sheet (with HP and AC) to the selected token. **♟️ Create Token:** immediately creates a new token, as **👹 Monster** (numbered) or **🎭 NPC** (single name), optionally **🙈 invisible** to players.
 - Players also have a reduced compendium for their own summoned creatures (search, import, translation, assigning to a token).
@@ -971,7 +987,7 @@ Opened with **📜 Monster** from the token panel or the library's Compendium bu
 
 Available in campaigns created with the **7th Sea 2nd Edition** system. All content comes from the official books (Core Rulebook and Nations of Théah Vol. 1 and 2): no invented rules. The database includes 100 Backgrounds, 103 Advantages, 20 Dueling Styles, 20 Arcana, 9 Sorceries, 10 Secret Societies and 90 Antagonists. The sheet's labels are in Italian.
 
-In a 7th Sea campaign the token panel hides D&D-specific fields (AC, temporary HP) and the sheet buttons open the Hero sheet and the Antagonist compendium.
+In a 7th Sea campaign the token panel hides 5e-specific fields (AC, temporary HP) and the sheet buttons open the Hero sheet and the Antagonist compendium.
 
 ### 16.1 Hero sheet
 
@@ -1023,11 +1039,11 @@ Opened with the token's sheet button or the library's Compendium button.
 - **Categories:** ⚔️ Brute Squads (where **Strength is also the token's HP**: each Raise inflicted removes 1 Strength), 👑 Villains (Strength, Influence, Rank), 🐙 Monsters & Syrneth. The 👥 NPCs & Allies category is prepared but not yet populated.
 - **Quick archetypes** (Pirates, Guards, Assassins, Brutes, Musketeers, Duelists, Villains, Monsters...) that fill in traits and special abilities, to be customised with **✏️ Modifica / Personalizza Scheda**.
 - **Lancia Rischio** for the antagonist with a d10 pool, **10s Explode** and **Sets of 15** options, a **GM only** (secret) roll and **Enemy Bonus Dice** computed from the target Hero (for example those from their 2nd Dramatic Wound). On the GM console, **☠️ +2 dadi** adds 2 dice to the next roll for 1 Danger Point (ch. 16.7). The antagonist's Risk enters the Action Sequence by itself.
-- The compendium uses the same window as the D&D one: **⚡ Assign Token** and **♟️ Create Token** work the same way, with the **Token size** chosen in the sheet. **⭐ Load as PC Sheet** lets you use an antagonist as a character.
+- The compendium uses the same window as the 5e one: **⚡ Assign Token** and **♟️ Create Token** work the same way, with the **Token size** chosen in the sheet. **⭐ Load as PC Sheet** lets you use an antagonist as a character.
 
 ### 16.7 7th Sea initiative: Action Sequence and Dramatic Sequence
 
-In 7th Sea nobody rolls 1d20: who acts first is decided by the **Raises** earned with the Risk roll (Core Rulebook, ch. 4). In 7th Sea campaigns the **Initiative Tracker** changes by itself: the d20 controls (Start Combat, Auto-Roll, Next Turn...) disappear and the **Sequence bar** takes their place. In D&D campaigns the tracker stays exactly as described in chapter 10.
+In 7th Sea nobody rolls 1d20: who acts first is decided by the **Raises** earned with the Risk roll (Core Rulebook, ch. 4). In 7th Sea campaigns the **Initiative Tracker** changes by itself: the d20 controls (Start Combat, Auto-Roll, Next Turn...) disappear and the **Sequence bar** takes their place. In 5e campaigns the tracker stays exactly as described in chapter 10.
 
 **Who is in the tracker** (recognised from the token):
 
@@ -1147,7 +1163,7 @@ Example: two Heroes, **Kasper** and **Elena**, face the **Count** and a Squad of
 - *A Hero is Helpless (4 Dramatic Wounds).* They can still act, but every Action costs 1 Hero Point, deducted automatically. A Villain can attempt Murder: a companion saves them with **🛡️ Salva**.
 - *Does the program decide whether an Action respects a Pressure?* No: the GM decides with **Rompi (+1)**. The program only shows a reminder when the target spends Raises.
 - *Can players see my Danger Points?* No. They see their own status, "?" for Villains and the notes under the tracker.
-- *I also play D&D.* In D&D campaigns the tracker stays the classic d20 one: the two modes never interfere.
+- *I also play 5e.* In 5e campaigns the tracker stays the classic d20 one: the two modes never interfere.
 
 ---
 
@@ -1184,4 +1200,16 @@ Example: two Heroes, **Kasper** and **Elena**, face the **Count** and a Squad of
 - **Performance:** maps optimised to 2560 px, animations capped at 30 fps, state messages under 3 KB, token images shrunk before sending. The program is designed to run even on low-memory PCs.
 - **Known limits:**
   - Online connection through very restrictive mobile networks is still being field-tested.
-  - Some confirmation messages still use the browser's dialog boxes.
+
+---
+
+## 20. Licences, credits and notices
+
+- **Unofficial project:** Andr3a VTT is an independent, unofficial fan project, compatible with fifth edition. It is not affiliated with, sponsored or endorsed by the publishers of the games mentioned; game names belong to their respective owners and are used only to indicate compatibility.
+- **Rules material (attribution):**
+
+  > This work includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
+
+- **Changes to that material:** the spell descriptions built into the program are summaries and Italian translations made by the authors of this project.
+- **Online search:** the monster and spell search queries the public Open5e service on demand; that content is not hosted on this site.
+- **User content:** sheets, monsters, maps, images and audio you import stay in your browser. You are responsible for the rights to the material you load.

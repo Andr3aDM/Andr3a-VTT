@@ -63,7 +63,8 @@ class StorageDB {
         if (!campaignId) return null;
         const campaign = await this.getCampaign(campaignId);
         if (!campaign) return null;
-        campaign.system = (system === '7thsea') ? '7thsea' : 'dnd5e';
+        // Fase B: si salva l'id del sistema ricevuto (qualsiasi modulo); vuoto -> 5e
+        campaign.system = system || 'dnd5e';
         return new Promise((resolve, reject) => {
             const tx = this.db.transaction('campaigns', 'readwrite');
             tx.objectStore('campaigns').put(campaign);

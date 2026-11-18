@@ -5,7 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Andr3a VTT - Schermo Giocatori (Beta 1.5)</title>
     <link rel="stylesheet" href="css/style.css?v=3">
+    <!-- modulo:7thsea -->
     <link rel="stylesheet" href="js/systems/7thsea/sheet.css?v=1">
+    <!-- /modulo:7thsea -->
+    <!-- modulo:ncs -->
+    <link rel="stylesheet" href="js/systems/ncs/sheet.css?v=5">
+    <!-- /modulo:ncs -->
     <style>
         /* Nasconde la sidebar per i giocatori e massimizza la mappa */
         body { margin: 0; overflow: hidden; background-color: #000; }
@@ -64,7 +69,7 @@
                 <hr style="border-color: #444; margin: 10px 0 0 0;">
             </div>
 
-            <input type="text" id="login-room" placeholder="Codice Campagna (es: STRAHD-2026)" style="width: 100%; padding: 8px; margin-bottom: 10px; box-sizing: border-box; background: #333; color: white; border: 1px solid #555; text-transform: uppercase;">
+            <input type="text" id="login-room" placeholder="Codice Campagna (es: CORVO-2026)" style="width: 100%; padding: 8px; margin-bottom: 10px; box-sizing: border-box; background: #333; color: white; border: 1px solid #555; text-transform: uppercase;">
 
             <div id="login-char-container" style="display:none; margin-bottom: 10px; text-align: left;">
                 <label style="font-size: 11px; color: #ffcc00; font-weight: bold; margin-bottom: 3px; display: block;">Scegli il tuo Personaggio:</label>
@@ -83,6 +88,13 @@
             <hr style="border-color: #555; margin: 15px 0;">
             <button id="btn-login-offline" style="width: 100%; padding: 10px; background: #555; color: white; border: none; cursor: pointer; border-radius:4px;">Usa Schermo Locale (Offline)</button>
             <p id="login-status" style="color: #ff5252; font-size: 12px; margin-top:10px;"></p>
+            <details id="vtt-credits" style="font-size: 10.5px; color: #9e9e9e; line-height: 1.4; text-align: left; margin-top: 8px;">
+                <summary style="cursor: pointer; color: #bdbdbd;"><span>ℹ️ Crediti e licenze</span></summary>
+                <p style="margin: 6px 0;"><span>Progetto amatoriale indipendente e non ufficiale, compatibile con la quinta edizione. Non è affiliato, sponsorizzato né approvato dagli editori dei giochi citati.</span></p>
+                <p style="margin: 6px 0;" lang="en">This work includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC, available at <a href="https://www.dndbeyond.com/srd" target="_blank" rel="noopener" style="color:#4dd0e1;">https://www.dndbeyond.com/srd</a>. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at <a href="https://creativecommons.org/licenses/by/4.0/legalcode" target="_blank" rel="noopener" style="color:#4dd0e1;">https://creativecommons.org/licenses/by/4.0/legalcode</a>.</p>
+                <p style="margin: 6px 0;"><span>Le descrizioni degli incantesimi integrate sono riassunti e traduzioni di quel materiale, fatti dagli autori di questo progetto.</span></p>
+                <p style="margin: 6px 0;"><span>Schede, mostri, mappe e immagini che importi restano nel tuo browser: sei responsabile dei diritti sul materiale che carichi.</span></p>
+            </details>
         </div>
     </div>
 
@@ -379,7 +391,7 @@
                 <input type="checkbox" id="statblock-spawn-invisible">
             </div>
             <div style="display: flex; gap: 6px; justify-content: space-between; align-items: center;">
-                <button id="btn-translate-statblock" style="flex: 1; min-width: 0; background: #6a1b9a; color: white; border: none; padding: 7px 4px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Traduci la scheda con la terminologia ufficiale D&D in Italiano">
+                <button id="btn-translate-statblock" style="flex: 1; min-width: 0; background: #6a1b9a; color: white; border: none; padding: 7px 4px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Traduci la scheda in italiano con la terminologia ufficiale della 5e">
                     <span id="btn-translate-statblock-text">🇮🇹 Traduci IT</span>
                 </button>
                 <button id="btn-assign-statblock" style="flex: 1.3; min-width: 0; background: #2e7d32; color: white; border: none; padding: 7px 4px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Assegna questa scheda e i relativi PV/CA al token selezionato">
@@ -397,7 +409,7 @@
                 <button id="btn-close-json-modal" style="background: none; border: none; color: #aaa; font-size: 16px; cursor: pointer;">✕</button>
             </div>
             <div style="font-size: 11px; color: #bbb; line-height: 1.35;">
-                Incolla il <strong>JSON 5eTools/Open5e</strong> oppure seleziona e copia con il mouse il <strong>testo della scheda</strong> (Nome, Armor Class, Hit Points, STR/DEX/CON, Actions...) e premi <strong>Ctrl+V</strong> qui sotto:
+                Incolla il <strong>JSON del mostro</strong> oppure seleziona e copia con il mouse il <strong>testo della scheda</strong> (Nome, Armor Class, Hit Points, STR/DEX/CON, Actions...) e premi <strong>Ctrl+V</strong> qui sotto:
             </div>
             <textarea id="json-import-textarea" placeholder="Incolla qui il testo copiato dalla pagina (es. Wolf / Armor Class 13 / Hit Points 11...) oppure un oggetto JSON {&quot;name&quot;: &quot;...&quot;}" style="width: 100%; height: 140px; background: #111; color: #fff; border: 1px solid #555; border-radius: 4px; font-family: monospace; font-size: 11px; padding: 8px; box-sizing: border-box; resize: vertical; margin: 0;"></textarea>
 
@@ -426,19 +438,28 @@
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
     <script src="js/ui_dialogs.js?v=2"></script>
     <script src="js/engine.js?v=158"></script>
-    <script src="js/network.js?v=13"></script>
+    <script src="js/network.js?v=14"></script>
     <script src="js/dice.js?v=127"></script>
     <script src="js/audio.js?v=118"></script>
-    <script src="js/pcsheet.js?v=12"></script>
-    <script src="js/compendium.js?v=25"></script>
-    <script src="js/systems/system_manager.js?v=1"></script>
-    <script src="js/systems/dnd5e/adapter.js?v=1"></script>
+    <script src="js/pcsheet.js?v=13"></script>
+    <script src="js/compendium.js?v=28"></script>
+    <script src="js/systems/system_manager.js?v=6"></script>
+    <script src="js/systems/dnd5e/adapter.js?v=4"></script>
+    <!-- modulo:7thsea -->
     <script src="js/systems/7thsea/data.js?v=1"></script>
     <script src="js/systems/7thsea/rules.js?v=6"></script>
-    <script src="js/systems/7thsea/sheet.js?v=15"></script>
+    <script src="js/systems/7thsea/sheet.js?v=18"></script>
     <script src="js/systems/7thsea/compendium.js?v=2"></script>
-    <script src="js/player.js?v=174"></script>
-<script src="js/lang.js?v=22"></script>
+    <!-- /modulo:7thsea -->
+    <!-- modulo:ncs -->
+    <script src="js/systems/ncs/rules.js?v=1"></script>
+    <script src="js/systems/ncs/sheet.js?v=4"></script>
+    <script src="js/systems/ncs/roll.js?v=4"></script>
+    <script src="js/systems/ncs/coins.js?v=2"></script>
+    <!-- /modulo:ncs -->
+    <script src="js/diagnostica.js?v=1"></script>
+    <script src="js/player.js?v=181"></script>
+<script src="js/lang.js?v=33"></script>
 
     
 

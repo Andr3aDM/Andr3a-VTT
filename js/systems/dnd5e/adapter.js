@@ -1,14 +1,44 @@
 // js/systems/dnd5e/adapter.js
-// Adattatore ufficiale D&D 5ª Edizione per il SystemManager
+// Adattatore del sistema 5ª Edizione (5e) per il SystemManager (id interno 'dnd5e', invariato per compatibilità)
 
 (function () {
     const dnd5eAdapter = {
         id: 'dnd5e',
         name: 'Dungeons & Dragons 5e',
-        badge: '⚔️ D&D 5e',
+        badge: '⚔️ 5e',
+        optionLabel: '⚔️ 5ª Edizione (5e) (Default)',
+        // Interfaccia: etichetta della campagna e caselle CA / PV temporanei visibili
+        ui: {
+            badge: '⚔️ 5e',
+            badgeBg: '#1b3a4b',
+            badgeColor: '#4dd0e1',
+            badgeBorder: '#00acc1',
+            hideAc: false,
+            hideTempHp: false,
+            // Pannello token del Master: pulsanti Scheda Mostro / Scheda PG
+            statblockIcon: '📜',
+            statblockLabel: '📜 Mostro',
+            statblockTitle: 'Cerca e assegna scheda statistiche mostro',
+            pcIcon: '🧙',
+            pcLabel: '🧙 Scheda PG',
+            pcTitle: 'Apri o Importa Scheda Personaggio (PG)',
+            pcTitleNamed: 'Apri Scheda PG: {name} (Liv. {level})',
+            // Pannello token del Giocatore
+            playerPcLabel: '🧙 Apri Scheda PG',
+            playerPcTitle: 'Apri la Scheda del tuo Personaggio',
+            playerStatblockLabel: '🐉 Scheda Creatura / Mostro',
+            // Un token "personaggi" senza scheda puo' aprire la scheda PG col doppio clic?
+            pcWithoutSheet: false
+        },
 
+        // Una scheda 5e ha le caratteristiche (abilities.str)
+        matchesSheet(pcSheet) {
+            return !!(pcSheet && pcSheet.abilities && pcSheet.abilities.str);
+        },
+
+        // Sempre la scheda 5e vera, mai il router window.pcSheetManager (restituirlo creerebbe un ciclo infinito)
         getSheetManager() {
-            return window.dnd5eSheetManager || window.pcSheetManager;
+            return window.dnd5eSheetManager || window._legacyPcSheetManager || null;
         },
 
         getCompendium() {

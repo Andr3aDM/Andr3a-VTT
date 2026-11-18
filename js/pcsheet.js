@@ -2378,7 +2378,7 @@
                 <!-- Footer Journal -->
                 <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #78909c; padding: 2px 4px; flex-wrap: wrap; gap: 6px;">
                     <span id="pcs-journal-counter">${chars} ${tr('caratteri', 'characters')} | ${words} ${tr('parole', 'words')}</span>
-                    <span style="color: #4db6ac;">🛡️ ${tr('Scollegato da D&D Beyond: i tuoi appunti sono protetti e persistenti', 'Decoupled from D&D Beyond: your notes are protected and persistent')}</span>
+                    <span style="color: #4db6ac;">🛡️ ${tr('Scheda autonoma: i tuoi appunti sono protetti e persistenti', 'Standalone sheet: your notes are protected and persistent')}</span>
                 </div>
             </div>
         `;

@@ -782,6 +782,15 @@ network.onMessage((data, peerId) => {
         return;
     }
 
+    // Registro diagnostico (acceso/spento dal Master, vedi js/diagnostica.js)
+    if (data.type === 'DIAG_SET') {
+        if (network.mode === 'client' && window.vttDiag) window.vttDiag.enable(!!(data.payload && data.payload.on));
+        return;
+    } else if (data.type === 'DIAG_REQUEST') {
+        if (network.mode === 'client') sendDiagReport(data.payload && data.payload.reqId);
+        return;
+    }
+
     if (data.type === 'PLAYER_DISCONNECTED_NOTICE') {
         const left = data.payload?.name;
         if (left) {
@@ -973,6 +982,13 @@ network.onMessage((data, peerId) => {
                 window.pcSheetManager.refreshIfOpen(p.tokenId);
             }
         }
+    } else if (data.type === 'SYS_MSG') {
+        // Canale dei moduli (Fase C): messaggio di un sistema di gioco consegnato al suo adattatore
+        const smod = window.systemManager;
+        const sysAdapter = (smod && typeof smod.getAdapter === 'function') ? smod.getAdapter(data.sys) : null;
+        if (sysAdapter && typeof sysAdapter.onNetworkMessage === 'function') {
+            try { sysAdapter.onNetworkMessage(data, { peerId, senderName: null, isDM: false }); } catch (e) { console.warn('SYS_MSG:', e); }
+        }
     } else if (data.type === 'TOKEN_JOURNAL_SYNC') {
         const p = data.payload;
         if (p && p.tokenId) {
@@ -1016,6 +1032,19 @@ network.onMessage((data, peerId) => {
         const state = data.payload;
         if (state.gameSystem && window.systemManager) {
             window.systemManager.setActiveSystem(state.gameSystem);
+            // Modulo del sistema del Master non incluso in questa versione: un solo avviso (mappa, token e dadi funzionano)
+            if (typeof window.systemManager.isRegistered === 'function' && !window.systemManager.isRegistered(state.gameSystem) &&
+                window._vttMissingSystemWarned !== state.gameSystem) {
+                window._vttMissingSystemWarned = state.gameSystem;
+                if (typeof vttWarn === 'function') vttWarn(window.systemManager.missingModuleMessage(state.gameSystem));
+            }
+        }
+        // Dati del sistema di gioco condivisi dal Master (STATE_SYNC.sys, es. Monete): li riceve il suo modulo
+        if (state.sys && window.systemManager && typeof window.systemManager.getAdapter === 'function') {
+            const sysAdapter = window.systemManager.getAdapter(window.systemManager.getActiveSystemId());
+            if (sysAdapter && typeof sysAdapter.applySharedState === 'function') {
+                try { sysAdapter.applySharedState(state.sys); } catch (e) { console.warn('applySharedState error:', e); }
+            }
         }
         if (state.audioState && window.syncPlayerAudio) {
             window.syncPlayerAudio(state.audioState);
@@ -1701,6 +1730,85 @@ let pPinchStartWorldPos = null;
 let pPinchMidX = 0;
 let pPinchMidY = 0;
 
+// --- REGISTRO DIAGNOSTICO (js/diagnostica.js): tutto inattivo a registro spento ---
+function diagTap(e, esito, extra) {
+    const d = window.vttDiag;
+    if (!d || !d.on) return;
+    try {
+        const info = {
+            evento: e && e.type, dita: e && e.touches ? e.touches.length : null,
+            tasto: e && e.button !== undefined && !(e.touches) ? e.button : null, strumento: currentTool
+        };
+        d.log('tocco', esito, extra ? Object.assign(info, extra) : info);
+    } catch (err) {}
+}
+
+function diagSnapshot() {
+    const g = (f) => { try { return f(); } catch (err) { return '(n/d)'; } };
+    const disp = (id) => { const el = document.getElementById(id); return el ? (el.style.display || '(predefinito)') : '(assente)'; };
+    return {
+        giocatore: network.playerName, modo: network.mode, peer: network.peer ? network.peer.id : null,
+        collegato: !!(network.hostConn && network.hostConn.open),
+        stanza: network.roomId ? '…' + String(network.roomId).slice(-4) : null,
+        spettatore: g(() => isSpectatorMode()),
+        gesti: {
+            trascinamento: g(() => isDragging), mappa: g(() => isPanning), pizzico: g(() => pIsPinching),
+            pingInAttesa: g(() => !!pingTimeout), activeToken: g(() => activeToken && activeToken.ref ? activeToken.type + ':' + (activeToken.ref.name || activeToken.ref.id) : null),
+            strumento: g(() => currentTool), mappaBloccata: g(() => isMapLocked),
+            classeTrascinamento: document.body.classList.contains('vtt-dragging')
+        },
+        vista: { scala: engine.scale, offsetX: Math.round(engine.offsetX), offsetY: Math.round(engine.offsetY), griglia: engine.grid ? engine.grid.size : null },
+        finestre: {
+            scheda: disp('pc-sheet-window'), pannelloToken: disp('player-token-panel'), dadi: disp('dice-panel'),
+            barra: disp('player-toolbar'), fineSessione: disp('player-end-modal'), avvisoRientro: disp('player-reconnect-banner'),
+            accesso: disp('login-overlay'), spettatoreBadge: disp('player-spectator-badge')
+        },
+        token: (engine.tokens || []).map(t => ({
+            id: t.id, nome: t.name, x: Math.round(t.x), y: Math.round(t.y), w: Math.round(t.width), h: Math.round(t.height),
+            proprietari: t.owners || t.owner || null, mio: isTokenOwnedByLocalPlayer(t),
+            evocazione: !!t.isEvocation, categoria: t.category || null, scheda: !!(t.pcSheet || t.hasPcSheet)
+        }))
+    };
+}
+
+function diagSummarizeIncoming(data) {
+    const p = data && data.payload;
+    if (data.type === 'STATE_SYNC' && p && Array.isArray(p.tokens)) {
+        const me = String(network.playerName || '').trim().toLowerCase();
+        const mine = p.tokens.filter(t => {
+            const own = (Array.isArray(t.owners) && t.owners.length > 0) ? t.owners : (t.owner ? [t.owner] : []);
+            return own.some(o => String(o).trim().toLowerCase() === me);
+        });
+        return { token: p.tokens.length, miei: mine.map(t => t.name + '@' + Math.round(t.x) + ',' + Math.round(t.y)) };
+    }
+    if (p && (p.tokenId || p.id)) return { token: p.tokenId || p.id };
+    return undefined;
+}
+
+if (window.vttDiag) {
+    window.vttDiag.snapshotProvider = diagSnapshot;
+    window.vttDiag.summarizeIncoming = diagSummarizeIncoming;
+}
+
+// Invia al Master il registro (anche se spento: in quel caso contiene solo la fotografia), a pezzi da 48 KB
+async function sendDiagReport(reqId) {
+    if (!reqId || !window.vttDiag) return;
+    let json;
+    try { json = JSON.stringify(window.vttDiag.report()); } catch (err) { json = JSON.stringify({ formato: 'vtt-diagnosi-1', errore: String(err && err.message) }); }
+    const PART = 48000;
+    const total = Math.max(1, Math.ceil(json.length / PART));
+    for (let i = 0; i < total; i++) {
+        // Aspetta che il canale si svuoti: i messaggi normali hanno la precedenza
+        for (let w = 0; w < 100; w++) {
+            const dc = network.hostConn && network.hostConn.dataChannel;
+            if (!dc || typeof dc.bufferedAmount !== 'number' || dc.bufferedAmount < 65536) break;
+            await new Promise(r => setTimeout(r, 50));
+        }
+        network.send({ type: 'DIAG_REPORT_PART', payload: { reqId, idx: i, total, chunk: json.slice(i * PART, (i + 1) * PART) } });
+        await new Promise(r => setTimeout(r, 20));
+    }
+}
+
 function pHandleStart(e) {
     if (!isMapLocked && e.touches && e.touches.length >= 2) {
         e.preventDefault();
@@ -1725,6 +1833,7 @@ function pHandleStart(e) {
         pPinchMidX = (t0.clientX + t1.clientX) / 2 - rect.left;
         pPinchMidY = (t0.clientY + t1.clientY) / 2 - rect.top;
         pPinchStartWorldPos = engine.screenToWorld(pPinchMidX, pPinchMidY);
+        diagTap(e, 'pizzico iniziato');
         return;
     }
 
@@ -1753,8 +1862,10 @@ function pHandleStart(e) {
     
     if (isSpectatorMode()) {
         // In modalità Spettatore, sono consentiti solo pan (spostamento visuale) e zoom
+        diagTap(e, 'ignorato: modalità spettatore (nessun token mio)', { tokenTotali: engine.tokens.length });
         return;
     }
+    if (currentTool !== 'move') diagTap(e, 'strumento ' + currentTool);
     
     if (currentTool === 'laser') {
         isDragging = true;
@@ -1915,6 +2026,17 @@ function pHandleStart(e) {
             }
         }
 
+        if (window.vttDiag && window.vttDiag.on) {
+            const under = targetCreature;
+            diagTap(e, hitEntity ? ('preso ' + (activeToken ? activeToken.type : '?')) : (isPanning ? 'nessun elemento mio: sposto la mappa' : 'nessun elemento mio'), {
+                preso: activeToken && activeToken.ref ? (activeToken.ref.name || activeToken.ref.id) : null,
+                sotto: under ? { nome: under.name, mio: isTokenOwnedByLocalPlayer(under), proprietari: under.owners || under.owner || null, evocazione: !!under.isEvocation } : null,
+                mondo: { x: Math.round(worldPos.x), y: Math.round(worldPos.y) },
+                mieiToken: engine.tokens.filter(t => isTokenOwnedByLocalPlayer(t)).map(t => t.name + '@' + Math.round(t.x) + ',' + Math.round(t.y) + ' ' + Math.round(t.width) + 'x' + Math.round(t.height)),
+                mappaBloccata: isMapLocked
+            });
+        }
+
         // Ping Timer (su creatura o mappa vuota)
         if (pingTimeout) { clearTimeout(pingTimeout); pingTimeout = null; }
         const pColor = (document.getElementById('player-color') && document.getElementById('player-color').value) ? document.getElementById('player-color').value : '#00ffff';
@@ -2061,6 +2183,14 @@ function pHandleMove(e) {
 }
 
 function pHandleEnd(e) {
+    if (window.vttDiag && window.vttDiag.on && (isDragging || isPanning || pIsPinching || activeToken || activeLaser || activeStroke)) {
+        window.vttDiag.log('gesto', 'fine', {
+            evento: e && e.type ? e.type : 'interno', dita: e && e.touches ? e.touches.length : null,
+            trascinamento: isDragging, pizzico: pIsPinching, mappa: isPanning,
+            token: activeToken && activeToken.ref ? (activeToken.ref.name || activeToken.ref.id) : null,
+            mosso: !!(activeToken && activeToken._hasMovedDuringDrag)
+        });
+    }
     if (pIsPinching) {
         if (e && e.touches && e.touches.length >= 2) {
             return;
@@ -2131,7 +2261,8 @@ function pHandleEnd(e) {
             const isTouch = e && ((e.touches && e.touches.length > 0) || (e.changedTouches && e.changedTouches.length > 0));
             const maxMove = isTouch ? 25 : 10;
             const maxInterval = isTouch ? 500 : 380;
-            if (Math.abs(endX - startMouseX) < maxMove && Math.abs(endY - startMouseY) < maxMove) {
+            // Un tocco interrotto dal sistema non è un clic (non apre pannello né scheda)
+            if (!(e && e.vttCancelled) && Math.abs(endX - startMouseX) < maxMove && Math.abs(endY - startMouseY) < maxMove) {
                 const clickedTok = activeToken.ref;
                 window.editingPlayerToken = clickedTok;
                 engine.selectedTokenId = clickedTok.id;
@@ -2141,7 +2272,10 @@ function pHandleEnd(e) {
                 if (lastPlayerClickedTokenId === clickedTok.id && (nowClick - lastPlayerClickedTokenTime) < maxInterval) {
                     lastPlayerClickedTokenId = null;
                     lastPlayerClickedTokenTime = 0;
-                    if (!isRealPc) {
+                    const noStatblocks = !!(window.systemManager && typeof window.systemManager.ui === 'function' && window.systemManager.ui().hideStatblockButton);
+                    if (!isRealPc && noStatblocks) {
+                        // Sistemi senza schede degli avversari (es. NCS): niente da aprire
+                    } else if (!isRealPc) {
                         if (window.compendium) {
                             if (!clickedTok.statblock && (clickedTok.hasStatblock || clickedTok.statblockName)) {
                                 network.send({ type: 'REQUEST_TOKEN_STATBLOCK', tokenId: clickedTok.id });
@@ -2160,22 +2294,28 @@ function pHandleEnd(e) {
                     const btnStat = document.getElementById('pbtn-open-statblock');
                     const btnPc = document.getElementById('pbtn-open-pcsheet');
                     if (btnStat && btnPc) {
-                        if (!isRealPc) {
+                        // Scritte dal sistema di gioco attivo (5e: come prima; 7th Sea: Eroe / Antagonista)
+                        const pUi = (window.systemManager && typeof window.systemManager.ui === 'function') ? window.systemManager.ui() : null;
+                        if (!isRealPc && pUi && pUi.hideStatblockButton) {
+                            btnStat.style.display = 'none';
+                            btnPc.style.display = 'none';
+                        } else if (!isRealPc) {
                             btnStat.style.display = 'flex';
                             btnPc.style.display = 'none';
                             const stName = (clickedTok.statblock && clickedTok.statblock.name) || clickedTok.statblockName;
                             if (stName) {
-                                btnStat.innerHTML = `<span>📜 ${escapeHTML(stName)}</span>`;
+                                btnStat.innerHTML = `<span>${pUi ? pUi.statblockIcon : '📜'} ${escapeHTML(stName)}</span>`;
                                 btnStat.style.background = '#00897b';
                                 btnStat.style.borderColor = '#80cbc4';
                             } else {
-                                btnStat.innerHTML = `<span>🐉 Scheda Creatura / Mostro</span>`;
+                                btnStat.innerHTML = `<span>${pUi ? pUi.playerStatblockLabel : '🐉 Scheda Creatura / Mostro'}</span>`;
                                 btnStat.style.background = '#0277bd';
                                 btnStat.style.borderColor = '#4fc3f7';
                             }
                         } else {
                             btnStat.style.display = 'none';
                             btnPc.style.display = 'flex';
+                            if (pUi) { btnPc.textContent = pUi.playerPcLabel; btnPc.title = pUi.playerPcTitle; }
                         }
                     }
                     const dismissBtn = document.getElementById('pbtn-dismiss-token');
@@ -2293,6 +2433,16 @@ window.addEventListener('touchmove', pHandleMove, {passive: false});
 
 window.addEventListener('mouseup', pHandleEnd);
 window.addEventListener('touchend', pHandleEnd);
+// Tocco interrotto dal sistema (Android: notifica, palmo appoggiato, cambio app): senza questo il gesto restava
+// "appeso" (trascinamento/pizzico ancora attivi e pannelli non cliccabili) fino al tocco successivo sulla mappa.
+// Chiude il gesto come un rilascio, senza contarlo come clic.
+function pHandleCancel(e) {
+    if (!(isDragging || isPanning || pIsPinching || activeToken || activeLaser || activeStroke || pingTimeout)) return;
+    lastPlayerClickedTokenId = null;
+    lastPlayerClickedTokenTime = 0;
+    pHandleEnd({ type: 'touchcancel', vttCancelled: true, touches: [], changedTouches: (e && e.changedTouches) || [] });
+}
+window.addEventListener('touchcancel', pHandleCancel);
 window.addEventListener('blur', () => {
     if (isDragging || isPanning || activeLaser || activeStroke) {
         pHandleEnd({});

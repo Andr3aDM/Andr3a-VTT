@@ -1,0 +1,101 @@
+/* js/systems/ncs/sheet.css — Scheda del Protagonista di "Non Cedere al Sonno" (stili isolati con prefisso ncs-) */
+.ncs-window {
+    position: fixed; top: 64px; right: 24px; z-index: 4500;
+    width: 430px; max-width: calc(100vw - 16px); max-height: calc(100vh - 80px);
+    flex-direction: column; background: #12101c; color: #e9e6f5;
+    border: 1px solid #5b4b8a; border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+    font-family: inherit; font-size: 12px;
+}
+.ncs-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 10px; background: #1e1633; border-bottom: 1px solid #5b4b8a;
+    border-radius: 10px 10px 0 0; cursor: move; user-select: none; font-weight: bold; color: #c4b5fd;
+}
+.ncs-header-btns { display: flex; gap: 4px; }
+.ncs-icon-btn {
+    background: #2a2140; color: #e9e6f5; border: 1px solid #5b4b8a; border-radius: 5px;
+    padding: 2px 7px; font-size: 12px; cursor: pointer; line-height: 1.4;
+}
+.ncs-icon-btn:disabled, .ncs-step:disabled, .ncs-box:disabled, .ncs-add:disabled { opacity: 0.45; cursor: default; }
+.ncs-body { padding: 10px 12px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.ncs-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+.ncs-col { flex-direction: column; align-items: stretch; }
+.ncs-label { min-width: 150px; color: #b9b3d6; font-weight: bold; }
+.ncs-input {
+    flex: 1; min-width: 120px; padding: 5px 7px; background: #1a1726; color: #fff;
+    border: 1px solid #3f355f; border-radius: 5px; font-size: 12px; box-sizing: border-box;
+}
+.ncs-input:focus { outline: none; border-color: #8b5cf6; }
+.ncs-select { padding: 3px 4px; background: #1a1726; color: #fff; border: 1px solid #3f355f; border-radius: 5px; font-size: 12px; }
+.ncs-check { width: 18px; height: 18px; cursor: pointer; }
+.ncs-sep { height: 1px; background: #3f355f; margin: 8px 0; }
+.ncs-stat .ncs-label { min-width: 130px; }
+.ncs-step {
+    width: 26px; height: 26px; background: #2a2140; color: #fff; border: 1px solid #5b4b8a;
+    border-radius: 5px; font-size: 15px; font-weight: bold; cursor: pointer; padding: 0;
+}
+.ncs-val { min-width: 22px; text-align: center; font-size: 15px; color: #fff; }
+.ncs-box {
+    width: 22px; height: 22px; padding: 0; border-radius: 4px; cursor: pointer;
+    background: #1a1726; border: 1px solid #6b6588; color: #b9b3d6; font-size: 10px;
+}
+.ncs-box.on { background: #0b0b0f; border-color: #e9e6f5; box-shadow: inset 0 0 0 3px #3a3a44; }
+.ncs-ex0 { width: 24px; }
+.ncs-reaction { display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; }
+.ncs-warnings { margin: 4px 0; }
+.ncs-warn { background: #3b1d1d; border: 1px solid #b91c1c; color: #fecaca; border-radius: 5px; padding: 4px 7px; margin-bottom: 4px; }
+.ncs-note { background: #1f2937; border: 1px solid #4b5563; color: #d1d5db; border-radius: 5px; padding: 4px 7px; margin-bottom: 8px; }
+.ncs-scar { display: flex; align-items: center; gap: 5px; margin: 3px 0; }
+.ncs-mini { display: inline-flex; align-items: center; gap: 3px; color: #b9b3d6; white-space: nowrap; }
+.ncs-add {
+    align-self: flex-start; margin-top: 4px; background: #2a2140; color: #c4b5fd; border: 1px dashed #7c3aed;
+    border-radius: 5px; padding: 4px 9px; font-size: 12px; cursor: pointer;
+}
+@media (max-width: 520px) {
+    .ncs-window { left: 8px; right: 8px; width: auto; top: 50px; }
+    .ncs-label { min-width: 100%; }
+}
+
+.ncs-roll-btn {
+    width: 100%; padding: 8px; background: #4c1d95; color: #fff; border: 1px solid #8b5cf6;
+    border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer;
+}
+.ncs-roll-btn:hover { background: #5b21b6; }
+/* Finestra del tiro */
+.ncs-roll-window { top: 90px; right: 470px; width: 400px; }
+@media (max-width: 960px) { .ncs-roll-window { right: 24px; top: 110px; } }
+.ncs-roll-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+.ncs-roll-row .ncs-label { min-width: 140px; }
+.ncs-hint { color: #8f88b3; font-size: 11px; }
+.ncs-counter { background: #1a1726; border: 1px solid #3f355f; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
+.ncs-counter b { font-size: 14px; color: #fff; }
+.ncs-go { width: 100%; padding: 9px; background: #6d28d9; color: #fff; border: 1px solid #a78bfa; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; }
+.ncs-go:disabled { opacity: 0.5; cursor: default; }
+.ncs-result { margin-top: 8px; }
+.ncs-fx { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.ncs-fx button { background: #2a2140; color: #fff; border: 1px solid #7c3aed; border-radius: 5px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
+.ncs-fx button:disabled { opacity: 0.4; cursor: default; }
+.ncs-alert { background: #3b1d1d; border: 1px solid #ef4444; color: #fecaca; border-radius: 5px; padding: 4px 7px; margin-top: 6px; font-weight: bold; }
+.ncs-die { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 4px; font-weight: 900; font-size: 12px; margin: 1px; }
+.ncs-section-title { color: #c4b5fd; font-weight: bold; margin: 4px 0 6px; }
+.ncs-go-pain { background: #5b21b6; margin-top: 2px; }
+/* Cicatrice trasformata */
+.ncs-scar-done .ncs-input { text-decoration: line-through; color: #8f88b3; }
+/* Riquadro delle Coppe */
+.ncs-coins {
+    position: fixed; left: 12px; bottom: 96px; z-index: 4400; min-width: 190px; max-width: 280px;
+    background: #12101c; color: #e9e6f5; border: 1px solid #a16207; border-radius: 9px; box-shadow: 0 6px 18px rgba(0,0,0,0.6); font-size: 12px;
+}
+.ncs-coins-head { padding: 5px 9px; background: #2a1f0a; color: #fde68a; font-weight: bold; border-radius: 9px 9px 0 0; cursor: move; user-select: none; }
+#ncs-coins-body { padding: 7px 9px; }
+.ncs-coin-row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.ncs-coin-row > span:first-child { flex: 1; }
+.ncs-coin-row b { min-width: 20px; text-align: center; font-size: 14px; color: #fff; }
+.ncs-coin-btns { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 4px; }
+.ncs-mini-btn { background: #2a2140; color: #fff; border: 1px solid #5b4b8a; border-radius: 5px; padding: 3px 7px; font-size: 12px; cursor: pointer; }
+.ncs-mini-btn:disabled { opacity: 0.45; cursor: default; }
+.ncs-light { background: #3b2f0b; border-color: #ca8a04; color: #fde68a; }
+.ncs-light-panel { margin-top: 7px; padding-top: 6px; border-top: 1px solid #3f355f; display: flex; flex-direction: column; gap: 5px; }
+.ncs-requests { margin-top: 7px; border-top: 1px solid #3f355f; padding-top: 6px; }
+.ncs-request { background: #1a1726; border: 1px solid #3f355f; border-radius: 6px; padding: 5px; margin-bottom: 5px; }
+.ncs-request div { margin-top: 4px; display: flex; gap: 5px; }
