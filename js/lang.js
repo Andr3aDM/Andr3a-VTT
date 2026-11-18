@@ -459,6 +459,8 @@ const dict = {
     "🟢 Giocatore connesso:": "🟢 Player connected:",
     "🔄 Giocatore riconnesso:": "🔄 Player reconnected:",
     "🩺 Registro diagnostico giocatori": "🩺 Player diagnostic log",
+    "token aggiunti alla Sequenza d'Azione: attendono il tiro del Rischio (Incrementi).": "tokens added to the Action Sequence: waiting for the Risk roll (Raises).",
+    "I token selezionati sono già nella Sequenza.": "The selected tokens are already in the Sequence.",
     "✏️ Modifica": "✏️ Edit",
     "✔ Fine modifica": "✔ Done editing",
     "Elimina, sposta o rinomina i pad": "Delete, move or rename pads",

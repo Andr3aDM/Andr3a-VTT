@@ -6957,6 +6957,37 @@ if(btnAddToInit) {
     btnAddToInit.addEventListener('click', async () => {
         if (!engine.initiative || !engine.initiative.participants) return vttWarn("Avvia prima l'iniziativa col tasto giallo in alto!");
         if (!engine.selectedTokens || engine.selectedTokens.size === 0) return vttWarn("Seleziona almeno un token prima!");
+
+        // 7th Sea: niente valore di iniziativa d20. Il token entra nella Sequenza d'Azione e attende il tiro
+        // del Rischio (gli Incrementi arrivano dal tiro o li scrive il Master nel tracker).
+        if (window.seventhSeaInitiative && typeof window.seventhSeaInitiative.handlesTracker === 'function' && window.seventhSeaInitiative.handlesTracker()) {
+            let added = 0;
+            engine.selectedTokens.forEach(tokenId => {
+                const t = engine.tokens.find(tok => tok.id === tokenId);
+                if (!t) return;
+                if (engine.initiative.participants.some(p => String(p.tokenId) === String(t.id))) return;
+                engine.initiative.participants.push({
+                    id: 'tok_' + t.id,
+                    name: window.getSmartTokenName(t),
+                    isToken: true,
+                    tokenId: t.id,
+                    isHidden: !t.visible,
+                    init: '',
+                    hpCurrent: t.hpCurrent,
+                    hpMax: t.hpMax,
+                    ac: t.ac || 0
+                });
+                added++;
+            });
+            if (typeof renderTrackerList === 'function') renderTrackerList();
+            syncState(true);
+            if (typeof showToast === 'function') {
+                showToast(added > 0
+                    ? `⚔️ ${added} ${typeof window.t === 'function' ? window.t("token aggiunti alla Sequenza d'Azione: attendono il tiro del Rischio (Incrementi).") : "token aggiunti alla Sequenza d'Azione: attendono il tiro del Rischio (Incrementi)."}`
+                    : (typeof window.t === 'function' ? window.t('I token selezionati sono già nella Sequenza.') : 'I token selezionati sono già nella Sequenza.'));
+            }
+            return;
+        }
         
         let roll = await vttPrompt("Inserisci il valore di Iniziativa per il/i token selezionati:", "10");
         if (roll === null) return;

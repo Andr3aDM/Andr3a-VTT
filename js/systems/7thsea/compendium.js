@@ -61,6 +61,31 @@
         }
     };
 
+    // Token in mappa la cui scheda è quella aperta (stesso oggetto), preferendo quello selezionato all'apertura
+    function findTokenOfStatblock(m) {
+        const eng = (typeof engine !== 'undefined') ? engine : null;
+        if (!eng || !Array.isArray(eng.tokens) || !m) return null;
+        const comp = window.compendium;
+        const activeId = comp && comp._activeTargetTokenId;
+        return eng.tokens.find(t => t.id === activeId && t.statblock === m) || eng.tokens.find(t => t.statblock === m) || null;
+    }
+    function syncBruteStrengthToToken(m, newStr) {
+        const eng = (typeof engine !== 'undefined') ? engine : null;
+        if (!eng || !eng.isDM) return;
+        const tok = findTokenOfStatblock(m);
+        if (!tok) return; // scheda aperta dal compendio senza token: cambia solo la scheda
+        tok.hpCurrent = newStr;
+        if (!(Number(tok.hpMax) >= newStr)) tok.hpMax = newStr;
+        if (eng.initiative && Array.isArray(eng.initiative.participants)) {
+            eng.initiative.participants.forEach(p => { if (String(p.tokenId) === String(tok.id)) { p.hpCurrent = tok.hpCurrent; p.hpMax = tok.hpMax; } });
+        }
+        try { if (typeof window.upsertTokenInCampaign === 'function') window.upsertTokenInCampaign(tok); } catch (e) {}
+        try { if (typeof renderTrackerList === 'function') renderTrackerList({ skipRenderAndSync: true }); } catch (e) {}
+        try { if (eng.selectedTokenId === tok.id && typeof window.updateSelectedTokenControls === 'function') window.updateSelectedTokenControls(tok); } catch (e) {}
+        try { eng.renderTokensLayer(); } catch (e) {}
+        try { if (typeof window.syncState === 'function') window.syncState(true); } catch (e) {}
+    }
+
     function escapeHtml(str) {
         if (str === null || str === undefined) return '';
         return String(str).replace(/[&<>'"]/g, c => ({
@@ -890,6 +915,9 @@
                 }
                 m.s7VillainyRank = isVillain ? (newStr + influence) : newStr;
                 m.challenge_rating = `Forza ${newStr}`;
+                // Squadra di Sgherri aperta da un token in mappa: la Forza mostrata nel tracker è quella del token (PV),
+                // quindi +/− Forza aggiorna anche i PV di quel token (prima restavano al valore vecchio)
+                if (isBrute) syncBruteStrengthToToken(m, newStr);
                 if (compendiumInstance) {
                     compendiumInstance.loadMonster(m);
                 }
