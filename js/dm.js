@@ -309,6 +309,17 @@ window.getTokenOwners = getTokenOwners;
 window.setTokenOwners = setTokenOwners;
 window.isTokenOwnedBy = isTokenOwnedBy;
 
+// Token messi esplicitamente fuori dai PG: non sono "personaggi giocabili" anche se hanno una scheda
+// (es. PG creato per errore e spostato tra i PNG, o alleato con scheda comandato da un giocatore tramite i proprietari).
+const NON_PG_CATEGORIES = new Set(['png', 'vari', 'evocazioni']);
+function isPlayableCharacterToken(ct) {
+    if (!ct || ct.isEvocation || ct.statblock) return false;
+    if (ct.category && NON_PG_CATEGORIES.has(ct.category)) return false;
+    const hasPcSheet = !!(ct.hasPcSheet || (ct.pcSheet && (ct.pcSheet.name || ct.pcSheet.characterName || ct.pcSheet.attributes)));
+    return hasPcSheet || ct.category === 'personaggi';
+}
+window.isPlayableCharacterToken = isPlayableCharacterToken;
+
 network.onGetCharacters(() => {
     // Unisci i token della libreria campagna e i token attualmente presenti sulla mappa
     const candidateTokens = [];
@@ -329,16 +340,21 @@ network.onGetCharacters(() => {
     // Filtra SOLO i veri personaggi (PG):
     // Non devono avere statblock da mostro, non devono essere evocazioni,
     // e devono avere una scheda PG (pcSheet/hasPcSheet) oppure essere categoria 'personaggi'.
+    // Stesso token (id o immagine) messo tra PNG/Vari in una delle sue copie (libreria campagna o mappa): non è un PG
+    const blockedKeys = new Set();
+    candidateTokens.forEach(ct => {
+        if (ct && ct.category && NON_PG_CATEGORIES.has(ct.category)) {
+            if (ct.id) blockedKeys.add('id:' + ct.id);
+            if (ct.src) blockedKeys.add('src:' + ct.src);
+        }
+    });
     const campaignPgs = candidateTokens.filter(ct => {
         if (!ct) return false;
-        if (ct.isEvocation) return false;
-        // Se ha uno statblock da mostro, NON è un PG (è un mostro/creatura/famiglio/evocazione/mascotte)
-        if (ct.statblock) return false;
         // Se ha un campaignId diverso da quello attivo, scarta
         if (ct.campaignId && currentCampaignId && ct.campaignId !== currentCampaignId) return false;
-        const hasPcSheet = !!(ct.hasPcSheet || (ct.pcSheet && (ct.pcSheet.name || ct.pcSheet.characterName || ct.pcSheet.attributes)));
-        const isPgCat = (ct.category === 'personaggi');
-        return hasPcSheet || isPgCat;
+        if (!isPlayableCharacterToken(ct)) return false;
+        if ((ct.id && blockedKeys.has('id:' + ct.id)) || (ct.src && blockedKeys.has('src:' + ct.src))) return false;
+        return true;
     });
 
     const result = [];
@@ -3287,6 +3303,8 @@ function inferTokenCategory(t) {
     if (t.isEvocation || t.category === 'evocazioni') return 'evocazioni';
     // Statblock da mostro ha priorità: è SEMPRE un mostro/creatura (anche se controllato o assegnato a un giocatore!)
     if (t.statblock) return 'mostri';
+    // PNG e Vari scelti a mano restano tali anche con una scheda (alleati comandati dai giocatori)
+    if (t.category === 'png' || t.category === 'vari') return t.category;
     // Scheda giocatore ha priorità per i PG
     if (t.pcSheet) return 'personaggi';
     if (t.category && TOKEN_CATEGORIES.includes(t.category)) return t.category;
@@ -3582,10 +3600,7 @@ function syncCampaignPlayerCharactersToMap() {
     if (!Array.isArray(currentCampaignTokens) || currentCampaignTokens.length === 0) return;
     
     // Trova tutti i token identificati come Personaggi Giocatori (PG) nella campagna
-    const campaignPgs = currentCampaignTokens.filter(ct => {
-        if (!ct || ct.statblock) return false;
-        return (ct.pcSheet || ct.category === 'personaggi');
-    });
+    const campaignPgs = currentCampaignTokens.filter(ct => isPlayableCharacterToken(ct));
     if (campaignPgs.length === 0) return;
 
     const effOffsetX = (engine.grid.offsetX || 0) % engine.grid.size;
