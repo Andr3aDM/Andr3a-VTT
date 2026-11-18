@@ -478,6 +478,7 @@
 
     // -- METODI RIPRODUZIONE SFX (Effetti Rapidi) --
     function playSFX(synthName, src, title) {
+        AudioState.lastSfx = { title: title || '', kind: synthName ? 'synth' : (src && src.startsWith('blob:') ? 'file' : 'url'), at: Date.now() };
         updateEffectiveVolume();
         if (AudioState.isMuted) return;
         
@@ -503,9 +504,288 @@
     }
 
 
+    // ===================== ARCHIVIO AUDIO (IndexedDB "VTT_AUDIO") =====================
+    // Soundboard e playlist per sistema di gioco + file audio salvati come Blob. Separato da VTT_DB (campagne e mappe).
+    // Usato solo dal Master; i Giocatori non lo aprono mai.
+    const SFX_FILE_MAX = 2 * 1024 * 1024;    // effetto: massimo 2 MB (consigliati < 300 KB)
+    const BGM_FILE_MAX = 20 * 1024 * 1024;   // brano della playlist: massimo 20 MB
+    const KNOWN_AUDIO_SYSTEMS = ['dnd5e', '7thsea', 'ncs'];
+
+    function tr(k) { return (typeof window.t === 'function') ? window.t(k) : k; }
+    function audioToast(msg) {
+        if (typeof window.showToast === 'function') window.showToast(tr(msg));
+        else if (typeof window.vttWarn === 'function') window.vttWarn(tr(msg));
+        else console.warn(msg);
+    }
+    const warnedOnce = new Set();
+    function warnOnce(msg) { if (warnedOnce.has(msg)) return; warnedOnce.add(msg); audioToast(msg); }
+
+    function defaultBoard(sys) {
+        return {
+            system: sys,
+            pads: AudioState.defaultSfxPads.map(p => Object.assign({}, p)),
+            playlist: AudioState.defaultPlaylist.map(p => Object.assign({}, p))
+        };
+    }
+
+    function dataUrlToBlob(dataUrl) {
+        try {
+            const comma = dataUrl.indexOf(',');
+            if (comma < 0) return null;
+            const head = dataUrl.slice(5, comma);
+            const mime = head.split(';')[0] || 'application/octet-stream';
+            const body = dataUrl.slice(comma + 1);
+            if (/;base64/i.test(head)) {
+                const bin = atob(body);
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                return new Blob([bytes], { type: mime });
+            }
+            return new Blob([decodeURIComponent(body)], { type: mime });
+        } catch (e) { return null; }
+    }
+    function blobToDataUrl(blob) {
+        return new Promise((resolve, reject) => {
+            const fr = new FileReader();
+            fr.onload = () => resolve(fr.result);
+            fr.onerror = () => reject(fr.error);
+            fr.readAsDataURL(blob);
+        });
+    }
+
+    const AudioLibrary = (function () {
+        let dbPromise = null;
+        let migration = null;
+        let persistAsked = false;
+        function open() {
+            if (dbPromise) return dbPromise;
+            dbPromise = new Promise((resolve, reject) => {
+                if (!window.indexedDB) { reject(new Error('IndexedDB non disponibile')); return; }
+                const req = indexedDB.open('VTT_AUDIO', 1);
+                req.onupgradeneeded = () => {
+                    const db = req.result;
+                    if (!db.objectStoreNames.contains('boards')) db.createObjectStore('boards', { keyPath: 'system' });
+                    if (!db.objectStoreNames.contains('files')) db.createObjectStore('files', { keyPath: 'id' });
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+            dbPromise.catch(() => { dbPromise = null; });
+            return dbPromise;
+        }
+        function reqP(r) { return new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+        async function store(name, mode) { const db = await open(); return db.transaction(name, mode).objectStore(name); }
+        function askPersist() {
+            if (persistAsked) return;
+            persistAsked = true;
+            try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) {}
+        }
+
+        const lib = {
+            async getBoard(sys) { return reqP((await store('boards', 'readonly')).get(sys)); },
+            async getAllBoards() { return reqP((await store('boards', 'readonly')).getAll()); },
+            async putBoard(b) {
+                const clean = { system: b.system, pads: b.pads.map(p => Object.assign({}, p)), playlist: b.playlist.map(p => Object.assign({}, p)) };
+                return reqP((await store('boards', 'readwrite')).put(clean));
+            },
+            async getFile(id) { return reqP((await store('files', 'readonly')).get(id)); },
+            async saveFile(blob, type) {
+                const id = 'af_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+                await reqP((await store('files', 'readwrite')).put({ id, blob, type: type || blob.type || '', size: blob.size, savedAt: Date.now() }));
+                askPersist();
+                return id;
+            },
+            async deleteFile(id) { return reqP((await store('files', 'readwrite')).delete(id)); },
+            async allFileIds() { return reqP((await store('files', 'readonly')).getAllKeys()); },
+
+            allSystems() {
+                const set = new Set(KNOWN_AUDIO_SYSTEMS);
+                try { if (window.systemManager) window.systemManager.listSystems().forEach(id => set.add(id)); } catch (e) {}
+                return Array.from(set);
+            },
+
+            // Elimina i file audio non più usati da nessuna soundboard o playlist
+            async collectUnused() {
+                const boards = await lib.getAllBoards();
+                const used = new Set();
+                boards.forEach(b => [].concat(b.pads || [], b.playlist || []).forEach(i => { if (i && i.fileId) used.add(i.fileId); }));
+                const ids = await lib.allFileIds();
+                for (const id of ids) {
+                    if (!used.has(id)) {
+                        await lib.deleteFile(id);
+                        forgetFile(id);
+                    }
+                }
+            },
+
+            // Prima apertura: copia pad e brani salvati finora nel browser (localStorage) in tutte le soundboard.
+            // Le vecchie chiavi restano come copia di sicurezza.
+            ensureMigrated() {
+                if (migration) return migration;
+                migration = (async () => {
+                    const existing = await lib.getAllBoards();
+                    if (existing.length > 0) return;
+                    let legacyPads = null, legacyList = null;
+                    try { legacyPads = JSON.parse(localStorage.getItem('vtt_audio_sfx_pads') || 'null'); } catch (e) {}
+                    try { legacyList = JSON.parse(localStorage.getItem('vtt_audio_playlist') || 'null'); } catch (e) {}
+                    const convert = async (arr) => {
+                        if (!Array.isArray(arr)) return null;
+                        const out = [];
+                        for (const it of arr) {
+                            if (!it || typeof it !== 'object') continue;
+                            const title = String(it.title || '🔊').slice(0, 60);
+                            const id = it.id || ('lg_' + Math.random().toString(36).slice(2, 9));
+                            if (it.synth) { out.push({ id, title, synth: it.synth }); continue; }
+                            if (typeof it.src === 'string' && it.src.startsWith('data:')) {
+                                const blob = dataUrlToBlob(it.src);
+                                if (!blob) continue;
+                                const fileId = await lib.saveFile(blob, blob.type);
+                                out.push({ id, title, fileId, size: blob.size });
+                            } else if (typeof it.src === 'string' && it.src) {
+                                out.push({ id, title, src: it.src });
+                            }
+                        }
+                        return out;
+                    };
+                    const pads = await convert(legacyPads);
+                    const list = await convert(legacyList);
+                    for (const sys of lib.allSystems()) {
+                        const b = defaultBoard(sys);
+                        if (pads) b.pads = pads.map(p => Object.assign({}, p));
+                        if (list) b.playlist = list.map(p => Object.assign({}, p));
+                        await lib.putBoard(b);
+                    }
+                })();
+                migration.catch(() => { migration = null; });
+                return migration;
+            }
+        };
+        return lib;
+    })();
+
+    // File del Master già pronti da suonare (URL locali) o da spedire (testo base64), creati solo quando servono
+    const fileUrlCache = new Map();
+    const fileDataUrlCache = new Map();
+    function forgetFile(id) {
+        const u = fileUrlCache.get(id);
+        if (u) { try { URL.revokeObjectURL(u); } catch (e) {} }
+        fileUrlCache.delete(id);
+        fileDataUrlCache.delete(id);
+    }
+    async function getFileUrl(id) {
+        if (fileUrlCache.has(id)) return fileUrlCache.get(id);
+        const rec = await AudioLibrary.getFile(id);
+        if (!rec || !rec.blob) throw new Error('file mancante');
+        const url = URL.createObjectURL(rec.blob);
+        fileUrlCache.set(id, url);
+        return url;
+    }
+    async function getFileDataUrl(id) {
+        if (fileDataUrlCache.has(id)) return fileDataUrlCache.get(id);
+        const rec = await AudioLibrary.getFile(id);
+        if (!rec || !rec.blob) throw new Error('file mancante');
+        const d = await blobToDataUrl(rec.blob);
+        fileDataUrlCache.set(id, d);
+        if (fileDataUrlCache.size > 8) fileDataUrlCache.delete(fileDataUrlCache.keys().next().value);
+        return d;
+    }
+
+    // ===================== FILE DEI PAD AI GIOCATORI: una volta sola per sessione =====================
+    // Master: alla pressione invia solo AUDIO_SFX_PLAY {fileKey}. Il Giocatore che non ha il file lo chiede
+    // (AUDIO_SFX_REQUEST) e il Master glielo manda a pezzi da 24 KB (AUDIO_SFX_DATA), lasciando passare prima
+    // i messaggi di gioco. Se il file arriva più di 2 s dopo la pressione non viene suonato (sarebbe fuori tempo).
+    const SFX_PART = 24000;
+    const SFX_LATE_MS = 2000;
+    const sfxSending = new Set();
+    const remoteSfx = { urls: new Map(), incoming: new Map(), pending: new Map(), stats: { requests: 0, partsSent: 0, partsReceived: 0 } };
+
+    function waitChannelDrain(dc) {
+        if (!dc || typeof dc.bufferedAmount !== 'number' || dc.bufferedAmount < 65536) return Promise.resolve();
+        return new Promise(resolve => {
+            let t = null;
+            const done = () => { try { dc.removeEventListener('bufferedamountlow', done); } catch (e) {} if (t) clearTimeout(t); resolve(); };
+            try { dc.addEventListener('bufferedamountlow', done); } catch (e) { resolve(); return; }
+            t = setTimeout(done, 4000); // rete di sicurezza
+        });
+    }
+
+    async function sendSfxFileTo(fileKey, peerId) {
+        const net = AudioState.network;
+        if (!net || !fileKey || !peerId) return;
+        const key = peerId + '|' + fileKey;
+        if (sfxSending.has(key)) return;
+        sfxSending.add(key);
+        try {
+            const dataUrl = await getFileDataUrl(fileKey);
+            const total = Math.max(1, Math.ceil(dataUrl.length / SFX_PART));
+            for (let i = 0; i < total; i++) {
+                if (peerId !== 'local') {
+                    // destinatario uscito: smetti (un invio a un peer sconosciuto andrebbe a tutti)
+                    if (!net.connections || !net.connections[peerId]) return;
+                    const c = net.connections[peerId];
+                    await waitChannelDrain(c && c.conn && c.conn.dataChannel);
+                    if (!net.connections[peerId]) return;
+                }
+                net.send({ type: 'AUDIO_SFX_DATA', payload: { fileKey, idx: i, total, chunk: dataUrl.slice(i * SFX_PART, (i + 1) * SFX_PART) } }, peerId);
+                remoteSfx.stats.partsSent++;
+            }
+        } catch (e) {
+            console.warn('Invio file del pad non riuscito:', e);
+        } finally {
+            sfxSending.delete(key);
+        }
+    }
+
+    function playRemoteSfxFile(p) {
+        const url = remoteSfx.urls.get(p.fileKey);
+        if (url) { playSFX(null, url, p.title); return; }
+        remoteSfx.pending.set(p.fileKey, { title: p.title, at: Date.now() });
+        const inc = remoteSfx.incoming.get(p.fileKey);
+        if (inc && Date.now() - inc.at < 15000) return; // già richiesto, in arrivo
+        remoteSfx.incoming.set(p.fileKey, { parts: [], total: 0, at: Date.now() });
+        remoteSfx.stats.requests++;
+        if (AudioState.network) AudioState.network.send({ type: 'AUDIO_SFX_REQUEST', payload: { fileKey: p.fileKey } });
+    }
+
+    function receiveSfxPart(p) {
+        if (!p || !p.fileKey || typeof p.chunk !== 'string') return;
+        const total = Math.max(1, Math.min(2000, parseInt(p.total, 10) || 1));
+        const idx = parseInt(p.idx, 10);
+        if (!(idx >= 0 && idx < total)) return;
+        let inc = remoteSfx.incoming.get(p.fileKey);
+        if (!inc) { inc = { parts: [], total, at: Date.now() }; remoteSfx.incoming.set(p.fileKey, inc); }
+        inc.total = total;
+        inc.parts[idx] = p.chunk;
+        remoteSfx.stats.partsReceived++;
+        for (let i = 0; i < total; i++) if (inc.parts[i] === undefined) return;
+        remoteSfx.incoming.delete(p.fileKey);
+        const blob = dataUrlToBlob(inc.parts.join(''));
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        remoteSfx.urls.set(p.fileKey, url);
+        if (remoteSfx.urls.size > 40) { // tetto di memoria: dimentica il più vecchio
+            const oldKey = remoteSfx.urls.keys().next().value;
+            try { URL.revokeObjectURL(remoteSfx.urls.get(oldKey)); } catch (e) {}
+            remoteSfx.urls.delete(oldKey);
+        }
+        const pend = remoteSfx.pending.get(p.fileKey);
+        remoteSfx.pending.delete(p.fileKey);
+        if (pend && Date.now() - pend.at <= SFX_LATE_MS) playSFX(null, url, pend.title);
+    }
+
     // -- RETE / SINCRONIZZAZIONE P2P --
     function handleIncomingAudio(data, peerId) {
         if (!data || !data.type || !data.type.startsWith('AUDIO_')) return;
+
+        // File dei pad: richieste e pezzi viaggiano solo tra Master e chi li chiede, mai rimbalzati a tutti
+        if (data.type === 'AUDIO_SFX_REQUEST') {
+            if (AudioState.isDM && data.payload) sendSfxFileTo(data.payload.fileKey, peerId);
+            return;
+        }
+        if (data.type === 'AUDIO_SFX_DATA') {
+            if (!AudioState.isDM) receiveSfxPart(data.payload);
+            return;
+        }
         
         if (data.payload && data.payload.id) {
             if (AudioState.handledEventIds.has(data.payload.id)) return;
@@ -534,7 +814,11 @@
                 stopBGM();
                 break;
             case 'AUDIO_SFX_PLAY':
-                playSFX(data.payload.synth, data.payload.src, data.payload.title);
+                if (data.payload.fileKey && !data.payload.synth && !data.payload.src) {
+                    if (!AudioState.isDM) playRemoteSfxFile(data.payload);
+                } else {
+                    playSFX(data.payload.synth, data.payload.src, data.payload.title);
+                }
                 break;
         }
     }
@@ -613,7 +897,7 @@
 
             volSlider.addEventListener('input', (e) => {
                 AudioState.localVolume = parseInt(e.target.value) / 100;
-                localStorage.setItem('vtt_audio_volume', AudioState.localVolume);
+                localStorage.setItem('vtt_audio_volume_dm', AudioState.localVolume);
                 if (dmVolLabel) dmVolLabel.innerText = e.target.value + '%';
                 updateEffectiveVolume();
             });
@@ -624,10 +908,12 @@
         const inputUrl = document.getElementById('bgm-custom-url');
         const inputFile = document.getElementById('bgm-custom-file');
         let selectedFileBase64 = null;
+        let selectedFileObj = null;
 
         if (inputUrl) {
             inputUrl.addEventListener('input', () => {
                 selectedFileBase64 = null;
+                selectedFileObj = null;
                 if (inputFile) inputFile.value = '';
             });
         }
@@ -636,6 +922,7 @@
             inputFile.addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (file) {
+                    selectedFileObj = file;
                     if (inputUrl) inputUrl.value = '';
                     if (!inputTitle.value) inputTitle.value = file.name.replace(/\.[^/.]+$/, "");
                     const reader = new FileReader();
@@ -673,16 +960,327 @@
 
         document.getElementById('btn-bgm-play-custom').addEventListener('click', triggerCustomPlay);
 
-        // Gestione Playlist
-        let savedPlaylist = JSON.parse(localStorage.getItem('vtt_audio_playlist') || 'null');
-        if (!savedPlaylist) savedPlaylist = [...AudioState.defaultPlaylist];
+        // ===================== SOUNDBOARD E PLAYLIST PER SISTEMA DI GIOCO =====================
+        // Una soundboard e una playlist per ogni sistema (5e, 7th Sea, Non Cedere al Sonno), salvate nell'archivio
+        // audio del browser (IndexedDB "VTT_AUDIO", separato da campagne e mappe). I file audio sono salvati come
+        // file veri e caricati solo quando si preme il pad. Al cambio di campagna si passa alla soundboard del suo sistema.
+        const Boards = { active: 'dnd5e', board: null, editMode: false, loadSeq: 0 };
+
+        function sysName(id) {
+            try { return (window.systemManager && window.systemManager.displayName(id)) || id; } catch (e) { return id; }
+        }
+        function currentSystemId() {
+            try { return (window.systemManager && window.systemManager.getActiveSystemId()) || 'dnd5e'; } catch (e) { return 'dnd5e'; }
+        }
+
+        async function loadActiveBoard(sysId) {
+            const seq = ++Boards.loadSeq;
+            const target = sysId || currentSystemId();
+            let board = null;
+            try {
+                await AudioLibrary.ensureMigrated();
+                board = await AudioLibrary.getBoard(target);
+                if (!board) {
+                    board = defaultBoard(target);
+                    await AudioLibrary.putBoard(board);
+                }
+            } catch (e) {
+                console.warn('Archivio audio non disponibile:', e);
+                warnOnce('🔊 Archivio audio del browser non disponibile: soundboard e playlist non verranno salvate.');
+                board = (Boards.board && Boards.active === target) ? Boards.board : defaultBoard(target);
+            }
+            if (seq !== Boards.loadSeq) return; // nel frattempo è stato chiesto un altro sistema
+            Boards.active = target;
+            Boards.board = board;
+            renderSoundboardPads();
+            renderPlaylist();
+        }
+
+        function saveBoard() {
+            if (!Boards.board) return Promise.resolve();
+            return AudioLibrary.putBoard(Boards.board).catch(err => {
+                console.warn('Salvataggio soundboard non riuscito:', err);
+                audioToast('⚠️ Salvataggio della soundboard non riuscito: spazio del browser esaurito?');
+            });
+        }
+
+        function newId(prefix) { return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+        // ---- Barra della soundboard: nome del sistema, Modifica, Esporta, Importa ----
+        const sfxGrid = document.getElementById('audio-sfx-grid');
+        let sfxBar = null, sfxEditRow = null, sfxChoice = null, sfxLabelName = null, btnEdit = null, importInput = null;
+        if (sfxGrid && !document.getElementById('sfx-board-bar')) {
+            const mkBtn = (text, title, bg) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.textContent = text;
+                if (title) b.title = title;
+                b.style.cssText = `background:${bg || '#444'}; color:white; border:none; padding:3px 7px; border-radius:3px; cursor:pointer; font-size:11px;`;
+                return b;
+            };
+            sfxBar = document.createElement('div');
+            sfxBar.id = 'sfx-board-bar';
+            sfxBar.style.cssText = 'display:flex; align-items:center; gap:4px; flex-wrap:wrap; font-size:12px;';
+            const lbl = document.createElement('span');
+            lbl.style.cssText = 'flex:1; min-width:110px; color:#ba68c8; font-weight:bold;';
+            const lblText = document.createElement('span');
+            lblText.textContent = '🎛️ Soundboard:';
+            sfxLabelName = document.createElement('span');
+            sfxLabelName.id = 'sfx-board-system';
+            sfxLabelName.style.marginLeft = '4px';
+            lbl.appendChild(lblText);
+            lbl.appendChild(sfxLabelName);
+            btnEdit = mkBtn('✏️ Modifica', 'Elimina, sposta o rinomina i pad');
+            btnEdit.id = 'btn-sfx-edit';
+            const btnExport = mkBtn('⬇️ Esporta', 'Salva soundboard e playlist in un file');
+            btnExport.id = 'btn-sfx-export';
+            const importLabel = document.createElement('label');
+            importLabel.title = 'Carica una soundboard da un file';
+            importLabel.style.cssText = 'background:#444; color:white; padding:3px 7px; border-radius:3px; cursor:pointer; font-size:11px;';
+            const importText = document.createElement('span');
+            importText.textContent = '⬆️ Importa';
+            importInput = document.createElement('input');
+            importInput.type = 'file';
+            importInput.id = 'sfx-import-file';
+            importInput.accept = '.json,application/json';
+            importInput.style.display = 'none';
+            importLabel.appendChild(importText);
+            importLabel.appendChild(importInput);
+            sfxBar.appendChild(lbl);
+            sfxBar.appendChild(btnEdit);
+            sfxBar.appendChild(btnExport);
+            sfxBar.appendChild(importLabel);
+
+            sfxEditRow = document.createElement('div');
+            sfxEditRow.id = 'sfx-edit-row';
+            sfxEditRow.style.cssText = 'display:none; align-items:center; gap:6px; flex-wrap:wrap; font-size:11px; color:#aaa;';
+            const btnRestore = mkBtn('↺ Ripristina predefiniti', 'Rimette gli 8 suoni originali che hai eliminato', '#555');
+            btnRestore.id = 'btn-sfx-restore';
+            const hint = document.createElement('span');
+            hint.textContent = 'Trascina i pad o usa ◀ ▶ per spostarli; tocca il nome per rinominarlo.';
+            sfxEditRow.appendChild(btnRestore);
+            sfxEditRow.appendChild(hint);
+
+            sfxChoice = document.createElement('div');
+            sfxChoice.id = 'sfx-board-choice';
+            sfxChoice.style.cssText = 'display:none; background:#2a2a2a; border:1px solid #7b1fa2; border-radius:5px; padding:6px; font-size:12px; flex-direction:column; gap:6px;';
+
+            sfxGrid.parentNode.insertBefore(sfxBar, sfxGrid);
+            sfxGrid.parentNode.insertBefore(sfxEditRow, sfxGrid);
+            sfxGrid.parentNode.insertBefore(sfxChoice, sfxGrid);
+
+            btnEdit.addEventListener('click', () => {
+                Boards.editMode = !Boards.editMode;
+                renderSoundboardPads();
+            });
+            btnRestore.addEventListener('click', () => {
+                if (!Boards.board) return;
+                let added = 0;
+                AudioState.defaultSfxPads.forEach(d => {
+                    if (!Boards.board.pads.some(p => p.synth === d.synth)) { Boards.board.pads.push(Object.assign({}, d)); added++; }
+                });
+                saveBoard();
+                renderSoundboardPads();
+                audioToast(added > 0 ? `${tr('↺ Suoni predefiniti ripristinati:')} ${added}` : tr('Tutti i suoni predefiniti sono già presenti.'));
+            });
+            btnExport.addEventListener('click', () => {
+                showChoice(tr('Cosa vuoi esportare?'), [
+                    { label: `${tr('Solo')} ${sysName(Boards.active)}`, fn: () => exportBoards(false) },
+                    { label: tr('Tutti i sistemi'), fn: () => exportBoards(true) }
+                ]);
+            });
+            importInput.addEventListener('change', (e) => {
+                const file = e.target.files && e.target.files[0];
+                importInput.value = '';
+                if (file) prepareImport(file);
+            });
+        }
+
+        function showChoice(message, options) {
+            if (!sfxChoice) return;
+            sfxChoice.innerHTML = '';
+            const msg = document.createElement('div');
+            msg.textContent = message;
+            sfxChoice.appendChild(msg);
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex; gap:5px; flex-wrap:wrap;';
+            const close = () => { sfxChoice.style.display = 'none'; sfxChoice.innerHTML = ''; };
+            options.concat([{ label: tr('Annulla'), fn: null, muted: true }]).forEach(opt => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.textContent = opt.label;
+                b.style.cssText = `background:${opt.muted ? '#444' : '#7b1fa2'}; color:white; border:none; padding:4px 8px; border-radius:3px; cursor:pointer; font-size:11px; font-weight:bold;`;
+                b.addEventListener('click', () => { close(); if (opt.fn) opt.fn(); });
+                row.appendChild(b);
+            });
+            sfxChoice.appendChild(row);
+            sfxChoice.style.display = 'flex';
+        }
+
+        // ---- Pad ----
+        function triggerPad(pad) {
+            const id = Date.now() + '_' + Math.random();
+            AudioState.handledEventIds.add(id);
+            if (pad.synth) {
+                playSFX(pad.synth, null, pad.title);
+                AudioState.network.send({ type: 'AUDIO_SFX_PLAY', payload: { id, synth: pad.synth, title: pad.title } });
+            } else if (pad.fileId) {
+                // Ai giocatori solo l'ordine: chi non ha ancora il file lo chiede una volta (AUDIO_SFX_REQUEST)
+                AudioState.network.send({ type: 'AUDIO_SFX_PLAY', payload: { id, fileKey: pad.fileId, title: pad.title, size: pad.size || 0 } });
+                getFileUrl(pad.fileId).then(url => playSFX(null, url, pad.title)).catch(() => {
+                    audioToast(`${tr('⚠️ File audio del pad non trovato:')} ${pad.title}`);
+                });
+            } else if (pad.src) {
+                playSFX(null, pad.src, pad.title);
+                AudioState.network.send({ type: 'AUDIO_SFX_PLAY', payload: { id, src: pad.src, title: pad.title } });
+            }
+        }
+
+        function movePad(from, to) {
+            const pads = Boards.board.pads;
+            if (to < 0 || to >= pads.length || from === to) return;
+            const [item] = pads.splice(from, 1);
+            pads.splice(to, 0, item);
+            saveBoard();
+            renderSoundboardPads();
+        }
+
+        function startRename(span, item, onDone) {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = item.title;
+            input.maxLength = 60;
+            input.style.cssText = 'width:100%; box-sizing:border-box; background:#111; color:white; border:1px solid #ba68c8; border-radius:3px; padding:2px 4px; font-size:12px;';
+            let finished = false;
+            const finish = (save) => {
+                if (finished) return;
+                finished = true;
+                const v = input.value.trim();
+                if (save && v) item.title = v.slice(0, 60);
+                onDone(save && !!v);
+            };
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+                else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+            });
+            input.addEventListener('blur', () => finish(true));
+            span.replaceWith(input);
+            input.focus();
+            input.select();
+        }
+
+        let dragPadIndex = -1;
+        function renderSoundboardPads() {
+            const grid = document.getElementById('audio-sfx-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            if (sfxLabelName) sfxLabelName.textContent = sysName(Boards.active);
+            if (btnEdit) {
+                btnEdit.textContent = Boards.editMode ? tr('✔ Fine modifica') : tr('✏️ Modifica');
+                btnEdit.style.background = Boards.editMode ? '#7b1fa2' : '#444';
+            }
+            if (sfxEditRow) sfxEditRow.style.display = Boards.editMode ? 'flex' : 'none';
+            const pads = Boards.board ? Boards.board.pads : [];
+
+            pads.forEach((pad, index) => {
+                if (!Boards.editMode) {
+                    const btn = document.createElement('button');
+                    btn.innerText = pad.title;
+                    btn.style.padding = '8px 5px';
+                    btn.style.background = '#333';
+                    btn.style.color = 'white';
+                    btn.style.border = '1px solid #7b1fa2';
+                    btn.style.borderRadius = '5px';
+                    btn.style.cursor = 'pointer';
+                    btn.style.fontSize = '12px';
+                    btn.style.fontWeight = 'bold';
+                    btn.style.transition = 'all 0.1s ease';
+                    btn.onmousedown = () => { btn.style.background = '#9c27b0'; };
+                    btn.onmouseup = () => { btn.style.background = '#333'; };
+                    btn.onclick = () => triggerPad(pad);
+                    grid.appendChild(btn);
+                    return;
+                }
+                // Modalità Modifica: niente riproduzione, solo elimina / sposta / rinomina
+                const cell = document.createElement('div');
+                cell.className = 'sfx-edit-cell';
+                cell.draggable = true;
+                cell.style.cssText = 'display:flex; flex-direction:column; gap:4px; padding:5px; background:#2a2a2a; border:1px dashed #ba68c8; border-radius:5px; cursor:grab;';
+                const name = document.createElement('span');
+                name.className = 'sfx-edit-name';
+                name.textContent = pad.title;
+                name.title = tr('Tocca per rinominare');
+                name.style.cssText = 'font-size:12px; font-weight:bold; color:white; cursor:text; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+                name.addEventListener('click', () => startRename(name, pad, (changed) => { if (changed) saveBoard(); renderSoundboardPads(); }));
+                const tools = document.createElement('div');
+                tools.style.cssText = 'display:flex; gap:3px; justify-content:space-between;';
+                const mk = (txt, title, fn, bg) => {
+                    const b = document.createElement('button');
+                    b.type = 'button';
+                    b.textContent = txt;
+                    b.title = title;
+                    b.style.cssText = `flex:1; background:${bg || '#444'}; color:white; border:none; border-radius:3px; padding:2px 0; cursor:pointer; font-size:11px;`;
+                    b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+                    return b;
+                };
+                tools.appendChild(mk('◀', tr('Sposta indietro'), () => movePad(index, index - 1)));
+                tools.appendChild(mk('▶', tr('Sposta avanti'), () => movePad(index, index + 1)));
+                tools.appendChild(mk('✕', tr('Elimina pad'), async () => {
+                    const ask = (typeof window.t === 'function' ? window.t(`Eliminare il pad "${pad.title}"?`) : `Eliminare il pad "${pad.title}"?`);
+                    const okDel = window.vttConfirm ? await window.vttConfirm(ask, { danger: true }) : true;
+                    if (!okDel) return;
+                    const i = Boards.board.pads.indexOf(pad);
+                    if (i >= 0) Boards.board.pads.splice(i, 1);
+                    await saveBoard();
+                    renderSoundboardPads();
+                    collectUnusedFiles();
+                }, '#8e2424'));
+                cell.appendChild(name);
+                cell.appendChild(tools);
+                cell.addEventListener('dragstart', (e) => {
+                    dragPadIndex = index;
+                    try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(index)); } catch (err) {}
+                });
+                cell.addEventListener('dragover', (e) => { e.preventDefault(); cell.style.borderColor = '#fff'; });
+                cell.addEventListener('dragleave', () => { cell.style.borderColor = '#ba68c8'; });
+                cell.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    const from = dragPadIndex;
+                    dragPadIndex = -1;
+                    if (from >= 0) movePad(from, index);
+                });
+                cell.addEventListener('dragend', () => { dragPadIndex = -1; });
+                grid.appendChild(cell);
+            });
+        }
+
+        // ---- Playlist ----
+        function playTrack(item) {
+            const loop = document.getElementById('bgm-loop-check').checked;
+            const sendPlay = (src) => {
+                const id = Date.now() + '_' + Math.random();
+                AudioState.handledEventIds.add(id);
+                AudioState.network.send({ type: 'AUDIO_BGM_PLAY', payload: { id, src, title: item.title, loop, time: 0 } });
+            };
+            if (item.fileId) {
+                getFileUrl(item.fileId).then(url => playBGM(url, item.title, loop)).catch(() => {
+                    audioToast(`${tr('⚠️ File audio non trovato:')} ${item.title}`);
+                });
+                // Ai giocatori il brano dal PC arriva intero (come prima): per la musica sono consigliati i link diretti
+                getFileDataUrl(item.fileId).then(sendPlay).catch(() => {});
+            } else if (item.src) {
+                playBGM(item.src, item.title, loop);
+                sendPlay(item.src);
+            }
+        }
 
         function renderPlaylist() {
             const listContainer = document.getElementById('audio-playlist-list');
             if (!listContainer) return;
             listContainer.innerHTML = '';
+            const list = Boards.board ? Boards.board.playlist : [];
 
-            savedPlaylist.forEach((item, index) => {
+            list.forEach((item, index) => {
                 const row = document.createElement('div');
                 row.style.display = 'flex';
                 row.style.alignItems = 'center';
@@ -699,159 +1297,290 @@
                 titleSpan.style.overflow = 'hidden';
                 titleSpan.style.textOverflow = 'ellipsis';
                 titleSpan.style.whiteSpace = 'nowrap';
-                titleSpan.onclick = () => {
-                    const loop = document.getElementById('bgm-loop-check').checked;
-                    playBGM(item.src, item.title, loop);
-                    const id = Date.now() + '_' + Math.random();
-                    AudioState.handledEventIds.add(id);
-                    AudioState.network.send({
-                        type: 'AUDIO_BGM_PLAY',
-                        payload: {
-                            id: id,
-                            src: item.src,
-                            title: item.title,
-                            loop: loop,
-                            time: 0
-                        }
-                    });
-                };
+                titleSpan.onclick = () => playTrack(item);
 
                 const actions = document.createElement('div');
                 actions.style.display = 'flex';
-                actions.style.gap = '5px';
-
-                const btnPlay = document.createElement('button');
-                btnPlay.innerText = '▶';
-                btnPlay.style.background = '#9c27b0';
-                btnPlay.style.color = 'white';
-                btnPlay.style.border = 'none';
-                btnPlay.style.borderRadius = '3px';
-                btnPlay.style.cursor = 'pointer';
-                btnPlay.style.padding = '2px 6px';
-                btnPlay.onclick = titleSpan.onclick;
-
-                const btnDel = document.createElement('button');
-                btnDel.innerText = '✕';
-                btnDel.style.background = '#555';
-                btnDel.style.color = 'white';
-                btnDel.style.border = 'none';
-                btnDel.style.borderRadius = '3px';
-                btnDel.style.cursor = 'pointer';
-                btnDel.style.padding = '2px 6px';
-                btnDel.onclick = () => {
-                    savedPlaylist.splice(index, 1);
-                    try {
-                        localStorage.setItem('vtt_audio_playlist', JSON.stringify(savedPlaylist));
-                    } catch(e) {}
+                actions.style.gap = '4px';
+                const mk = (txt, title, bg, fn) => {
+                    const b = document.createElement('button');
+                    b.innerText = txt;
+                    b.title = title;
+                    b.style.background = bg;
+                    b.style.color = 'white';
+                    b.style.border = 'none';
+                    b.style.borderRadius = '3px';
+                    b.style.cursor = 'pointer';
+                    b.style.padding = '2px 6px';
+                    b.onclick = fn;
+                    return b;
+                };
+                const moveTrack = (to) => {
+                    if (to < 0 || to >= list.length) return;
+                    const [it] = list.splice(index, 1);
+                    list.splice(to, 0, it);
+                    saveBoard();
                     renderPlaylist();
                 };
-
-                actions.appendChild(btnPlay);
-                actions.appendChild(btnDel);
+                actions.appendChild(mk('▶', tr('Suona'), '#9c27b0', () => playTrack(item)));
+                if (index > 0) actions.appendChild(mk('▲', tr('Sposta su'), '#444', () => moveTrack(index - 1)));
+                if (index < list.length - 1) actions.appendChild(mk('▼', tr('Sposta giù'), '#444', () => moveTrack(index + 1)));
+                actions.appendChild(mk('✕', tr('Elimina brano'), '#555', async () => {
+                    const i = list.indexOf(item);
+                    if (i >= 0) list.splice(i, 1);
+                    await saveBoard();
+                    renderPlaylist();
+                    collectUnusedFiles();
+                }));
                 row.appendChild(titleSpan);
                 row.appendChild(actions);
                 listContainer.appendChild(row);
             });
         }
-        renderPlaylist();
 
-        document.getElementById('btn-bgm-save-playlist').addEventListener('click', () => {
-            const title = inputTitle.value.trim() || 'Nuova Traccia';
-            const src = (inputUrl && inputUrl.value.trim()) ? inputUrl.value.trim() : selectedFileBase64;
-            if (!src) {
+        document.getElementById('btn-bgm-save-playlist').addEventListener('click', async () => {
+            const title = (inputTitle.value.trim() || 'Nuova Traccia').slice(0, 60);
+            const url = (inputUrl && inputUrl.value.trim()) ? inputUrl.value.trim() : '';
+            if (!url && !selectedFileObj) {
                 vttWarn("Inserisci un link audio o scegli un file prima di salvare in playlist!");
                 return;
             }
-
-            savedPlaylist.push({ id: 'bgm_' + Date.now(), title, src });
-            try {
-                localStorage.setItem('vtt_audio_playlist', JSON.stringify(savedPlaylist));
-            } catch(err) {
-                console.warn("Spazio localStorage limitato:", err);
-                vttWarn("Attenzione: i file audio caricati dal PC sono troppo grandi per essere memorizzati permanentemente nella cache del browser. Usa link diretti (.mp3/.ogg) per salvarli nella Playlist permanente!");
+            if (!Boards.board) return;
+            let item;
+            if (url) {
+                item = { id: newId('bgm_'), title, src: url };
+            } else {
+                if (selectedFileObj.size > BGM_FILE_MAX) {
+                    vttWarn(`${tr('File troppo grande per la playlist (massimo 20 MB):')} ${Math.round(selectedFileObj.size / 1048576)} MB`);
+                    return;
+                }
+                try {
+                    const fileId = await AudioLibrary.saveFile(selectedFileObj, selectedFileObj.type);
+                    item = { id: newId('bgm_'), title, fileId, size: selectedFileObj.size };
+                } catch (e) {
+                    vttWarn(tr('Salvataggio del file audio non riuscito: spazio del browser esaurito?'));
+                    return;
+                }
             }
+            Boards.board.playlist.push(item);
+            await saveBoard();
             renderPlaylist();
             inputTitle.value = '';
             if (inputUrl) inputUrl.value = '';
-            selectedFileBase64 = null;
             if (inputFile) inputFile.value = '';
+            selectedFileBase64 = null;
+            selectedFileObj = null;
         });
 
-        // Gestione Soundboard Pads
-        let savedPads = JSON.parse(localStorage.getItem('vtt_audio_sfx_pads') || 'null');
-        if (!savedPads) savedPads = AudioState.defaultSfxPads;
-
-        function renderSoundboardPads() {
-            const grid = document.getElementById('audio-sfx-grid');
-            if (!grid) return;
-            grid.innerHTML = '';
-
-            savedPads.forEach((pad, index) => {
-                const btn = document.createElement('button');
-                btn.innerText = pad.title;
-                btn.style.padding = '8px 5px';
-                btn.style.background = '#333';
-                btn.style.color = 'white';
-                btn.style.border = '1px solid #7b1fa2';
-                btn.style.borderRadius = '5px';
-                btn.style.cursor = 'pointer';
-                btn.style.fontSize = '12px';
-                btn.style.fontWeight = 'bold';
-                btn.style.transition = 'all 0.1s ease';
-
-                btn.onmousedown = () => { btn.style.background = '#9c27b0'; };
-                btn.onmouseup = () => { btn.style.background = '#333'; };
-
-                btn.onclick = () => {
-                    playSFX(pad.synth, pad.src, pad.title);
-                    const id = Date.now() + '_' + Math.random();
-                    AudioState.handledEventIds.add(id);
-                    AudioState.network.send({
-                        type: 'AUDIO_SFX_PLAY',
-                        payload: {
-                            id: id,
-                            synth: pad.synth,
-                            src: pad.src,
-                            title: pad.title
-                        }
-                    });
-                };
-                grid.appendChild(btn);
-            });
-        }
-        renderSoundboardPads();
-
+        // ---- Aggiungi pad ----
         const inputSfxTitle = document.getElementById('sfx-custom-title');
         const inputSfxUrl = document.getElementById('sfx-custom-url');
         const inputSfxFile = document.getElementById('sfx-custom-file');
-        let selectedSfxBase64 = null;
+        let selectedSfxFile = null;
 
         if (inputSfxFile) {
             inputSfxFile.addEventListener('change', (e) => {
                 const file = e.target.files[0];
-                if (file) {
-                    if (!inputSfxTitle.value) inputSfxTitle.value = '🔊 ' + file.name.replace(/\.[^/.]+$/, "");
-                    const reader = new FileReader();
-                    reader.onload = (ev) => { selectedSfxBase64 = ev.target.result; };
-                    reader.readAsDataURL(file);
+                selectedSfxFile = null;
+                if (!file) return;
+                if (file.size > SFX_FILE_MAX) {
+                    vttWarn(`${tr('Effetto troppo grande (massimo 2 MB; consigliati file brevi sotto i 300 KB):')} ${(file.size / 1048576).toFixed(1)} MB`);
+                    inputSfxFile.value = '';
+                    return;
                 }
+                selectedSfxFile = file;
+                if (!inputSfxTitle.value) inputSfxTitle.value = '🔊 ' + file.name.replace(/\.[^/.]+$/, "");
             });
         }
 
-        document.getElementById('btn-sfx-add-pad').addEventListener('click', () => {
-            const title = inputSfxTitle.value.trim() || '🔊 Effetto';
-            const src = selectedSfxBase64 || inputSfxUrl.value.trim();
-            if (!src) return;
-
-            savedPads.push({ id: 'sfx_' + Date.now(), title, src });
-            try {
-                localStorage.setItem('vtt_audio_sfx_pads', JSON.stringify(savedPads));
-            } catch(e) {}
+        document.getElementById('btn-sfx-add-pad').addEventListener('click', async () => {
+            const title = (inputSfxTitle.value.trim() || '🔊 Effetto').slice(0, 60);
+            const url = inputSfxUrl.value.trim();
+            if (!selectedSfxFile && !url) return;
+            if (!Boards.board) return;
+            let pad;
+            if (selectedSfxFile) {
+                try {
+                    const fileId = await AudioLibrary.saveFile(selectedSfxFile, selectedSfxFile.type);
+                    pad = { id: newId('sfx_'), title, fileId, size: selectedSfxFile.size };
+                } catch (e) {
+                    vttWarn(tr('Salvataggio del file audio non riuscito: spazio del browser esaurito?'));
+                    return;
+                }
+            } else {
+                pad = { id: newId('sfx_'), title, src: url };
+            }
+            Boards.board.pads.push(pad);
+            await saveBoard();
             renderSoundboardPads();
             inputSfxTitle.value = '';
             inputSfxUrl.value = '';
-            selectedSfxBase64 = null;
+            if (inputSfxFile) inputSfxFile.value = '';
+            selectedSfxFile = null;
         });
+
+        // ---- Esporta / Importa ----
+        async function serializeItem(item, maxSize) {
+            const out = { title: item.title };
+            if (item.synth) { out.synth = item.synth; return out; }
+            if (item.src) { out.src = item.src; return out; }
+            if (item.fileId) {
+                const rec = await AudioLibrary.getFile(item.fileId).catch(() => null);
+                if (!rec || !rec.blob || rec.blob.size > maxSize) return null;
+                out.data = await blobToDataUrl(rec.blob);
+                return out;
+            }
+            return null;
+        }
+
+        async function exportBoards(all) {
+            try {
+                await saveBoard();
+                const systems = all ? AudioLibrary.allSystems() : [Boards.active];
+                const out = { formato: 'vtt-soundboard-1', creato: new Date().toISOString(), sistemi: {} };
+                for (const sys of systems) {
+                    const board = (sys === Boards.active && Boards.board) ? Boards.board : ((await AudioLibrary.getBoard(sys)) || defaultBoard(sys));
+                    const pads = (await Promise.all(board.pads.map(p => serializeItem(p, SFX_FILE_MAX)))).filter(Boolean);
+                    const playlist = (await Promise.all(board.playlist.map(p => serializeItem(p, BGM_FILE_MAX)))).filter(Boolean);
+                    out.sistemi[sys] = { nome: sysName(sys), pads, playlist };
+                }
+                const d = new Date();
+                const pad2 = (n) => String(n).padStart(2, '0');
+                const fname = `soundboard_${all ? 'tutti' : Boards.active}_${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}.json`;
+                const blob = new Blob([JSON.stringify(out)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fname;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 5000);
+                window._lastSoundboardExport = out; // per i test
+                audioToast(`${tr('⬇️ Soundboard esportata:')} ${fname}`);
+            } catch (e) {
+                console.warn('Esportazione soundboard non riuscita:', e);
+                audioToast(tr('⚠️ Esportazione della soundboard non riuscita.'));
+            }
+        }
+
+        async function prepareImport(file) {
+            let data;
+            try { data = JSON.parse(await file.text()); } catch (e) { data = null; }
+            if (!data || data.formato !== 'vtt-soundboard-1' || !data.sistemi || typeof data.sistemi !== 'object') {
+                vttWarn(tr('File non valido: non è una soundboard esportata dal VTT.'));
+                return;
+            }
+            const keys = Object.keys(data.sistemi).filter(k => /^[a-z0-9_-]{1,30}$/i.test(k) && data.sistemi[k] && typeof data.sistemi[k] === 'object');
+            if (keys.length === 0) { vttWarn(tr('Il file non contiene nessuna soundboard.')); return; }
+            const single = keys.length === 1;
+            const where = single ? `${tr('nella soundboard di')} ${sysName(Boards.active)}` : `${tr('in')} ${keys.length} ${tr('sistemi')}: ${keys.map(sysName).join(', ')}`;
+            showChoice(`${tr('Importa')} ${where}:`, [
+                { label: tr('➕ Aggiungi ai pad attuali'), fn: () => applyImport(data, keys, single, false) },
+                { label: tr('♻️ Sostituisci'), fn: () => applyImport(data, keys, single, true) }
+            ]);
+        }
+
+        async function importItem(src, kind) {
+            if (!src || typeof src !== 'object') return null;
+            const title = String(src.title || (kind === 'pad' ? '🔊 Effetto' : 'Traccia')).trim().slice(0, 60) || '🔊';
+            if (kind === 'pad' && src.synth) {
+                return SoundSynthesizer[src.synth] ? { id: newId('sfx_'), title, synth: src.synth } : null;
+            }
+            if (typeof src.src === 'string' && /^https?:\/\//i.test(src.src)) {
+                return { id: newId(kind === 'pad' ? 'sfx_' : 'bgm_'), title, src: src.src };
+            }
+            if (typeof src.data === 'string' && /^data:(audio\/|application\/octet-stream|video\/ogg|video\/webm)/i.test(src.data)) {
+                const blob = dataUrlToBlob(src.data);
+                if (!blob) return null;
+                if (blob.size > (kind === 'pad' ? SFX_FILE_MAX : BGM_FILE_MAX)) return null;
+                const fileId = await AudioLibrary.saveFile(blob, blob.type);
+                return { id: newId(kind === 'pad' ? 'sfx_' : 'bgm_'), title, fileId, size: blob.size };
+            }
+            return null;
+        }
+
+        async function applyImport(data, keys, single, replace) {
+            let added = 0, skipped = 0;
+            try {
+                await saveBoard();
+                for (const key of keys) {
+                    const target = single ? Boards.active : key;
+                    const srcBoard = data.sistemi[key];
+                    let board = (target === Boards.active && Boards.board) ? Boards.board : ((await AudioLibrary.getBoard(target)) || defaultBoard(target));
+                    const newPads = [], newList = [];
+                    for (const p of (Array.isArray(srcBoard.pads) ? srcBoard.pads.slice(0, 200) : [])) {
+                        const it = await importItem(p, 'pad');
+                        if (it) newPads.push(it); else skipped++;
+                    }
+                    for (const p of (Array.isArray(srcBoard.playlist) ? srcBoard.playlist.slice(0, 200) : [])) {
+                        const it = await importItem(p, 'track');
+                        if (it) newList.push(it); else skipped++;
+                    }
+                    if (replace) {
+                        board.pads = newPads;
+                        board.playlist = newList;
+                        added += newPads.length + newList.length;
+                    } else {
+                        newPads.forEach(p => {
+                            if (p.synth && board.pads.some(x => x.synth === p.synth)) return;
+                            if (p.src && board.pads.some(x => x.src === p.src)) return;
+                            board.pads.push(p); added++;
+                        });
+                        newList.forEach(p => {
+                            if (p.src && board.playlist.some(x => x.src === p.src)) return;
+                            board.playlist.push(p); added++;
+                        });
+                    }
+                    await AudioLibrary.putBoard(board);
+                    if (target === Boards.active) Boards.board = board;
+                }
+                renderSoundboardPads();
+                renderPlaylist();
+                collectUnusedFiles();
+                audioToast(`${tr('⬆️ Soundboard importata: elementi')} ${added}` + (skipped ? ` · ${tr('scartati')} ${skipped}` : ''));
+            } catch (e) {
+                console.warn('Importazione soundboard non riuscita:', e);
+                audioToast(tr('⚠️ Importazione non riuscita: spazio del browser esaurito?'));
+            }
+        }
+
+        let gcTimer = null;
+        function collectUnusedFiles() {
+            if (gcTimer) clearTimeout(gcTimer);
+            gcTimer = setTimeout(() => { gcTimer = null; AudioLibrary.collectUnused().catch(() => {}); }, 400);
+        }
+
+        // Soundboard del sistema della campagna aperta: al cambio di campagna si passa a quella del nuovo sistema.
+        // audio.js e dm.js sono caricati prima di system_manager.js: ci si aggancia a pagina pronta.
+        let systemHooked = false;
+        function hookSystemChanges() {
+            if (systemHooked) return;
+            if (!window.systemManager || typeof window.systemManager.onSystemChange !== 'function') return;
+            systemHooked = true;
+            window.systemManager.onSystemChange((id) => { Boards.editMode = false; loadActiveBoard(id); });
+            if (currentSystemId() !== Boards.active) loadActiveBoard(currentSystemId());
+        }
+        hookSystemChanges();
+        if (!systemHooked) {
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hookSystemChanges, { once: true });
+            else setTimeout(hookSystemChanges, 0);
+        }
+        Boards.active = currentSystemId();
+        Boards.board = null;
+        renderSoundboardPads();
+        renderPlaylist();
+        loadActiveBoard(Boards.active);
+
+        window.vttSoundboardDebug = {
+            state: () => ({
+                active: Boards.active, editMode: Boards.editMode,
+                pads: Boards.board ? Boards.board.pads.map(p => ({ title: p.title, kind: p.synth ? 'synth' : (p.fileId ? 'file' : 'url'), fileId: p.fileId || null })) : null,
+                playlist: Boards.board ? Boards.board.playlist.map(p => ({ title: p.title, kind: p.fileId ? 'file' : 'url' })) : null
+            }),
+            reload: () => loadActiveBoard(currentSystemId()),
+            library: AudioLibrary
+        };
     }
 
 
@@ -932,6 +1661,19 @@
         AudioState.isDM = isDM;
         AudioState.network = network;
 
+        if (isDM) {
+            // Il Master non ha il pulsante Muto: il muto e il volume salvati da una TV o da uno Schermo Giocatore
+            // aperti nello stesso browser non devono zittirlo. Volume del Master con chiave propria (limite 20%).
+            AudioState.isMuted = false;
+            const dmVol = localStorage.getItem('vtt_audio_volume_dm');
+            if (dmVol !== null) {
+                let parsed = parseFloat(dmVol);
+                if (isNaN(parsed) || parsed > 0.20 || parsed < 0) parsed = 0.03;
+                AudioState.localVolume = parsed;
+            }
+            updateEffectiveVolume();
+        }
+
         if (network && network.addListener) {
             network.addListener(handleIncomingAudio);
         }
@@ -943,9 +1685,15 @@
         }
     };
 
+    window.vttAudioDebug = {
+        lastSfx: () => AudioState.lastSfx || null,
+        level: () => ({ muted: AudioState.isMuted, volume: AudioState.localVolume, ctx: audioCtx ? audioCtx.state : 'nessuno' }),
+        remote: () => ({ cached: Array.from(remoteSfx.urls.keys()), stats: Object.assign({}, remoteSfx.stats) })
+    };
+
     window.getAudioState = function() {
         const rawSrc = AudioState.bgmCurrent.src;
-        const safeSrc = (rawSrc && rawSrc.startsWith('data:')) ? null : rawSrc;
+        const safeSrc = (rawSrc && (rawSrc.startsWith('data:') || rawSrc.startsWith('blob:'))) ? null : rawSrc;
         return {
             bgm: {
                 src: safeSrc,
