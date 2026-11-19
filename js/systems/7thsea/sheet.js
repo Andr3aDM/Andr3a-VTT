@@ -508,18 +508,18 @@
               <div class="bg-[#12141a] p-2.5 rounded-xl border border-[#272c38]">
                 <div class="flex items-center justify-between">
                   <span class="text-emerald-400 font-bold text-xs">Virtù</span>
-                  <span class="text-xs text-emerald-300 font-bold" id="virtue-display-name">Scaltro</span>
+                  <span class="text-xs text-emerald-300 font-bold" id="virtue-display-name">-- Seleziona --</span>
                 </div>
-                <p class="text-[10px] text-gray-400 mt-1 leading-snug" id="virtue-display-desc">Attiva per un grande vantaggio narrativo o di scena.</p>
+                <p class="text-[10px] text-gray-400 mt-1 leading-snug" id="virtue-display-desc">Nessuna Virtù selezionata.</p>
               </div>
 
               <div class="bg-[#12141a] p-2.5 rounded-xl border border-[#272c38] flex flex-col justify-between gap-1.5">
                 <div class="min-w-0">
                   <div class="flex items-center justify-between">
                     <span class="text-rose-400 font-bold text-xs">Superbia:</span>
-                    <span class="text-xs text-rose-300 font-bold truncate ml-1" id="hubris-display-name">Curioso</span>
+                    <span class="text-xs text-rose-300 font-bold truncate ml-1" id="hubris-display-name">-- Seleziona --</span>
                   </div>
-                  <p class="text-[10px] text-gray-400 mt-0.5 leading-snug" id="hubris-display-desc">Ricevi 1 PE quando cedi al tuo difetto.</p>
+                  <p class="text-[10px] text-gray-400 mt-0.5 leading-snug" id="hubris-display-desc">Nessuna Superbia selezionata.</p>
                 </div>
                 <button onclick="triggerHubris()" class="w-full py-1 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-[11px] font-bold text-rose-300 rounded-lg shadow-sm transition">
                   Cedi (+1 PE)
@@ -3061,8 +3061,8 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
             backgrounds: pcData.peculiarities ? [pcData.peculiarities.slice(0, 35)] : ["Eroe di Théah"],
             bgAppliedSkills: [[], []],
             bgAppliedAdvantages: [[], []],
-            virtue: pcData.virtue ? pcData.virtue.replace(/^Virtù:\s*/i, '').slice(0, 30) : "Scaltro",
-            hubris: pcData.hubris ? pcData.hubris.replace(/^(Hubris|Superbia):\s*/i, '').slice(0, 30) : "Curioso",
+            virtue: matchArcanaValue(pcData.virtue, 'virtue'),
+            hubris: matchArcanaValue(pcData.hubris, 'hubris'),
             advantages: (pcData.advantages || []).map(adv => (typeof adv === 'string' ? { name: adv, cost: 2, desc: adv } : adv)),
             stories: [
                 {
@@ -3354,6 +3354,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         }
         if (selVirtue) selVirtue.value = character.virtue || "";
         if (selHubris) selHubris.value = character.hubris || "";
+        renderVirtueHubrisDisplay();
         const selSocEl = document.getElementById('sel-society');
         if (selSocEl) selSocEl.value = character.secretSociety || "Nessuna";
     }
@@ -3692,22 +3693,51 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         if (typeof saveCharacterToVttToken === "function" && !window._s7LoadingFromToken) saveCharacterToVttToken();
     }
 
+    // Testo importato ("Virtù: L'Impiccato Altruista. Attivando...") -> nome ufficiale dell'Arcano ("Altruista"); vuoto se assente
+    function matchArcanaValue(text, field) {
+        if (!text) return "";
+        const clean = String(text).replace(/^(Virtù|Hubris|Superbia):\s*/i, '').trim();
+        if (!clean) return "";
+        const low = clean.toLowerCase();
+        const exact = arcanaDb.find(a => a[field] && a[field].toLowerCase() === low);
+        if (exact) return exact[field];
+        const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // il nome che compare per primo nel testo (la descrizione che segue può contenere altre parole)
+        let best = null, bestPos = Infinity;
+        arcanaDb.forEach(a => {
+            if (!a[field]) return;
+            const m = new RegExp('(^|[\\s\'’])' + esc(a[field].toLowerCase()) + '($|[\\s.,;:!])').exec(low);
+            if (m && m.index < bestPos) { bestPos = m.index; best = a; }
+        });
+        return best ? best[field] : clean.slice(0, 30);
+    }
+
+    // Riquadri Virtù e Superbia in scheda: sempre i valori del personaggio (anche all'apertura, non solo al cambio)
+    function renderVirtueHubrisDisplay() {
+        const v = (character && character.virtue) || "";
+        const h = (character && character.hubris) || "";
+        const arcV = v ? arcanaDb.find(a => a.virtue === v) : null;
+        const arcH = h ? arcanaDb.find(a => a.hubris === h) : null;
+        const vName = document.getElementById('virtue-display-name');
+        const vDesc = document.getElementById('virtue-display-desc');
+        const hName = document.getElementById('hubris-display-name');
+        const hDesc = document.getElementById('hubris-display-desc');
+        if (vName) vName.innerText = v || "-- Seleziona --";
+        if (vDesc) vDesc.innerText = arcV ? (arcV.virtueDesc || `Dall'Arcano ${arcV.arcanum}.`) : (v ? "" : "Nessuna Virtù selezionata.");
+        if (hName) hName.innerText = h || "-- Seleziona --";
+        if (hDesc) hDesc.innerText = arcH ? (arcH.hubrisDesc || `Dall'Arcano ${arcH.arcanum}.`) : (h ? "" : "Nessuna Superbia selezionata.");
+    }
+
     function onVirtueChange(val) {
         character.virtue = val || "";
-        const arc = val ? arcanaDb.find(a => a.virtue === val) : null;
-        const nameEl = document.getElementById('virtue-display-name');
-        const descEl = document.getElementById('virtue-display-desc');
-        if (nameEl) nameEl.innerText = val || "-- Seleziona --";
-        if (descEl) descEl.innerText = arc ? (arc.virtueDesc || `Dall'Arcano ${arc.arcanum}.`) : "Nessuna Virtù selezionata.";
+        renderVirtueHubrisDisplay();
+        if (typeof saveCharacterToVttToken === "function" && !window._s7LoadingFromToken) saveCharacterToVttToken();
     }
 
     function onHubrisChange(val) {
         character.hubris = val || "";
-        const arc = val ? arcanaDb.find(a => a.hubris === val) : null;
-        const nameEl = document.getElementById('hubris-display-name');
-        const descEl = document.getElementById('hubris-display-desc');
-        if (nameEl) nameEl.innerText = val || "-- Seleziona --";
-        if (descEl) descEl.innerText = arc ? (arc.hubrisDesc || `Dall'Arcano ${arc.arcanum}.`) : "Nessuna Superbia selezionata.";
+        renderVirtueHubrisDisplay();
+        if (typeof saveCharacterToVttToken === "function" && !window._s7LoadingFromToken) saveCharacterToVttToken();
     }
 
     // CALCOLO PUNTI CREAZIONE REAL-TIME
