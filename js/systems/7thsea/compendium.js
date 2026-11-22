@@ -61,21 +61,96 @@
         }
     };
 
-    // Token in mappa la cui scheda è quella aperta (stesso oggetto), preferendo quello selezionato all'apertura
+    let s7CatalogUnlocked = false;
+
+    // Token in mappa la cui scheda è quella aperta (stesso oggetto o token target selezionato), preferendo quello selezionato all'apertura
     function findTokenOfStatblock(m) {
-        const eng = (typeof engine !== 'undefined') ? engine : null;
+        const eng = (typeof engine !== 'undefined') ? engine : ((typeof window !== 'undefined' && window.engine) ? window.engine : null);
         if (!eng || !Array.isArray(eng.tokens) || !m) return null;
         const comp = window.compendium;
-        const activeId = comp && comp._activeTargetTokenId;
-        return eng.tokens.find(t => t.id === activeId && t.statblock === m) || eng.tokens.find(t => t.statblock === m) || null;
+        const hasExplicitTarget = comp && comp._activeTargetTokenId !== undefined;
+        const activeId = hasExplicitTarget ? comp._activeTargetTokenId : (eng.selectedTokenId || null);
+        const direct = (activeId && eng.tokens.find(t => t.id === activeId && t.statblock === m))
+            || eng.tokens.find(t => t.statblock === m)
+            || null;
+        if (direct) return direct;
+        // Fallback: token selezionato a cui è appena stato assegnato/creato un clone dello stesso statblock
+        if (activeId && !s7CatalogUnlocked) {
+            const selTok = eng.tokens.find(t => t.id === activeId);
+            if (selTok && selTok.statblock) {
+                const sameId = !!(m.id && selTok.statblock.id && String(selTok.statblock.id) === String(m.id));
+                const sameName = !!(m.name && selTok.statblock.name && String(selTok.statblock.name) === String(m.name));
+                if (sameId || sameName) {
+                    return selTok;
+                }
+            }
+        }
+        return null;
     }
+
+    function applyS7TokenLockMode(isLockedToToken) {
+        if (typeof document === 'undefined') return;
+        const isS7Active = !!(window.systemManager && typeof window.systemManager.getActiveSystemId === 'function' && window.systemManager.getActiveSystemId() === '7thsea');
+        const s7Bar = document.getElementById('s7-compendium-bar');
+        const searchBox = s7Bar ? s7Bar.parentElement : null;
+        const assignBtn = document.getElementById('btn-assign-statblock');
+        const btnRow = assignBtn ? assignBtn.parentElement : null;
+        const spawnCat = document.getElementById('statblock-spawn-category');
+        const spawnOptsGroup = (spawnCat && spawnCat.parentElement) ? spawnCat.parentElement.parentElement : null;
+
+        if (!isS7Active) {
+            if (searchBox) searchBox.style.display = '';
+            if (btnRow) btnRow.style.display = 'flex';
+            if (spawnOptsGroup) spawnOptsGroup.style.display = 'flex';
+            return;
+        }
+
+        if (isLockedToToken) {
+            if (s7Bar) s7Bar.style.display = 'none';
+            if (searchBox) searchBox.style.display = 'none';
+            if (btnRow) btnRow.style.display = 'none';
+            if (spawnOptsGroup) spawnOptsGroup.style.display = 'none';
+        } else {
+            if (searchBox) searchBox.style.display = '';
+            if (s7Bar) s7Bar.style.display = 'flex';
+            if (btnRow) btnRow.style.display = 'flex';
+            if (spawnOptsGroup) spawnOptsGroup.style.display = 'flex';
+        }
+    }
+
     function syncBruteStrengthToToken(m, newStr) {
-        const eng = (typeof engine !== 'undefined') ? engine : null;
+        const eng = (typeof engine !== 'undefined') ? engine : ((typeof window !== 'undefined' && window.engine) ? window.engine : null);
         if (!eng || !eng.isDM) return;
         const tok = findTokenOfStatblock(m);
         if (!tok) return; // scheda aperta dal compendio senza token: cambia solo la scheda
+        if (tok.statblock && tok.statblock !== m) {
+            tok.statblock.s7Strength = newStr;
+            tok.statblock.hit_points = newStr;
+            tok.statblock.s7VillainyRank = newStr;
+            tok.statblock.challenge_rating = `Forza ${newStr}`;
+        }
         tok.hpCurrent = newStr;
         if (!(Number(tok.hpMax) >= newStr)) tok.hpMax = newStr;
+        if (eng.initiative && Array.isArray(eng.initiative.participants)) {
+            eng.initiative.participants.forEach(p => { if (String(p.tokenId) === String(tok.id)) { p.hpCurrent = tok.hpCurrent; p.hpMax = tok.hpMax; } });
+        }
+        try { if (typeof window.upsertTokenInCampaign === 'function') window.upsertTokenInCampaign(tok); } catch (e) {}
+        try { if (typeof renderTrackerList === 'function') renderTrackerList({ skipRenderAndSync: true }); } catch (e) {}
+        try { if (eng.selectedTokenId === tok.id && typeof window.updateSelectedTokenControls === 'function') window.updateSelectedTokenControls(tok); } catch (e) {}
+        try { eng.renderTokensLayer(); } catch (e) {}
+        try { if (typeof window.syncState === 'function') window.syncState(true); } catch (e) {}
+    }
+
+    function syncAntagonistHpToToken(m, newHp) {
+        const eng = (typeof engine !== 'undefined') ? engine : ((typeof window !== 'undefined' && window.engine) ? window.engine : null);
+        if (!eng || !eng.isDM) return;
+        const tok = findTokenOfStatblock(m);
+        if (!tok) return;
+        if (tok.statblock && tok.statblock !== m) {
+            tok.statblock.hit_points = newHp;
+        }
+        tok.hpCurrent = newHp;
+        if (!(Number(tok.hpMax) >= newHp)) tok.hpMax = Math.max(1, newHp);
         if (eng.initiative && Array.isArray(eng.initiative.participants)) {
             eng.initiative.participants.forEach(p => { if (String(p.tokenId) === String(tok.id)) { p.hpCurrent = tok.hpCurrent; p.hpMax = tok.hpMax; } });
         }
@@ -93,6 +168,88 @@
         }[c]));
     }
 
+    let _heroesLoadPromise = null;
+    let _villainsLoadPromise = null;
+
+    function cleanS7TokenName(rawName) {
+        const s = String(rawName || '').trim();
+        if (!s) return '';
+        return s.replace(/\s*\((?:Squadra\s+Sgherri|Squadra\s+di\s+Sgherri|Brute\s+Squad|Malvagio|Villain)\)\s*$/i, '').trim() || s;
+    }
+
+    function ensureHeroesLoaded() {
+        if (typeof window === 'undefined') return Promise.resolve({});
+        if (window.SEVENTH_SEA_HEROES_BY_ID) return Promise.resolve(window.SEVENTH_SEA_HEROES_BY_ID);
+        if (_heroesLoadPromise) return _heroesLoadPromise;
+        if (typeof document === 'undefined') return Promise.resolve({});
+
+        _heroesLoadPromise = new Promise((resolve) => {
+            const script = document.createElement('script');
+            script.src = 'js/systems/7thsea/heroes_data.js?v=1';
+            script.async = true;
+            script.onload = () => resolve(window.SEVENTH_SEA_HEROES_BY_ID || {});
+            script.onerror = () => {
+                _heroesLoadPromise = null;
+                console.warn('[7thSea Compendium] Impossibile caricare js/systems/7thsea/heroes_data.js');
+                resolve({});
+            };
+            (document.head || document.body || document.documentElement).appendChild(script);
+        });
+        return _heroesLoadPromise;
+    }
+
+    function ensureVillainsLoaded() {
+        if (typeof window === 'undefined') return Promise.resolve({});
+        if (window.SEVENTH_SEA_VILLAINS_BY_ID) return Promise.resolve(window.SEVENTH_SEA_VILLAINS_BY_ID);
+        if (_villainsLoadPromise) return _villainsLoadPromise;
+        if (typeof document === 'undefined') return Promise.resolve({});
+
+        _villainsLoadPromise = new Promise((resolve) => {
+            const script = document.createElement('script');
+            script.src = 'js/systems/7thsea/villains_data.js?v=1';
+            script.async = true;
+            script.onload = () => resolve(window.SEVENTH_SEA_VILLAINS_BY_ID || {});
+            script.onerror = () => {
+                _villainsLoadPromise = null;
+                console.warn('[7thSea Compendium] Impossibile caricare js/systems/7thsea/villains_data.js');
+                resolve({});
+            };
+            (document.head || document.body || document.documentElement).appendChild(script);
+        });
+        return _villainsLoadPromise;
+    }
+
+    function resolveFullAntagonist(ant) {
+        if (!ant) return ant;
+        if (ant._lazyHero) {
+            const map = (typeof window !== 'undefined') ? window.SEVENTH_SEA_HEROES_BY_ID : null;
+            if (map && map[ant.id]) {
+                return Object.assign({}, ant, map[ant.id], { _lazyHero: false });
+            }
+        }
+        if (ant._lazyVillain) {
+            const map = (typeof window !== 'undefined') ? window.SEVENTH_SEA_VILLAINS_BY_ID : null;
+            if (map && map[ant.id]) {
+                return Object.assign({}, ant, map[ant.id], { _lazyVillain: false });
+            }
+        }
+        return ant;
+    }
+
+    async function loadHeroDetail(id) {
+        if (!id) return null;
+        await ensureHeroesLoaded();
+        const found = getAllAntagonists().find(a => a.id === id);
+        return found ? resolveFullAntagonist(found) : null;
+    }
+
+    async function loadVillainDetail(id) {
+        if (!id) return null;
+        await ensureVillainsLoaded();
+        const found = getAllAntagonists().find(a => a.id === id);
+        return found ? resolveFullAntagonist(found) : null;
+    }
+
     function getAllAntagonists() {
         const base = (window.SEVENTH_SEA_DATA && Array.isArray(window.SEVENTH_SEA_DATA.antagonists))
             ? window.SEVENTH_SEA_DATA.antagonists
@@ -102,6 +259,7 @@
 
     function convertAntagonistToStatblock(ant) {
         if (!ant) return null;
+        ant = resolveFullAntagonist(ant);
         const category = ant.category || (ant.type && ant.type.toLowerCase().includes('malvagio') ? 'villain' : (ant.type && ant.type.toLowerCase().includes('mostro') ? 'monster' : (ant.type && (ant.type.toLowerCase().includes('png') || ant.type.toLowerCase().includes('alleato') || ant.type.toLowerCase().includes('eroe')) ? 'npc' : 'brute')));
         const isBrute = category === 'brute' || (ant.type && ant.type.toLowerCase().includes('sgherri'));
         const isVillain = category === 'villain';
@@ -179,8 +337,9 @@
         const headerStrong = document.querySelector('#dm-statblock-header strong');
 
         if (isS7Active) {
+            s7CatalogUnlocked = false;
             if (dndSearchRow) dndSearchRow.style.display = 'none';
-            if (s7Bar) s7Bar.style.display = 'flex';
+            applyS7TokenLockMode(false);
             if (translateBtn) translateBtn.style.display = 'none';
             if (jsonImportBtn) jsonImportBtn.style.display = 'none';
             if (headerStrong) {
@@ -193,6 +352,9 @@
                 headerBar.style.borderBottomColor = '#d4af37';
             }
         } else {
+            s7CatalogUnlocked = false;
+            activeS7RenderedEntry = null;
+            applyS7TokenLockMode(false);
             if (dndSearchRow) dndSearchRow.style.display = 'flex';
             if (s7Bar) s7Bar.style.display = 'none';
             if (translateBtn) translateBtn.style.display = 'flex';
@@ -518,10 +680,32 @@
             }
 
             const found = getAllAntagonists().find(a => a.id === id);
-            if (found && window.compendium && typeof window.compendium.loadMonster === 'function') {
-                const sb = convertAntagonistToStatblock(found);
-                window.compendium.loadMonster(sb);
+            if (!found || !window.compendium || typeof window.compendium.loadMonster !== 'function') return;
+
+            s7CatalogUnlocked = true;
+            if (found._lazyHero && !(window.SEVENTH_SEA_HEROES_BY_ID && window.SEVENTH_SEA_HEROES_BY_ID[found.id])) {
+                ensureHeroesLoaded().then(() => {
+                    if (getActiveSelectedAntagonistId() !== id) return;
+                    const full = resolveFullAntagonist(found);
+                    const sb = convertAntagonistToStatblock(full);
+                    window.compendium.loadMonster(sb);
+                });
+                return;
             }
+            if (found._lazyVillain && !(window.SEVENTH_SEA_VILLAINS_BY_ID && window.SEVENTH_SEA_VILLAINS_BY_ID[found.id])) {
+                // Mostra subito la scheda base (Forza/Influenza/Grado/Roller) a 0ms per evitare flash dell'entry precedente,
+                // poi completa subito con Storia/Macchinazioni/Redenzione appena villains_data.js termina il caricamento.
+                window.compendium.loadMonster(convertAntagonistToStatblock(found));
+                ensureVillainsLoaded().then(() => {
+                    if (getActiveSelectedAntagonistId() !== id) return;
+                    const full = resolveFullAntagonist(found);
+                    const sb = convertAntagonistToStatblock(full);
+                    window.compendium.loadMonster(sb);
+                });
+                return;
+            }
+            const sb = convertAntagonistToStatblock(resolveFullAntagonist(found));
+            window.compendium.loadMonster(sb);
         }
 
         if (brutesSel) brutesSel.addEventListener('change', () => handleSelectChange(brutesSel));
@@ -529,9 +713,13 @@
         if (monstersSel) monstersSel.addEventListener('change', () => handleSelectChange(monstersSel));
         if (npcsSel) npcsSel.addEventListener('change', () => handleSelectChange(npcsSel));
 
+        bindToolbarHeroInterceptors();
+
         const clearBtn = bar.querySelector('#s7-btn-clear-selection');
         if (clearBtn) {
             clearBtn.addEventListener('click', () => {
+                s7CatalogUnlocked = false;
+                applyS7TokenLockMode(false);
                 allSelectors.forEach(s => {
                     s.value = '';
                     s.style.boxShadow = 'none';
@@ -539,6 +727,7 @@
                 const master = document.getElementById('s7-antagonist-select');
                 if (master) master.value = '';
                 if (window.compendium) window.compendium.currentMonster = null;
+                activeS7RenderedEntry = null;
                 activeAntagonistTarget = null;
                 const placeholder = document.getElementById('statblock-placeholder');
                 const details = document.getElementById('statblock-details');
@@ -751,6 +940,331 @@
         }
     }
 
+    // =========================================================================
+    // EROI UFFICIALI 7TH SEA: ANTEPRIMA SINTETICA, SPAWN & ASSEGNAZIONE TOKEN
+    // =========================================================================
+    let activeS7RenderedEntry = null;
+    let toolbarHeroInterceptorsBound = false;
+
+    function isOfficialHeroEntry(m) {
+        if (!m || !m.pcData || typeof m.pcData !== 'object') return false;
+        const cat = String(m.s7Category || m.category || '').toLowerCase();
+        return cat === 'npc' || cat === 'hero';
+    }
+
+    function getVttEngineRef() {
+        if (typeof window !== 'undefined' && window.engine) return window.engine;
+        try { if (typeof engine !== 'undefined' && engine) return engine; } catch (e) {}
+        return null;
+    }
+
+    function notifyCompendiumMsg(msg, isWarn = false) {
+        if (isWarn && typeof window.vttWarn === 'function') {
+            window.vttWarn(msg);
+        } else if (typeof window.showToast === 'function') {
+            window.showToast(msg);
+        } else if (typeof showToast === 'function') {
+            showToast(msg);
+        }
+    }
+
+    function buildHeroSheetPayload(heroObj) {
+        if (!heroObj || !heroObj.pcData) return null;
+        if (!window.seventhSeaSheetManager || typeof window.seventhSeaSheetManager.buildHeroPcSheet !== 'function') {
+            return null;
+        }
+        const pcSheet = window.seventhSeaSheetManager.buildHeroPcSheet(heroObj.pcData);
+        if (!pcSheet) return null;
+        const hpMax = typeof window.seventhSeaSheetManager.getHeroMaxWounds === 'function'
+            ? window.seventhSeaSheetManager.getHeroMaxWounds(pcSheet)
+            : 20;
+        return { pcSheet, hpMax };
+    }
+
+    function assignHeroToSelectedToken(heroObj, compendiumInstance = null) {
+        if (!isOfficialHeroEntry(heroObj)) return false;
+        const eng = getVttEngineRef();
+        if (!eng || !Array.isArray(eng.tokens)) return false;
+
+        const compRef = compendiumInstance || window.compendium || null;
+        let targetTokens = (eng.selectedTokens && eng.selectedTokens.size > 0)
+            ? eng.tokens.filter(t => eng.selectedTokens.has(t.id))
+            : (eng.selectedTokenId ? [eng.tokens.find(t => t.id === eng.selectedTokenId)].filter(Boolean) : []);
+        if (targetTokens.length === 0 && window.editingPlayerToken) {
+            targetTokens = [window.editingPlayerToken];
+        }
+        if (targetTokens.length === 0 && compRef && compRef._activeTargetTokenId) {
+            const found = eng.tokens.find(t => t.id === compRef._activeTargetTokenId);
+            if (found) targetTokens = [found];
+        }
+
+        if (targetTokens.length === 0) {
+            notifyCompendiumMsg('Seleziona prima almeno un token sulla mappa cliccandoci sopra!', true);
+            return false;
+        }
+
+        const customTokenSrc = (compRef && compRef.currentMonster && compRef.currentMonster.id === heroObj.id && compRef.currentMonster.tokenSrc)
+            ? compRef.currentMonster.tokenSrc
+            : heroObj.tokenSrc;
+
+        let assignedHpMax = 20;
+        targetTokens.forEach(token => {
+            const built = buildHeroSheetPayload(heroObj);
+            if (!built) return;
+            assignedHpMax = built.hpMax;
+            token.pcSheet = built.pcSheet;
+            token.hasPcSheet = true;
+            delete token.statblock;
+            token.name = heroObj.name || built.pcSheet.name || token.name;
+            token.originalName = token.name;
+            // Se era un PG giocabile scelto per un giocatore resta 'personaggi', altrimenti 'png' (mai nella lista PG login)
+            if (token.category !== 'personaggi') {
+                token.category = 'png';
+            }
+            token.hpMax = built.hpMax;
+            token.hpCurrent = built.hpMax;
+            token.hpVisibleToPlayers = true;
+
+            if (eng.initiative && Array.isArray(eng.initiative.participants)) {
+                const p = eng.initiative.participants.find(x => x.tokenId === token.id);
+                if (p) {
+                    p.name = token.name;
+                    p.hpCurrent = built.hpMax;
+                    p.hpMax = built.hpMax;
+                }
+            }
+            if (typeof window.upsertTokenInCampaign === 'function') window.upsertTokenInCampaign(token);
+        });
+
+        if (customTokenSrc) {
+            const newImg = new Image();
+            newImg.onload = () => {
+                targetTokens.forEach(token => {
+                    token.imageObj = newImg;
+                    token.src = customTokenSrc;
+                    if (typeof window.markTokenImageDirty === 'function') window.markTokenImageDirty(token.id);
+                });
+                if (typeof eng.renderAll === 'function') eng.renderAll();
+                if (typeof window.syncState === 'function') window.syncState(true, false);
+            };
+            newImg.src = customTokenSrc;
+        }
+
+        if (typeof window.updateSelectedTokenControls === 'function' && targetTokens[0]) {
+            window.updateSelectedTokenControls(targetTokens[0]);
+        }
+        if (typeof eng.renderAll === 'function') eng.renderAll();
+        if (typeof window.syncState === 'function') window.syncState(true, false);
+        else if (typeof syncState === 'function') syncState(true, false);
+        if (typeof window.broadcastPcSheetSync === 'function') {
+            targetTokens.forEach(t => window.broadcastPcSheetSync(t));
+        }
+        if (window.pcSheetManager && typeof window.pcSheetManager.refreshIfOpen === 'function') {
+            targetTokens.forEach(t => window.pcSheetManager.refreshIfOpen(t.id));
+        }
+        if (typeof window.updateMapTokensGallery === 'function') window.updateMapTokensGallery();
+        else if (typeof updateMapTokensGallery === 'function') updateMapTokensGallery();
+
+        const fdLbl = assignedHpMax === 25 ? '5 FD' : '4 FD';
+        notifyCompendiumMsg(`⚓ Scheda Eroe "${heroObj.name}" assegnata a ${targetTokens.length} token (${assignedHpMax} Ferite / ${fdLbl})!`);
+        return targetTokens;
+    }
+
+    function spawnHeroToken(heroObj, compendiumInstance = null) {
+        if (!isOfficialHeroEntry(heroObj)) return null;
+        const eng = getVttEngineRef();
+        if (!eng || !Array.isArray(eng.tokens)) return null;
+
+        const built = buildHeroSheetPayload(heroObj);
+        if (!built) return null;
+        const { pcSheet, hpMax } = built;
+
+        const compRef = compendiumInstance || window.compendium || null;
+        const gridSize = (eng.grid && eng.grid.size) ? eng.grid.size : 50;
+        const pxSize = gridSize;
+
+        let snappedX = 0;
+        let snappedY = 0;
+        try {
+            if (eng.layers && eng.layers.ui && typeof eng.screenToWorld === 'function') {
+                const centerWorld = eng.screenToWorld(eng.layers.ui.width / 2, eng.layers.ui.height / 2);
+                const effOffsetX = (eng.grid && eng.grid.offsetX ? eng.grid.offsetX : 0) % gridSize;
+                const effOffsetY = (eng.grid && eng.grid.offsetY ? eng.grid.offsetY : 0) % gridSize;
+                snappedX = Math.round((centerWorld.x - effOffsetX) / gridSize) * gridSize + effOffsetX;
+                snappedY = Math.round((centerWorld.y - effOffsetY) / gridSize) * gridSize + effOffsetY;
+            }
+        } catch (e) {}
+
+        const customTokenSrc = (compRef && compRef.currentMonster && compRef.currentMonster.id === heroObj.id && compRef.currentMonster.tokenSrc)
+            ? compRef.currentMonster.tokenSrc
+            : heroObj.tokenSrc;
+        const tokenSrc = customTokenSrc || (compRef && typeof compRef.generateLetterToken === 'function' ? compRef.generateLetterToken(heroObj) : '');
+        const isInvisible = !!(document.getElementById('statblock-spawn-invisible')?.checked);
+        const heroName = heroObj.name || pcSheet.name || 'Eroe di Théah';
+
+        const token = {
+            id: 'token_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+            name: heroName,
+            nameVisibility: 'all',
+            originalName: heroName,
+            x: snappedX,
+            y: snappedY,
+            width: pxSize,
+            height: pxSize,
+            sizeMultiplier: 1,
+            src: tokenSrc,
+            // Categoria PNG: l'Eroe ufficiale ha pcSheet completa ma NON entra mai nel selettore PG di login dei giocatori
+            category: 'png',
+            visible: !isInvisible,
+            imageObj: null,
+            ac: 10,
+            hpMax: hpMax,
+            hpCurrent: hpMax,
+            hpVisibleToPlayers: true,
+            hasPcSheet: true,
+            pcSheet: pcSheet
+        };
+
+        if (tokenSrc) {
+            const imgObj = new Image();
+            imgObj.onload = () => {
+                token.imageObj = imgObj;
+                if (typeof eng.renderAll === 'function') eng.renderAll();
+            };
+            imgObj.src = tokenSrc;
+        }
+
+        eng.tokens.push(token);
+        if (typeof window.upsertTokenInCampaign === 'function') window.upsertTokenInCampaign(token);
+        if (eng.selectedTokens && typeof eng.selectedTokens.clear === 'function') {
+            eng.selectedTokens.clear();
+            eng.selectedTokens.add(token.id);
+        }
+        eng.selectedTokenId = token.id;
+
+        if (typeof window.updateSelectedTokenControls === 'function') {
+            window.updateSelectedTokenControls(token);
+        }
+        if (typeof eng.renderAll === 'function') eng.renderAll();
+        if (typeof window.syncState === 'function') window.syncState(true, false);
+        else if (typeof syncState === 'function') syncState(true, false);
+        if (typeof window.broadcastPcSheetSync === 'function') window.broadcastPcSheetSync(token);
+        if (typeof window.updateMapTokensGallery === 'function') window.updateMapTokensGallery();
+        else if (typeof updateMapTokensGallery === 'function') updateMapTokensGallery();
+
+        const fdLbl = hpMax === 25 ? '5 FD' : '4 FD';
+        const pfx = isInvisible ? '🙈 Creato token INVISIBILE Eroe (PNG)' : '⚓ Creato token Eroe (PNG)';
+        notifyCompendiumMsg(`${pfx} "${heroName}" — Scheda completa (${hpMax} Ferite / ${fdLbl})!`);
+        return token;
+    }
+
+    function bindToolbarHeroInterceptors() {
+        if (toolbarHeroInterceptorsBound || typeof document === 'undefined') return;
+        const assignBtn = document.getElementById('btn-assign-statblock');
+        const spawnBtn = document.getElementById('btn-spawn-statblock-token');
+        if (!assignBtn && !spawnBtn) return;
+        toolbarHeroInterceptorsBound = true;
+
+        const isS7HeroCurrentlyShown = () => {
+            const isS7 = window.systemManager && typeof window.systemManager.getActiveSystemId === 'function'
+                && window.systemManager.getActiveSystemId() === '7thsea';
+            if (!isS7 || !activeS7RenderedEntry || !isOfficialHeroEntry(activeS7RenderedEntry.monster)) return false;
+            const det = document.getElementById('statblock-details');
+            return !!(det && det.style.display !== 'none');
+        };
+
+        if (assignBtn) {
+            assignBtn.addEventListener('click', (e) => {
+                if (isS7HeroCurrentlyShown()) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    assignHeroToSelectedToken(activeS7RenderedEntry.monster, activeS7RenderedEntry.compendium);
+                    return;
+                }
+                const isS7 = window.systemManager && typeof window.systemManager.getActiveSystemId === 'function'
+                    && window.systemManager.getActiveSystemId() === '7thsea';
+                if (!isS7) return;
+                // Dopo che js/compendium.js ha assegnato il clone dello statblock ai token selezionati,
+                // allineiamo il nome del token allo Sgherro/Malvagio/Mostro assegnato (come per gli Eroi)
+                // e fissiamo subito la scheda sul token (nascondendo i selettori).
+                setTimeout(() => {
+                    const eng = getVttEngineRef();
+                    const comp = window.compendium;
+                    if (!eng || !Array.isArray(eng.tokens) || !comp) return;
+                    let targetTokens = (eng.selectedTokens && eng.selectedTokens.size > 0)
+                        ? eng.tokens.filter(t => eng.selectedTokens.has(t.id))
+                        : (eng.selectedTokenId ? [eng.tokens.find(t => t.id === eng.selectedTokenId)].filter(Boolean) : []);
+                    if (targetTokens.length === 0 && comp._activeTargetTokenId) {
+                        const found = eng.tokens.find(t => t.id === comp._activeTargetTokenId);
+                        if (found) targetTokens = [found];
+                    }
+                    const s7Tokens = targetTokens.filter(t => t && t.statblock && t.statblock.system === '7thsea');
+                    if (s7Tokens.length === 0) return;
+
+                    let nameChanged = false;
+                    s7Tokens.forEach(t => {
+                        const newName = cleanS7TokenName(t.statblock.name);
+                        if (newName && t.name !== newName) {
+                            t.name = newName;
+                            t.originalName = newName;
+                            nameChanged = true;
+                        }
+                        if (eng.initiative && Array.isArray(eng.initiative.participants)) {
+                            eng.initiative.participants.forEach(p => {
+                                if (String(p.tokenId) === String(t.id) && newName) p.name = newName;
+                            });
+                        }
+                        try { if (typeof window.upsertTokenInCampaign === 'function') window.upsertTokenInCampaign(t); } catch (err) {}
+                    });
+
+                    const primaryTok = (eng.selectedTokenId && s7Tokens.find(t => t.id === eng.selectedTokenId)) || s7Tokens[0];
+                    if (nameChanged) {
+                        try { if (typeof window.updateSelectedTokenControls === 'function') window.updateSelectedTokenControls(primaryTok); } catch (err) {}
+                        try { if (typeof renderTrackerList === 'function') renderTrackerList({ skipRenderAndSync: true }); } catch (err) {}
+                        try { if (typeof window.updateMapTokensGallery === 'function') window.updateMapTokensGallery(); else if (typeof updateMapTokensGallery === 'function') updateMapTokensGallery(); } catch (err) {}
+                        try { if (typeof eng.renderTokensLayer === 'function') eng.renderTokensLayer(); } catch (err) {}
+                        try { if (typeof window.syncState === 'function') window.syncState(true, false); else if (typeof syncState === 'function') syncState(true, false); } catch (err) {}
+                    }
+
+                    s7CatalogUnlocked = false;
+                    comp._activeTargetTokenId = primaryTok.id;
+                    comp.loadMonster(primaryTok.statblock);
+                }, 0);
+            }, true);
+        }
+        if (spawnBtn) {
+            spawnBtn.addEventListener('click', (e) => {
+                if (isS7HeroCurrentlyShown()) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    spawnHeroToken(activeS7RenderedEntry.monster, activeS7RenderedEntry.compendium);
+                    return;
+                }
+                const isS7 = window.systemManager && typeof window.systemManager.getActiveSystemId === 'function'
+                    && window.systemManager.getActiveSystemId() === '7thsea';
+                if (!isS7) return;
+                // Opzione 1: rimuove suffissi "(Squadra Sgherri)" anche dai token appena creati con "Crea Token"
+                setTimeout(() => {
+                    const eng = getVttEngineRef();
+                    if (!eng || !Array.isArray(eng.tokens) || eng.tokens.length === 0) return;
+                    const lastTok = eng.tokens[eng.tokens.length - 1];
+                    if (lastTok && lastTok.statblock && lastTok.statblock.system === '7thsea' && lastTok.name) {
+                        const cleaned = lastTok.name.replace(/\s*\((?:Squadra\s+Sgherri|Squadra\s+di\s+Sgherri|Brute\s+Squad|Malvagio|Villain)\)/i, '').replace(/\s{2,}/g, ' ').trim();
+                        if (cleaned && cleaned !== lastTok.name) {
+                            lastTok.name = cleaned;
+                            lastTok.originalName = cleaned;
+                            try { if (typeof window.upsertTokenInCampaign === 'function') window.upsertTokenInCampaign(lastTok); } catch (err) {}
+                            try { if (typeof window.updateSelectedTokenControls === 'function') window.updateSelectedTokenControls(lastTok); } catch (err) {}
+                            try { if (typeof window.updateMapTokensGallery === 'function') window.updateMapTokensGallery(); } catch (err) {}
+                            try { if (typeof eng.renderTokensLayer === 'function') eng.renderTokensLayer(); } catch (err) {}
+                            try { if (typeof window.syncState === 'function') window.syncState(true, false); } catch (err) {}
+                        }
+                    }
+                }, 80);
+            }, true);
+        }
+    }
+
     // Rendering nativo della Scheda Antagonista 7th Sea (ZERO campi D&D 5e!)
     function renderSeventhSeaStatblock(m, compendiumInstance) {
         const placeholder = document.getElementById('statblock-placeholder');
@@ -759,15 +1273,193 @@
         if (placeholder) placeholder.style.display = 'none';
         details.style.display = 'block';
 
+        activeS7RenderedEntry = { monster: m, compendium: compendiumInstance || window.compendium || null };
+        bindToolbarHeroInterceptors();
+
         const category = m.s7Category || ((m.type || '').toLowerCase().includes('malvagio') ? 'villain' : ((m.type || '').toLowerCase().includes('mostro') ? 'monster' : ((m.type || '').toLowerCase().includes('png') || (m.type || '').toLowerCase().includes('alleato') || (m.type || '').toLowerCase().includes('eroe')) ? 'npc' : 'brute'));
         const isBrute = category === 'brute';
         const isVillain = category === 'villain';
         const isMonster = category === 'monster';
         const isNpc = category === 'npc' || category === 'hero';
-        const strength = parseInt(m.s7Strength || m.strength) || 6;
-        const influence = parseInt(m.s7Influence !== undefined ? m.s7Influence : (m.influence || 0)) || 0;
-        const villainyRank = parseInt(m.s7VillainyRank) || (isVillain ? (strength + influence) : strength);
-        const hpVal = parseInt(m.hit_points || m.hp) || (isBrute ? strength : 20);
+        const rawAvatar = m.tokenSrc || (compendiumInstance ? compendiumInstance.generateLetterToken(m) : '');
+        const tokenAvatarSrc = rawAvatar || '';
+
+        // === ANTEPRIMA SINTETICA PER I 40 EROI UFFICIALI (CON SCHEDA COMPLETA ON-DEMAND SUL TOKEN) ===
+        if (isNpc && m.pcData) {
+            const spawnCatSel = document.getElementById('statblock-spawn-category');
+            if (spawnCatSel) spawnCatSel.value = 'png';
+
+            const preview = buildHeroSheetPayload(m);
+            const sh = preview ? preview.pcSheet : null;
+            const heroHpMax = preview ? preview.hpMax : 20;
+            const nationLabel = (m.pcData.nationLabel || m.s7Nation || (sh && sh.nation) || 'Théah');
+            const archetype = m.archetype || 'Eroe di Théah';
+            const traitsObj = (sh && sh.traits) || m.pcData.traits || {};
+            const skillsObj = (sh && sh.skills) || m.pcData.skills || {};
+            const advList = (sh && Array.isArray(sh.advantages)) ? sh.advantages.map(a => a.name) : (m.pcData.advantages || []);
+            const virtueName = (sh && sh.virtue) || '—';
+            const hubrisName = (sh && sh.hubris) || '—';
+            const duelingList = (sh && Array.isArray(sh.duelingStyles) && sh.duelingStyles.length > 0)
+                ? sh.duelingStyles.join(' + ')
+                : ((sh && sh.advantages && sh.advantages.some(a => /^studioso di lotta/i.test(a.name || '')))
+                    ? `Studioso di Lotta (${sh.studiosoManeuver || 'Finta'})`
+                    : 'Nessuno');
+            const sorcerySummary = (sh && sh.sorcery && sh.sorcery !== 'Nessuna')
+                ? `${sh.sorcery} (Grado ${sh.sorceryRank || 1})`
+                : 'Nessuna';
+            const quoteShort = m.pcData.quote
+                ? (m.pcData.quote.length > 170 ? m.pcData.quote.slice(0, 167).trim() + '…' : m.pcData.quote)
+                : '';
+
+            const traitOrder = ['Vigore', 'Grazia', 'Risolutezza', 'Acume', 'Panache'];
+            const traitsHtml = traitOrder.map(tName => `
+                <div style="background:#141720; border:1px solid #2e3646; border-radius:6px; padding:5px 4px; text-align:center;">
+                    <div style="font-size:9.5px; color:#9ca3af; text-transform:uppercase; font-weight:bold;">${tName.slice(0, 5)}</div>
+                    <div style="font-size:15px; font-weight:900; color:#fcd34d; margin-top:1px;">${traitsObj[tName] || 2}</div>
+                </div>
+            `).join('');
+
+            const activeSkills = Object.entries(skillsObj)
+                .filter(([, v]) => (parseInt(v, 10) || 0) > 0)
+                .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'it'));
+            const skillsHtml = activeSkills.map(([sName, sVal]) => `
+                <span style="background:#151b26; border:1px solid #2d3b52; color:#e2e8f0; border-radius:4px; padding:2px 6px; font-size:11px;">
+                    ${escapeHtml(sName)} <b style="color:#fcd34d;">${sVal}</b>
+                </span>
+            `).join('');
+
+            const advsHtml = advList.map(aName => `
+                <span style="background:#1c1914; border:1px solid #6b5323; color:#fde68a; border-radius:4px; padding:2px 6px; font-size:11px;">
+                    ${escapeHtml(aName)}
+                </span>
+            `).join('');
+
+            details.innerHTML = `
+                <div id="s7-hero-compact-preview" style="font-family:'Segoe UI', sans-serif; color:#e5e7eb; display:flex; flex-direction:column; gap:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #0284c7; padding-bottom:8px;">
+                        <div style="flex:1; min-width:0;">
+                            <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                                <span style="background:#0284c7; color:#fff; font-size:10px; font-weight:bold; padding:2px 7px; border-radius:4px; text-transform:uppercase;">⚓ Eroe Ufficiale</span>
+                                <span style="background:#1e293b; color:#93c5fd; border:1px solid #3b82f6; font-size:10px; font-weight:bold; padding:1px 6px; border-radius:4px;">🏛️ ${escapeHtml(nationLabel)}</span>
+                                <span style="font-size:10.5px; color:#9ca3af;">${escapeHtml(archetype)}</span>
+                            </div>
+                            <div style="font-size:17px; font-weight:900; color:#fcd34d; font-family:Georgia, serif; margin-top:4px; line-height:1.2;">${escapeHtml(m.name)}</div>
+                            ${quoteShort ? `<div style="font-size:11px; color:#cbd5e1; font-style:italic; margin-top:3px; line-height:1.35;">“${escapeHtml(quoteShort)}”</div>` : ''}
+                            <div style="margin-top:7px; display:flex; gap:6px; flex-wrap:wrap;">
+                                <button type="button" id="s7-btn-spawn-hero" style="background:#0f766e; color:#ecfdf5; border:1px solid #14b8a6; border-radius:5px; padding:4px 9px; font-size:11px; font-weight:bold; cursor:pointer;" title="Crea un token PNG sulla mappa con la Scheda Eroe completa (non appare nel login PG dei giocatori)">♟️ Crea Token Eroe (PNG)</button>
+                                <button type="button" id="s7-btn-assign-hero" style="background:#b45309; color:#fef3c7; border:1px solid #f59e0b; border-radius:5px; padding:4px 9px; font-size:11px; font-weight:bold; cursor:pointer;" title="Assegna la Scheda Eroe completa al token selezionato sulla mappa">⚡ Assegna a Token</button>
+                                <button type="button" id="s7-btn-load-as-pc" style="background:#0369a1; color:#e0f2fe; border:1px solid #38bdf8; border-radius:5px; padding:4px 9px; font-size:11px; font-weight:bold; cursor:pointer;" title="Apri la Scheda Eroe completa in anteprima (senza sovrascrivere altri token)">⚓ Apri Scheda Completa</button>
+                            </div>
+                        </div>
+                        <div id="statblock-avatar-wrapper" style="position:relative; cursor:pointer; margin-left:10px; flex-shrink:0;" title="Clicca per cambiare immagine del Token">
+                            <img id="statblock-avatar-img" src="${escapeHtml(tokenAvatarSrc)}" style="width:54px; height:54px; border-radius:50%; border:2px solid #38bdf8; object-fit:cover; background:#111; box-shadow:0 2px 8px rgba(0,0,0,0.6);">
+                            <span style="position:absolute; bottom:-2px; right:-2px; background:#0284c7; border-radius:50%; width:18px; height:18px; display:flex; align-items:center; justify-content:center; font-size:10px; color:white;">📷</span>
+                            <input type="file" id="statblock-avatar-file-input" accept="image/*" style="display:none;">
+                        </div>
+                    </div>
+
+                    <!-- 5 TRATTI + SALUTE -->
+                    <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;">
+                        ${traitsHtml}
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; font-size:11.5px;">
+                        <div style="background:#141720; border:1px solid #2e3646; border-left:3px solid #ef4444; border-radius:6px; padding:7px 9px;">
+                            <div style="font-size:10px; color:#9ca3af; text-transform:uppercase; font-weight:bold;">🩸 Salute &amp; Risorse</div>
+                            <div style="margin-top:2px; color:#fca5a5; font-weight:bold;">${heroHpMax} Ferite (${heroHpMax === 25 ? '5 FD — Duro da Uccidere' : '4 FD'})</div>
+                            <div style="font-size:10.5px; color:#cbd5e1; margin-top:2px;">PE: <b>${sh ? sh.heroPoints : 3}</b>${sh && sh.wealth ? ` &bull; Ricchezza: <b>${sh.wealth}</b>` : ''}</div>
+                        </div>
+                        <div style="background:#141720; border:1px solid #2e3646; border-left:3px solid #10b981; border-radius:6px; padding:7px 9px;">
+                            <div style="font-size:10px; color:#9ca3af; text-transform:uppercase; font-weight:bold;">🃏 Arcano (Virtù / Superbia)</div>
+                            <div style="margin-top:2px;"><span style="color:#6ee7b7; font-weight:bold;">${escapeHtml(virtueName)}</span> / <span style="color:#fda4af; font-weight:bold;">${escapeHtml(hubrisName)}</span></div>
+                            <div style="font-size:10.5px; color:#cbd5e1; margin-top:2px;">⚔️ ${escapeHtml(duelingList)}${sorcerySummary !== 'Nessuna' ? ` &bull; ✨ ${escapeHtml(sorcerySummary)}` : ''}</div>
+                        </div>
+                    </div>
+
+                    <!-- ABILITÀ PRINCIPALI -->
+                    <div style="background:#141720; border:1px solid #2e3646; border-radius:8px; padding:8px 10px;">
+                        <div style="font-size:10.5px; font-weight:bold; color:#93c5fd; text-transform:uppercase; margin-bottom:5px;">🎯 Abilità</div>
+                        <div style="display:flex; flex-wrap:wrap; gap:5px;">${skillsHtml || '<span style="color:#9ca3af; font-size:11px;">Nessuna abilità</span>'}</div>
+                    </div>
+
+                    <!-- VANTAGGI (ELENCO SINTETICO) -->
+                    <div style="background:#141720; border:1px solid #2e3646; border-radius:8px; padding:8px 10px;">
+                        <div style="font-size:10.5px; font-weight:bold; color:#fcd34d; text-transform:uppercase; margin-bottom:5px;">⭐ Vantaggi (${advList.length})</div>
+                        <div style="display:flex; flex-wrap:wrap; gap:5px;">${advsHtml}</div>
+                    </div>
+
+                    <div style="font-size:10.5px; color:#94a3b8; background:#0f172a; border:1px solid #1e3a5f; border-radius:6px; padding:6px 9px;">
+                        ℹ️ Anteprima leggera: la scheda completa con tutti gli automatismi, Peculiarità (+1 PE), Storia, Obiettivi e Consigli di Interpretazione viene salvata <b>solo sul token</b> quando lo crei o lo assegni.
+                    </div>
+                </div>
+            `;
+
+            const avatarWrapper = document.getElementById('statblock-avatar-wrapper');
+            const avatarInput = document.getElementById('statblock-avatar-file-input');
+            if (avatarWrapper && avatarInput && compendiumInstance) {
+                avatarWrapper.onclick = () => avatarInput.click();
+                avatarInput.onchange = (e) => {
+                    if (e.target.files && e.target.files[0]) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                            compendiumInstance.setMonsterTokenImage(ev.target.result);
+                        };
+                        reader.readAsDataURL(e.target.files[0]);
+                    }
+                };
+            }
+
+            const spawnHeroBtn = document.getElementById('s7-btn-spawn-hero');
+            if (spawnHeroBtn) {
+                spawnHeroBtn.addEventListener('click', () => spawnHeroToken(m, compendiumInstance));
+            }
+            const assignHeroBtn = document.getElementById('s7-btn-assign-hero');
+            if (assignHeroBtn) {
+                assignHeroBtn.addEventListener('click', () => assignHeroToSelectedToken(m, compendiumInstance));
+            }
+            const loadPcBtn = document.getElementById('s7-btn-load-as-pc');
+            if (loadPcBtn && m.pcData) {
+                loadPcBtn.addEventListener('click', () => {
+                    if (window.seventhSeaSheetManager && typeof window.seventhSeaSheetManager.loadHeroData === 'function') {
+                        window.seventhSeaSheetManager.loadHeroData(m.pcData, { detachToken: true });
+                    }
+                });
+            }
+
+            applyS7TokenLockMode(false);
+            syncSelectorsWithActive(m.id || m.name);
+            return;
+        }
+
+        const linkedTok = findTokenOfStatblock(m);
+        const isLockedToToken = !!(linkedTok && !s7CatalogUnlocked);
+        applyS7TokenLockMode(isLockedToToken);
+
+        const rawStr = (m.s7Strength !== undefined && m.s7Strength !== null && m.s7Strength !== '')
+            ? parseInt(m.s7Strength, 10)
+            : parseInt(m.strength, 10);
+        const strength = Number.isFinite(rawStr) ? Math.max(0, rawStr) : 6;
+        const rawInf = (m.s7Influence !== undefined && m.s7Influence !== null && m.s7Influence !== '')
+            ? parseInt(m.s7Influence, 10)
+            : parseInt(m.influence, 10);
+        const influence = Number.isFinite(rawInf) ? Math.max(0, rawInf) : 0;
+        const rawRank = (m.s7VillainyRank !== undefined && m.s7VillainyRank !== null && m.s7VillainyRank !== '')
+            ? parseInt(m.s7VillainyRank, 10)
+            : NaN;
+        const villainyRank = Number.isFinite(rawRank) ? Math.max(0, rawRank) : (isVillain ? (strength + influence) : strength);
+        const rawHp = (m.hit_points !== undefined && m.hit_points !== null && m.hit_points !== '')
+            ? parseInt(m.hit_points, 10)
+            : parseInt(m.hp, 10);
+        const baseHpVal = Number.isFinite(rawHp) ? Math.max(0, rawHp) : (isBrute ? strength : 20);
+        const tokHpCurr = (linkedTok && linkedTok.hpCurrent !== undefined && linkedTok.hpCurrent !== null && linkedTok.hpCurrent !== '')
+            ? parseInt(linkedTok.hpCurrent, 10)
+            : NaN;
+        const hpVal = Number.isFinite(tokHpCurr) ? Math.max(0, tokHpCurr) : baseHpVal;
+        const tokHpMax = (linkedTok && linkedTok.hpMax !== undefined && linkedTok.hpMax !== null && linkedTok.hpMax !== '')
+            ? parseInt(linkedTok.hpMax, 10)
+            : NaN;
+        const hpMaxVal = Number.isFinite(tokHpMax) && tokHpMax > 0 ? tokHpMax : Math.max(1, baseHpVal || (isBrute ? Math.max(1, strength) : 20));
+        const woundsTaken = Math.max(0, hpMaxVal - hpVal);
         const nation = m.s7Nation || 'Théah';
         const traits = m.s7Traits || (m.special_abilities && m.special_abilities[1] ? m.special_abilities[1].desc : 'Mischia, Intimidire, Atletica');
         const ability = m.s7Ability || (m.actions && m.actions[0] ? m.actions[0].desc : (isNpc ? 'Supporta gli Eroi nella scena.' : 'Attacca gli Eroi nella scena.'));
@@ -776,9 +1468,6 @@
         const catBadgeColor = isVillain ? '#9333ea' : (isMonster ? '#be123c' : (isNpc ? '#0284c7' : '#d97706'));
         const catIcon = isVillain ? '👑' : (isMonster ? '🐙' : (isNpc ? '👥' : '⚔️'));
         const catTitle = isVillain ? 'Malvagio (Villain)' : (isMonster ? 'Mostro di Théah' : (isNpc ? 'PNG / Eroe Alleato' : 'Squadra di Sgherri'));
-
-        const rawAvatar = m.tokenSrc || (compendiumInstance ? compendiumInstance.generateLetterToken(m) : '');
-        const tokenAvatarSrc = rawAvatar || '';
 
         details.innerHTML = `
             <div style="font-family:'Segoe UI', sans-serif; color:#e5e7eb; display:flex; flex-direction:column; gap:10px;">
@@ -791,8 +1480,11 @@
                             <span style="font-size:10.5px; color:#9ca3af;">Taglia: ${escapeHtml(m.size || 'Media')}</span>
                         </div>
                         <div style="font-size:17px; font-weight:900; color:#fcd34d; font-family:Georgia, serif; margin-top:4px; line-height:1.2;">${escapeHtml(m.name)}</div>
-                        <div style="margin-top:5px; display:flex; gap:6px; flex-wrap:wrap;">
+                        <div style="margin-top:5px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
                             <button type="button" id="s7-btn-edit-current" style="background:#262b38; color:#fcd34d; border:1px solid #d4af37; border-radius:4px; padding:3px 9px; font-size:11px; font-weight:bold; cursor:pointer;">✏️ Modifica / Personalizza Scheda</button>
+                            ${isLockedToToken ? `
+                            <button type="button" id="s7-btn-unlock-catalog" style="background:#1e293b; color:#93c5fd; border:1px solid #3b82f6; border-radius:4px; padding:3px 9px; font-size:11px; font-weight:bold; cursor:pointer;" title="Mostra il catalogo per cambiare Sgherro, Malvagio o Mostro">🔄 Cambia Antagonista</button>
+                            ` : ''}
                             ${m.pcData ? `
                             <button type="button" id="s7-btn-load-as-pc" style="background:#0369a1; color:#e0f2fe; border:1px solid #38bdf8; border-radius:4px; padding:3px 9px; font-size:11px; font-weight:bold; cursor:pointer;" title="Carica questo Eroe direttamente nella Scheda Personaggio giocabile">⭐ Carica come Scheda PG</button>
                             ` : ''}
@@ -812,8 +1504,8 @@
                         <div style="display:flex; align-items:center; justify-content:space-between; margin-top:3px;">
                             <span style="font-size:18px; font-weight:900; color:#fcd34d;" id="s7-disp-strength">${strength}</span>
                             <div style="display:flex; gap:3px;">
-                                <button type="button" class="s7-adj-str" data-delta="-1" style="background:#1f2937; color:#fca5a5; border:1px solid #4b5563; border-radius:4px; width:22px; height:22px; font-weight:bold; cursor:pointer;" title="Riduci Forza di 1">-1</button>
-                                <button type="button" class="s7-adj-str" data-delta="1" style="background:#1f2937; color:#86efac; border:1px solid #4b5563; border-radius:4px; width:22px; height:22px; font-weight:bold; cursor:pointer;" title="Aumenta Forza di 1">+1</button>
+                                <button type="button" class="s7-adj-str" data-delta="-1" style="display:inline-flex; align-items:center; justify-content:center; padding:0; line-height:1; font-size:11px; background:#1f2937; color:#fca5a5; border:1px solid #4b5563; border-radius:4px; width:22px; height:22px; font-weight:bold; cursor:pointer;" title="Riduci Forza di 1">-1</button>
+                                <button type="button" class="s7-adj-str" data-delta="1" style="display:inline-flex; align-items:center; justify-content:center; padding:0; line-height:1; font-size:11px; background:#1f2937; color:#86efac; border:1px solid #4b5563; border-radius:4px; width:22px; height:22px; font-weight:bold; cursor:pointer;" title="Aumenta Forza di 1">+1</button>
                             </div>
                         </div>
                         <div style="font-size:10px; color:#9ca3af; margin-top:2px;">${isBrute ? 'Infligge ' + strength + ' Ferite a fine round' : (isNpc ? 'Dadi base dal tratto più alto' : 'Dadi base di Forza')}</div>
@@ -822,15 +1514,22 @@
                     ${isVillain ? `
                     <div style="background:#141720; border:1px solid #374151; border-left:3px solid #a855f7; border-radius:6px; padding:8px 10px;">
                         <div style="font-size:10px; color:#9ca3af; text-transform:uppercase; font-weight:bold;">👑 Influenza & Grado</div>
-                        <div style="font-size:16px; font-weight:900; color:#d8b4fe; margin-top:3px;">Influenza ${influence}</div>
-                        <div style="font-size:10.5px; color:#fcd34d; font-weight:bold; margin-top:2px;">Riserva: ${villainyRank} d10</div>
+                        <div style="font-size:15px; font-weight:900; color:#d8b4fe; margin-top:3px;">Influenza ${influence}</div>
+                        <div style="font-size:15px; font-weight:900; color:#c084fc; margin-top:2px;">Grado: ${villainyRank}</div>
+                        <div style="font-size:10.5px; color:#fcd34d; font-weight:bold; margin-top:3px;">Riserva: ${villainyRank} d10</div>
                     </div>
                     ` : ''}
 
                     <div style="background:#141720; border:1px solid #374151; border-left:3px solid #ef4444; border-radius:6px; padding:8px 10px;">
                         <div style="font-size:10px; color:#9ca3af; text-transform:uppercase; font-weight:bold;">🩸 Salute sul Token</div>
-                        <div style="font-size:18px; font-weight:900; color:#f87171; margin-top:3px;">${hpVal} ${isBrute ? 'PV (Forza)' : 'Ferite (4 FD)'}</div>
-                        <div style="font-size:10px; color:#9ca3af; margin-top:2px;">${isBrute ? '1 Incremento = -1 Forza/PV' : 'Soglia Drammatica ogni 5 Ferite'}</div>
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:3px; gap:4px;">
+                            <span style="font-size:16px; font-weight:900; color:#f87171;" id="s7-disp-hp">${hpVal}/${hpMaxVal} ${isBrute ? 'PV' : 'PV'}</span>
+                            <div style="display:flex; gap:3px;">
+                                <button type="button" class="s7-adj-hp" data-delta="-1" style="display:inline-flex; align-items:center; justify-content:center; padding:0; line-height:1; font-size:11px; background:#1f2937; color:#fca5a5; border:1px solid #4b5563; border-radius:4px; width:22px; height:22px; font-weight:bold; cursor:pointer;" title="Riduci Salute / Infliggi 1 Ferita">-1</button>
+                                <button type="button" class="s7-adj-hp" data-delta="1" style="display:inline-flex; align-items:center; justify-content:center; padding:0; line-height:1; font-size:11px; background:#1f2937; color:#86efac; border:1px solid #4b5563; border-radius:4px; width:22px; height:22px; font-weight:bold; cursor:pointer;" title="Aumenta Salute / Cura 1 Ferita">+1</button>
+                            </div>
+                        </div>
+                        <div style="font-size:10px; color:#9ca3af; margin-top:2px;">${isBrute ? '1 Incremento = -1 Forza/PV' : `Ferite: ${woundsTaken}/${hpMaxVal} (${Math.max(1, Math.round(hpMaxVal / 5))} FD)`}</div>
                     </div>
                 </div>
 
@@ -904,10 +1603,20 @@
             });
         }
 
+        // Bind Cambia Antagonista (sblocca le tendine catalogo quando la scheda è fissata su un token)
+        const unlockBtn = document.getElementById('s7-btn-unlock-catalog');
+        if (unlockBtn) {
+            unlockBtn.addEventListener('click', () => {
+                s7CatalogUnlocked = true;
+                applyS7TokenLockMode(false);
+                unlockBtn.style.display = 'none';
+            });
+        }
+
         // Bind +/- Forza
         details.querySelectorAll('.s7-adj-str').forEach(btn => {
             btn.addEventListener('click', () => {
-                const delta = parseInt(btn.getAttribute('data-delta')) || 0;
+                const delta = parseInt(btn.getAttribute('data-delta'), 10) || 0;
                 const newStr = Math.max(0, strength + delta);
                 m.s7Strength = newStr;
                 if (isBrute) {
@@ -918,6 +1627,26 @@
                 // Squadra di Sgherri aperta da un token in mappa: la Forza mostrata nel tracker è quella del token (PV),
                 // quindi +/− Forza aggiorna anche i PV di quel token (prima restavano al valore vecchio)
                 if (isBrute) syncBruteStrengthToToken(m, newStr);
+                if (compendiumInstance) {
+                    compendiumInstance.loadMonster(m);
+                }
+            });
+        });
+
+        // Bind +/- Salute sul Token (aggiorna in tempo reale la barra sul token per Sgherri, Malvagi e Mostri)
+        details.querySelectorAll('.s7-adj-hp').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const delta = parseInt(btn.getAttribute('data-delta'), 10) || 0;
+                const newHp = Math.max(0, hpVal + delta);
+                m.hit_points = newHp;
+                if (isBrute) {
+                    m.s7Strength = newHp;
+                    m.s7VillainyRank = newHp;
+                    m.challenge_rating = `Forza ${newHp}`;
+                    syncBruteStrengthToToken(m, newHp);
+                } else {
+                    syncAntagonistHpToToken(m, newHp);
+                }
                 if (compendiumInstance) {
                     compendiumInstance.loadMonster(m);
                 }
@@ -978,6 +1707,7 @@
 
     // Editor / Costruttore interattivo per creare o personalizzare qualsiasi Antagonista 7th Sea
     function openCustomEditor(defaultName = '', existing = null) {
+        activeS7RenderedEntry = null;
         const placeholder = document.getElementById('statblock-placeholder');
         const details = document.getElementById('statblock-details');
         if (!details) return;
@@ -1174,6 +1904,14 @@
     if (typeof window !== 'undefined') {
         window.seventhSeaCompendium = {
             convertAntagonistToStatblock,
+            cleanS7TokenName,
+            ensureHeroesLoaded,
+            ensureVillainsLoaded,
+            resolveFullAntagonist,
+            loadHeroDetail,
+            loadVillainDetail,
+            assignHeroToSelectedToken,
+            spawnHeroToken,
             injectS7AntagonistBar,
             syncCompendiumSystemUI,
             renderSeventhSeaStatblock,

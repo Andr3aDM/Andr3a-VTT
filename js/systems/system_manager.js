@@ -152,6 +152,9 @@
                 listeners.forEach(fn => {
                     try { fn(activeSystemId); } catch (e) { console.warn('System listener error:', e); }
                 });
+                if (typeof window !== 'undefined' && window.engine && typeof window.engine.renderTokensLayer === 'function') {
+                    try { window.engine.renderTokensLayer(); } catch (e) { console.warn('renderTokensLayer error on system change:', e); }
+                }
             }
             return activeSystemId;
         },
@@ -190,6 +193,33 @@
             const sysId = this.resolveTokenSystem(token);
             if (sysId === 'dnd5e') return dnd5eManager();
             return adapterManager(sysId);
+        },
+
+        // Barra salute/ferite personalizzata per sistema di gioco sul canvas (facoltativa per l'adattatore).
+        // Se il sistema del token non dichiara drawTokenHpBar, restituisce null e il core disegna la barra standard (5e).
+        drawTokenHpBar(ctx, token, opts) {
+            const sysId = this.resolveTokenSystem(token);
+            const a = systems.get(sysId);
+            if (!a || typeof a.drawTokenHpBar !== 'function') return null;
+            try {
+                return a.drawTokenHpBar(ctx, token, opts) || null;
+            } catch (e) {
+                console.warn('drawTokenHpBar error (' + sysId + '):', e);
+                return null;
+            }
+        },
+
+        // Metadati leggeri del token da includere in STATE_SYNC (facoltativo per l'adattatore; null per 5e -> 0 byte aggiunti).
+        getTokenNetworkMeta(token) {
+            const sysId = this.resolveTokenSystem(token);
+            const a = systems.get(sysId);
+            if (!a || typeof a.getTokenNetworkMeta !== 'function') return null;
+            try {
+                return a.getTokenNetworkMeta(token) || null;
+            } catch (e) {
+                console.warn('getTokenNetworkMeta error (' + sysId + '):', e);
+                return null;
+            }
         },
 
         updateSystemUI() {

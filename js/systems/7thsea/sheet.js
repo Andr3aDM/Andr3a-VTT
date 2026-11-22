@@ -8,6 +8,7 @@
     let currentTokenId = null;
     let isInitialized = false;
     window._s7LoadingFromToken = false;
+    let isDetachedPreview = false;
 
     function getEngineRef() {
         return (typeof engine !== 'undefined' && engine) ? engine : window.engine;
@@ -18,6 +19,7 @@
     }
 
     function getActiveToken() {
+        if (isDetachedPreview) return null;
         const eng = getEngineRef();
         if (!eng || !Array.isArray(eng.tokens)) return null;
         if (currentTokenId) {
@@ -243,6 +245,7 @@
             <option value="Highland Marches">Highland Marches</option>
             <option value="Inismore">Inismore</option>
             <option value="Montaigne">Montaigne</option>
+            <option value="Numa">Numa (Descrittiva)</option>
             <option value="Sarmatia">Confed. Sarmatiana</option>
             <option value="Ussura">Ussura</option>
             <option value="Vestenmennavenjar">Vestenmennavenjar</option>
@@ -370,18 +373,54 @@
           </div>
         </div>
 
-        <div>
-          <label class="block text-gray-400 text-[11px] font-semibold mb-1">Virtù (Sorte Deck)</label>
-          <select id="sel-virtue" onchange="onVirtueChange(this.value)" class="w-full bg-[#0d0e12] border border-[#2c3240] rounded-lg px-2 py-1.5 text-emerald-300 font-semibold outline-none text-xs focus:border-emerald-400">
-            <!-- Popolato dinamicamente -->
+        <!-- VIRTÙ (SORTE DECK) CON TENDINA PERSONALIZZATA & HOVER POPUP -->
+        <div class="relative" id="virtue-selector-wrapper">
+          <label class="block text-gray-400 text-[11px] font-semibold mb-1 flex items-center justify-between">
+            <span>Virtù (Sorte Deck)</span>
+            <span class="text-[9px] text-emerald-400/80 font-normal">Passa il mouse per info</span>
+          </label>
+          <select id="sel-virtue" onchange="onVirtueChange(this.value)" class="hidden">
+            <!-- Popolato dinamicamente per compatibilità e test -->
           </select>
+          <button type="button" id="virtue-custom-btn" onclick="toggleVirtueCustomDropdown()" class="w-full bg-[#0d0e12] hover:bg-[#151822] border border-[#2c3240] focus:border-emerald-400 rounded-lg px-2 py-1.5 text-left text-xs text-gray-200 flex items-center justify-between transition-colors shadow-sm">
+            <span id="virtue-custom-btn-label" class="truncate text-gray-400">-- Seleziona Virtù --</span>
+            <span class="text-[9px] text-emerald-400 ml-1 transition-transform" id="virtue-custom-chevron">▼</span>
+          </button>
+          <div id="virtue-summary" class="text-[10px] text-emerald-300/80 mt-1 truncate" title="Virtù attiva"></div>
+
+          <div id="virtue-custom-dropdown" class="hidden s7-custom-dropdown-panel">
+            <div class="p-2 border-b border-[#232838] bg-[#0c0e15]">
+              <input type="text" id="virtue-search-inp" oninput="filterVirtueCustomDropdown()" placeholder="🔍 Cerca Virtù o Arcano..." class="w-full bg-[#161a25] border border-[#2a3142] focus:border-emerald-400 text-xs text-gray-200 rounded-lg px-2.5 py-1.5 outline-none">
+            </div>
+            <div class="s7-dropdown-scroll-list overflow-y-auto flex-1 divide-y divide-[#1b1f2c]" id="virtue-custom-list">
+              <!-- Popolato via JS -->
+            </div>
+          </div>
         </div>
 
-        <div>
-          <label class="block text-gray-400 text-[11px] font-semibold mb-1">Superbia / Hubris</label>
-          <select id="sel-hubris" onchange="onHubrisChange(this.value)" class="w-full bg-[#0d0e12] border border-[#2c3240] rounded-lg px-2 py-1.5 text-rose-300 font-semibold outline-none text-xs focus:border-rose-400">
-            <!-- Popolato dinamicamente -->
+        <!-- SUPERBIA / HUBRIS CON TENDINA PERSONALIZZATA & HOVER POPUP -->
+        <div class="relative" id="hubris-selector-wrapper">
+          <label class="block text-gray-400 text-[11px] font-semibold mb-1 flex items-center justify-between">
+            <span>Superbia / Hubris</span>
+            <span class="text-[9px] text-rose-400/80 font-normal">Passa il mouse per info</span>
+          </label>
+          <select id="sel-hubris" onchange="onHubrisChange(this.value)" class="hidden">
+            <!-- Popolato dinamicamente per compatibilità e test -->
           </select>
+          <button type="button" id="hubris-custom-btn" onclick="toggleHubrisCustomDropdown()" class="w-full bg-[#0d0e12] hover:bg-[#151822] border border-[#2c3240] focus:border-rose-400 rounded-lg px-2 py-1.5 text-left text-xs text-gray-200 flex items-center justify-between transition-colors shadow-sm">
+            <span id="hubris-custom-btn-label" class="truncate text-gray-400">-- Seleziona Superbia --</span>
+            <span class="text-[9px] text-rose-400 ml-1 transition-transform" id="hubris-custom-chevron">▼</span>
+          </button>
+          <div id="hubris-summary" class="text-[10px] text-rose-300/80 mt-1 truncate" title="Superbia / Hubris attiva"></div>
+
+          <div id="hubris-custom-dropdown" class="hidden s7-custom-dropdown-panel">
+            <div class="p-2 border-b border-[#232838] bg-[#0c0e15]">
+              <input type="text" id="hubris-search-inp" oninput="filterHubrisCustomDropdown()" placeholder="🔍 Cerca Superbia o Arcano..." class="w-full bg-[#161a25] border border-[#2a3142] focus:border-rose-400 text-xs text-gray-200 rounded-lg px-2.5 py-1.5 outline-none">
+            </div>
+            <div class="s7-dropdown-scroll-list overflow-y-auto flex-1 divide-y divide-[#1b1f2c]" id="hubris-custom-list">
+              <!-- Popolato via JS -->
+            </div>
+          </div>
         </div>
 
         <div>
@@ -525,6 +564,11 @@
                   Cedi (+1 PE)
                 </button>
               </div>
+            </div>
+
+            <!-- PECULIARITA RAPIDE EROE (+1 PE) -->
+            <div id="hero-peculiarities-quick" class="hidden bg-[#12141a] p-2.5 rounded-xl border border-amber-500/35 space-y-1.5 text-xs">
+              <!-- Popolato via JS per Eroi ufficiali / Peculiarità -->
             </div>
 
           </div>
@@ -855,7 +899,10 @@
         <h3 class="text-xs md:text-sm font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5 border-b border-[#252a35] pb-2">
           <span>🎭</span> Trascorsi & Peculiarità (Backgrounds)
         </h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+        <div id="hero-peculiarities-panel" class="hidden grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+          <!-- Popolato via JS per Eroi ufficiali con Peculiarità (+1 PE) -->
+        </div>
+        <div id="bg-displays-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
           <div class="bg-[#151722] p-3 rounded-xl border border-[#2d3444]" id="bg-display-1">
             <!-- Popolato via JS -->
           </div>
@@ -863,6 +910,11 @@
             <!-- Popolato via JS -->
           </div>
         </div>
+      </div>
+
+      <!-- PROFILO EROE UFFICIALE: STORIA, OBIETTIVI & CONSIGLI DI INTERPRETAZIONE -->
+      <div id="hero-profile-card" class="hidden sheet-card rounded-xl p-3.5 md:p-4 space-y-3">
+        <!-- Popolato via JS quando è caricato un Eroe ufficiale -->
       </div>
     </div>
 
@@ -961,13 +1013,19 @@
     function isDuroDaUccidere() {
         return (window.seventhSeaRules && typeof window.seventhSeaRules.hasAdvantage === 'function')
             ? window.seventhSeaRules.hasAdvantage(character, 'Duro Da Uccidere')
-            : (character && character.advantages || []).some(a => (a.name || '').toLowerCase() === 'duro da uccidere');
+            : (character && character.advantages || []).some(a => {
+                const n = (typeof a === 'string' ? a : (a && a.name ? a.name : '')).toLowerCase().trim();
+                return n === 'duro da uccidere' || n === 'dura da uccidere';
+            });
     }
 
     function isSoloControTutti() {
         return (window.seventhSeaRules && typeof window.seventhSeaRules.hasAdvantage === 'function')
             ? window.seventhSeaRules.hasAdvantage(character, 'Solo Contro Tutti')
-            : (character && character.advantages || []).some(a => (a.name || '').toLowerCase() === 'solo contro tutti');
+            : (character && character.advantages || []).some(a => {
+                const n = (typeof a === 'string' ? a : (a && a.name ? a.name : '')).toLowerCase().trim();
+                return n === 'solo contro tutti' || n === 'sola contro tutti';
+            });
     }
 
     // =========================================================================================
@@ -1569,7 +1627,9 @@
         {"name": "Non Siamo Poi Così Diversi", "alias": "Non Siamo Poi Tanto Diversi…", "cost": 5, "description": "(3 pt se Vodacce) Spendi 1 PE: convinci un Malvagio di essere suo alleato finché non compi un gesto eroico evidente."},
         {"name": "Sala d’Armi", "cost": 5, "description": "Entri a far parte della Gilda dei Duellanti e apprendi uno Stile di Duello ufficiale di Théah. Puoi acquistare questo Vantaggio più volte per apprendere ulteriori Stili di Duello (costa 3 Punti se possiedi Studioso di Lotta)."},
         {"name": "Ti Porto Con Me", "cost": 5, "description": "(3 pt se Vesten) Spendi 1 PE: incrementi i danni inflitti del numero di Ferite Drammatiche che hai subito."},
-        {"name": "Dono Oscuro", "cost": 5, "source": "Nazioni di Théah Vol. 2", "description": "Scegli una Qualità Mostruosa: spendi 1 PE per attivarla per un Round ottenendo gli stessi benefici di un Malvagio e +1 Punto Corruzione (acquistabile alla creazione o vivendo avventure in Eisen)."}
+        {"name": "Dono Oscuro", "cost": 5, "source": "Nazioni di Théah Vol. 2", "description": "Scegli una Qualità Mostruosa: spendi 1 PE per attivarla per un Round ottenendo gli stessi benefici di un Malvagio e +1 Punto Corruzione (acquistabile alla creazione o vivendo avventure in Eisen)."},
+        {"name": "Esecuzione Perfetta", "cost": 2, "source": "Eroi & Malvagi (Descrittivo)", "descriptiveOnly": true, "description": "[Descrittivo] L’Eroe deve avere la capacità di eseguire Manovre da Duellante. L’Eroe sceglie una Manovra che conosce e potrà spendere un Punto Eroe invece di un Incremento per eseguirla. Tutte le altre regole relative alle Manovre si applicano normalmente (non è possibile eseguire la stessa Manovra per due Azioni consecutive, ecc.). Se l’effetto di una Manovra si basa sul numero di Incrementi spesi (come Affondo), eseguirla con questo Vantaggio conta come se si fossero spesi 0 Incrementi. Un Eroe può usare questo Vantaggio solo una volta per Round."},
+        {"name": "Duellante Esperto", "cost": 3, "source": "Eroi & Malvagi (Descrittivo)", "descriptiveOnly": true, "description": "[Descrittivo] L’Eroe deve avere il Vantaggio Sala d’Armi. L’Eroe apprende un secondo Stile di Duello. Se acquisisce questo vantaggio di nuovo otterrà uno Stile di Duello aggiuntivo."}
     ];
 
     // LE 6 MANOVRE BASE UFFICIALI DELLA GILDA DEI DUELLANTI (Manuale Base pag. 235)
@@ -1843,6 +1903,26 @@
             description: "Quando il personaggio impugna una spada da scherma in una mano, nulla nell’altra e si trova in un ambiente dove ci sono numerosi ostacoli da scalare, saltare o da cui lanciarsi (come una città o una nave) può eseguire una Manovra Speciale chiamata Furia delle Strade, che previene un numero di Ferite pari al suo Grado di Atletica e crea una Conseguenza ambientale per l’avversario. La Conseguenza richiede 1 Incremento per essere evitata e infligge un numero di Ferite pari al Grado di Grazia del Duellante alla fine del Round. Questa Manovra può essere eseguita solo una volta per Round."
         }
     };
+
+    // STILI DI DUELLO DESCRITTIVI SPECIFICI DI EROI & MALVAGI (separati dai 20 stili ufficiali PG di duelingStylesDb)
+    const HERO_DESCRIPTIVE_DUELING_STYLES = {
+        "Lakedaimon Agoge": {
+            name: "Lakedaimon Agoge",
+            nation: "Numa",
+            source: "Eroi & Malvagi (Descrittivo)",
+            weapons: "Un arco",
+            maneuver: "Colpo dell’Agoge (Descrittivo)",
+            cost: "Tutti gli Incrementi + 1 Incremento per Recuperare",
+            descriptiveOnly: true,
+            lore: "Antica tradizione marziale numana con l'arco descritta nel manuale Eroi & Malvagi (automazione meccanica dedicata prevista in un aggiornamento futuro).",
+            description: "L’Eroe può compiere Manovre di Duello usando un arco; in tal caso usa il suo Grado di Mira invece di quello di Mischia per determinare gli effetti. Inoltre la sua Manovra Affondo viene rimpiazzata dal Colpo dell’Agoge, che infligge un numero di Ferite pari al Grado di Mira più il numero di Incrementi spesi, ma richiede che l’Eroe usi la sua Azione seguente nel corso del round per Recuperare, spendendo un Incremento (che non avrà ulteriori effetti)."
+        }
+    };
+
+    function getDuelingStyleDef(styleName) {
+        if (!styleName) return null;
+        return duelingStylesDb[styleName] || HERO_DESCRIPTIVE_DUELING_STYLES[styleName] || null;
+    }
 
     const arcanaDb = [
             {
@@ -2939,7 +3019,8 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                 migrated.push({
                     ...official,
                     doses: it.doses !== undefined ? it.doses : (official.doses || 1),
-                    rank: it.rank || 1
+                    rank: it.rank || 1,
+                    ...(it.detail ? { detail: it.detail } : {})
                 });
             }
         });
@@ -2951,6 +3032,22 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         }
     }
 
+    function matchDuelingStyleKey(rawName) {
+        if (!rawName) return null;
+        const cleaned = String(rawName).replace(/\s*\(vedi sotto\)\s*/ig, '').trim();
+        if (!cleaned) return null;
+        const legacyMap = {
+            "Dresden": "Drexel",
+            "Marozzo": "Ambrogia"
+        };
+        const mapped = legacyMap[cleaned] || cleaned;
+        if (getDuelingStyleDef(mapped) && mapped !== "Nessuna") return mapped;
+        const low = mapped.toLowerCase();
+        const allKeys = [...Object.keys(duelingStylesDb), ...Object.keys(HERO_DESCRIPTIVE_DUELING_STYLES)];
+        const found = allKeys.find(k => k !== "Nessuna" && k.toLowerCase() === low);
+        return found || null;
+    }
+
     // NORMALIZZAZIONE E MIGRAZIONE STILI DI DUELLO PER RETROCOMPATIBILITÀ
     function normalizeCharacterDuelingState(charObj) {
         if (!charObj) return;
@@ -2958,32 +3055,35 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
             "Dresden": "Drexel",
             "Marozzo": "Ambrogia"
         };
-        if (charObj.duelingStyle && legacyMap[charObj.duelingStyle]) {
-            charObj.duelingStyle = legacyMap[charObj.duelingStyle];
-        }
-        if (charObj.duelingStyle && !duelingStylesDb[charObj.duelingStyle]) {
-            charObj.duelingStyle = "Nessuna";
+        if (charObj.duelingStyle) {
+            const matchedMain = matchDuelingStyleKey(charObj.duelingStyle);
+            charObj.duelingStyle = matchedMain || "Nessuna";
         }
         if (!Array.isArray(charObj.duelingStyles)) {
             charObj.duelingStyles = [];
         }
         charObj.duelingStyles = charObj.duelingStyles
-            .map(s => legacyMap[s] || s)
-            .filter(s => s && s !== "Nessuna" && duelingStylesDb[s]);
+            .map(s => matchDuelingStyleKey(s))
+            .filter((s, i, arr) => s && s !== "Nessuna" && arr.indexOf(s) === i);
 
-        // Estrai eventuali stili dai vantaggi "Sala d'Armi (Stile)"
+        // Estrai eventuali stili dai vantaggi "Sala d'Armi (Stile)" / "Sala d'Armi: Stile" e "Duellante Esperto (Stile)" / "Duellante Esperto: Stile"
         if (Array.isArray(charObj.advantages)) {
             charObj.advantages.forEach(adv => {
-                if (!adv || !adv.name) return;
+                if (!adv) return;
+                const advNameStr = typeof adv === 'string' ? adv : (adv.name || '');
                 if (adv.duelStyle && legacyMap[adv.duelStyle]) adv.duelStyle = legacyMap[adv.duelStyle];
-                const m = adv.name.match(/sala d[’']armi\s*\(([^)]+)\)/i);
-                if (m && m[1]) {
-                    const stName = legacyMap[m[1].trim()] || m[1].trim();
-                    if (duelingStylesDb[stName] && stName !== "Nessuna" && !charObj.duelingStyles.includes(stName)) {
-                        charObj.duelingStyles.push(stName);
-                    }
-                } else if (adv.duelStyle && duelingStylesDb[adv.duelStyle] && adv.duelStyle !== "Nessuna" && !charObj.duelingStyles.includes(adv.duelStyle)) {
-                    charObj.duelingStyles.push(adv.duelStyle);
+                let extractedStyle = null;
+                const mParen = advNameStr.match(/(?:sala d[’']armi|duellante espert[oa])\s*\(([^)]+)\)/i);
+                const mColon = advNameStr.match(/(?:sala d[’']armi|duellante espert[oa])\s*:\s*([^(\n]+)(?:\s*\(vedi sotto\))?/i);
+                if (mParen && mParen[1]) {
+                    extractedStyle = matchDuelingStyleKey(mParen[1]);
+                } else if (mColon && mColon[1]) {
+                    extractedStyle = matchDuelingStyleKey(mColon[1]);
+                } else if (adv.duelStyle) {
+                    extractedStyle = matchDuelingStyleKey(adv.duelStyle);
+                }
+                if (extractedStyle && !charObj.duelingStyles.includes(extractedStyle)) {
+                    charObj.duelingStyles.push(extractedStyle);
                 }
             });
         }
@@ -2999,30 +3099,269 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         if (charObj.lastManeuverUsed === undefined) charObj.lastManeuverUsed = "";
     }
 
-    // CARICA UN EROE UFFICIALE / PNG PREGENERATO (DA EROI & MALVAGI)
-    function loadHeroData(pcData) {
-        if (!pcData) return;
-        isLocked = false;
-        customDiceModifier = 0;
-        updateCustomDiceModifierUI();
-        
+    function escS7Html(str) {
+        return String(str == null ? '' : str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function canonicalizeAdvKey(name, stripDetail = true) {
+        if (window.seventhSeaRules && typeof window.seventhSeaRules.canonicalizeAdvantageName === 'function') {
+            return window.seventhSeaRules.canonicalizeAdvantageName(name, stripDetail);
+        }
+        let s = String(name || '').toLowerCase().replace(/[’‘`´]/g, "'").replace(/…/g, '...').replace(/\s+/g, ' ').trim();
+        if (stripDetail) {
+            const iCol = s.indexOf(':');
+            const iPar = s.indexOf(' (');
+            const cut = (iCol >= 0 && iPar >= 0) ? Math.min(iCol, iPar) : (iCol >= 0 ? iCol : iPar);
+            if (cut > 0) s = s.slice(0, cut).trim();
+        }
+        return s;
+    }
+
+    // Risolve un vantaggio stringa o oggetto mappandolo alla singola voce canonica maschile di advantagesDb
+    // (senza creare voci duplicate per varianti femminili o dettagli dopo ":").
+    function resolveCanonicalAdvantage(rawAdv, specialMap = {}) {
+        if (rawAdv && typeof rawAdv === 'object' && rawAdv.name && (rawAdv.description || rawAdv.desc) && rawAdv.cost !== undefined && rawAdv.desc !== rawAdv.name) {
+            return { ...rawAdv };
+        }
+        const rawStr = typeof rawAdv === 'string' ? rawAdv.trim() : ((rawAdv && rawAdv.name) ? String(rawAdv.name).trim() : '');
+        if (!rawStr) return null;
+
+        // Ripulisce "(vedi sotto)" e separa eventuale dettaglio dopo ":" o tra parentesi
+        const cleanedRaw = rawStr.replace(/\s*\(vedi sotto\)\s*/ig, '').trim();
+        let baseRaw = cleanedRaw;
+        let detail = '';
+        const colonIdx = cleanedRaw.indexOf(':');
+        const parenMatch = cleanedRaw.match(/^([^(]+?)\s*\(([^)]+)\)\s*$/);
+        if (colonIdx > 0) {
+            baseRaw = cleanedRaw.slice(0, colonIdx).trim();
+            detail = cleanedRaw.slice(colonIdx + 1).trim();
+        } else if (parenMatch) {
+            baseRaw = parenMatch[1].trim();
+            detail = parenMatch[2].trim();
+        }
+
+        const canonBase = canonicalizeAdvKey(baseRaw, true);
+        const canonFull = canonicalizeAdvKey(cleanedRaw, false);
+
+        const dbEntry = advantagesDb.find(a => {
+            const aKey = canonicalizeAdvKey(a.name, true);
+            const aFull = canonicalizeAdvKey(a.name, false);
+            const aliasKey = a.alias ? canonicalizeAdvKey(a.alias, true) : '';
+            const aliasFull = a.alias ? canonicalizeAdvKey(a.alias, false) : '';
+            return aKey === canonBase || aFull === canonFull || (aliasKey && aliasKey === canonBase) || (aliasFull && aliasFull === canonFull);
+        });
+
+        const specialEntry = specialMap[canonBase] || null;
+        const canonicalName = dbEntry ? dbEntry.name : baseRaw;
+        const displayName = detail ? `${canonicalName} (${detail})` : canonicalName;
+
+        let cost = dbEntry ? (dbEntry.cost || 0) : (specialEntry && specialEntry.cost != null ? specialEntry.cost : 2);
+        // Per Stregoneria con grado (es. "Stregoneria: Cavaliere di Avalon 3"), costo ufficiale = 2 pt per grado
+        if (canonBase === 'stregoneria' && detail) {
+            const rankMatch = detail.match(/(\d+)\s*$/);
+            if (rankMatch) {
+                const r = parseInt(rankMatch[1], 10);
+                if (r > 1 && r <= 5) cost = (dbEntry ? dbEntry.cost : 2) * r;
+            }
+        }
+
+        const desc = (specialEntry && specialEntry.text)
+            ? (dbEntry && dbEntry.descriptiveOnly ? `[Descrittivo] ${specialEntry.text}` : specialEntry.text)
+            : (dbEntry ? (dbEntry.description || dbEntry.desc || canonicalName) : cleanedRaw);
+
+        const res = {
+            name: displayName,
+            cost,
+            description: desc,
+            desc
+        };
+        if (dbEntry && dbEntry.descriptiveOnly) res.descriptiveOnly = true;
+        if (canonBase === "sala d'armi" || canonBase === "duellante esperto") {
+            const matchedStyle = matchDuelingStyleKey(detail);
+            if (matchedStyle) res.duelStyle = matchedStyle;
+        }
+        return res;
+    }
+
+    // Popola sorceryRank, sorceryMeta e sorceryItems dai dati ufficiali strutturati (sorceryDetails) degli Eroi
+    function applyHeroSorceryDetails(charObj, d) {
+        if (!charObj || !d || typeof d !== 'object') return;
+        const tradition = resolveOfficialSorceryName(d.tradition || charObj.sorcery, charObj.nation);
+        if (!tradition || tradition === "Nessuna") return;
+        charObj.sorcery = tradition;
+        if (d.rank && parseInt(d.rank, 10) > 0) {
+            charObj.sorceryRank = Math.max(1, Math.min(5, parseInt(d.rank, 10)));
+        }
+        if (!charObj.sorceryMeta || typeof charObj.sorceryMeta !== 'object') {
+            charObj.sorceryMeta = getDefaultSorceryMeta();
+        }
+        if (d.officialText) {
+            charObj.sorceryMeta.officialHeroSorceryNote = d.officialText;
+        }
+        const sObj = sorceriesDb.find(s => s.name === tradition);
+        const validPowers = (sObj && Array.isArray(sObj.powers)) ? sObj.powers : [];
+        const clonePower = (p, extra = {}) => ({
+            ...p,
+            doses: p.doses || 1,
+            rank: 1,
+            ...extra
+        });
+
+        if (tradition === "Glamour") {
+            if (d.knight) {
+                const kObj = (sObj && Array.isArray(sObj.knights))
+                    ? sObj.knights.find(k => k.name.toLowerCase().replace(/[’']/g, "'") === d.knight.toLowerCase().replace(/[’']/g, "'"))
+                    : null;
+                charObj.sorceryMeta.glamourKnight = kObj ? kObj.name : d.knight;
+            }
+            if (Array.isArray(d.spells) && d.spells.length > 0) {
+                const items = [];
+                d.spells.forEach(sp => {
+                    const spName = typeof sp === 'string' ? sp : (sp && sp.name ? sp.name : '');
+                    const spRank = (sp && sp.rank) ? parseInt(sp.rank, 10) : 1;
+                    const found = validPowers.find(p => p.name.toLowerCase().replace(/[’']/g, "'") === spName.toLowerCase().replace(/[’']/g, "'"));
+                    if (found) items.push(clonePower(found, { rank: spRank || 1 }));
+                });
+                if (items.length > 0) charObj.sorceryItems = items;
+            }
+        } else if (tradition === "Dar Matushki") {
+            const giftsRaw = Array.isArray(d.gifts) ? d.gifts : [];
+            const restsRaw = Array.isArray(d.restrictions) ? d.restrictions : [];
+            const parsedGifts = giftsRaw.map(g => {
+                const m = String(g).match(/^([^(]+?)(?:\s*\(([^)]+)\))?$/);
+                return { base: m ? m[1].trim() : String(g).trim(), detail: m && m[2] ? m[2].trim() : '' };
+            });
+            const items = [];
+            parsedGifts.forEach(pg => {
+                const found = validPowers.find(p => p.name.toLowerCase() === pg.base.toLowerCase());
+                if (found) items.push(clonePower(found, pg.detail ? { detail: pg.detail } : {}));
+            });
+            if (items.length > 0) charObj.sorceryItems = items;
+
+            const lessons = [];
+            const lessonCount = Math.max(restsRaw.length, Math.ceil(parsedGifts.length / 2));
+            for (let i = 0; i < lessonCount; i++) {
+                const g1 = parsedGifts[i * 2] ? parsedGifts[i * 2].base : (parsedGifts[0] ? parsedGifts[0].base : 'Trasformazione');
+                const g2 = parsedGifts[i * 2 + 1] ? parsedGifts[i * 2 + 1].base : g1;
+                lessons.push({
+                    restriction: restsRaw[i] || 'Gentilezza',
+                    gift1: g1,
+                    gift2: g2,
+                    broken: false
+                });
+            }
+            if (lessons.length > 0) charObj.sorceryMeta.matushkaLessons = lessons;
+            const firstAnimal = parsedGifts.find(pg => pg.detail);
+            if (firstAnimal) charObj.sorceryMeta.matushkaActiveAnimal = firstAnimal.detail;
+        } else if (tradition === "Sorte") {
+            if (Array.isArray(d.trame) && d.trame.length > 0) {
+                const items = [];
+                d.trame.forEach(tr => {
+                    const normTr = String(tr).trim().toLowerCase();
+                    const found = validPowers.find(p => {
+                        const pLow = p.name.toLowerCase();
+                        const pNoParen = pLow.replace(/[()]/g, '').replace(/\s+/g, ' ').trim();
+                        return pLow === normTr || pNoParen === normTr;
+                    });
+                    if (found) items.push(clonePower(found));
+                });
+                if (items.length > 0) charObj.sorceryItems = items;
+            }
+        } else if (tradition === "Porté") {
+            if (Array.isArray(d.marks)) {
+                charObj.sorceryMeta.porteMarks = d.marks.map(m => ({
+                    name: m.name || 'Marchio',
+                    type: m.type || 'Minore',
+                    location: m.location || '',
+                    isFamily: !!m.isFamily,
+                    isSuperior: !!m.isSuperior
+                }));
+            }
+            charObj.sorceryItems = validPowers.slice(0, 4).map(p => clonePower(p));
+        }
+    }
+
+    function getHeroMaxWounds(sheetObj) {
+        const target = sheetObj || character;
+        const hasDuro = (window.seventhSeaRules && typeof window.seventhSeaRules.hasAdvantage === 'function')
+            ? window.seventhSeaRules.hasAdvantage(target, 'Duro Da Uccidere')
+            : ((target && target.advantages) || []).some(a => {
+                const n = (typeof a === 'string' ? a : (a && a.name ? a.name : '')).toLowerCase().trim();
+                return n === 'duro da uccidere' || n === 'dura da uccidere';
+            });
+        return hasDuro ? 25 : 20;
+    }
+
+    // COSTRUISCE IN MODO PURO UNA SCHEDA EROE 7TH SEA COMPLETA DA pcData (senza alterare lo stato della finestra)
+    function buildHeroPcSheet(pcData) {
+        if (!pcData) return null;
+
+        const specialMap = {};
+        if (Array.isArray(pcData.specialAdvantages)) {
+            pcData.specialAdvantages.forEach(sa => {
+                if (sa && sa.title) {
+                    specialMap[canonicalizeAdvKey(sa.title, true)] = sa;
+                }
+            });
+        }
+
+        const resolvedAdvantages = (pcData.advantages || [])
+            .map(adv => resolveCanonicalAdvantage(adv, specialMap))
+            .filter(Boolean);
+
         let startWealth = 0;
         if (pcData.wealth !== undefined) {
             startWealth = pcData.wealth;
-        } else if (pcData.advantages && Array.isArray(pcData.advantages)) {
-            const hasRicco = pcData.advantages.some(a => (typeof a === 'string' ? a : (a.name || '')).toLowerCase().includes('ricco'));
-            const hasMecenate = pcData.advantages.some(a => (typeof a === 'string' ? a : (a.name || '')).toLowerCase().includes('mecenate'));
+        } else if (resolvedAdvantages.length > 0) {
+            const tempObj = { advantages: resolvedAdvantages };
+            const hasRicco = (window.seventhSeaRules && window.seventhSeaRules.hasAdvantage)
+                ? window.seventhSeaRules.hasAdvantage(tempObj, 'Ricco')
+                : resolvedAdvantages.some(a => /^(ricco|ricca)\b/i.test(a.name || ''));
+            const hasMecenate = (window.seventhSeaRules && window.seventhSeaRules.hasAdvantage)
+                ? window.seventhSeaRules.hasAdvantage(tempObj, 'Mecenate')
+                : resolvedAdvantages.some(a => /^mecenate\b/i.test(a.name || ''));
             if (hasRicco) startWealth = 3;
             else if (hasMecenate) startWealth = 1;
         }
 
-        character = {
+        // Peculiarità ufficiali complete (mai troncate a 35 caratteri)
+        const heroPeculiarities = Array.isArray(pcData.peculiaritiesList) && pcData.peculiaritiesList.length > 0
+            ? pcData.peculiaritiesList.map(p => ({ name: p.name || 'Peculiarità', desc: p.desc || '' }))
+            : (pcData.peculiarities ? [{ name: 'Peculiarità', desc: String(pcData.peculiarities) }] : []);
+
+        // Abbina eventuali background ufficiali dal titolo delle peculiarità senza mai troncare il testo
+        const matchedBgs = heroPeculiarities
+            .map(p => {
+                const found = backgroundsDb.find(b => b.name.toLowerCase() === (p.name || '').toLowerCase());
+                return found ? found.name : p.name;
+            })
+            .slice(0, 2);
+        while (matchedBgs.length < 2) matchedBgs.push("");
+
+        const hasNarrativeProfile = !!(pcData.story || pcData.objectives || pcData.playNotes || pcData.quote);
+        const heroProfile = hasNarrativeProfile ? {
+            quote: pcData.quote || "",
+            story: pcData.story || "",
+            objectives: pcData.objectives || "",
+            playNotes: pcData.playNotes || "",
+            nationLabel: pcData.nationLabel || pcData.nation || ""
+        } : null;
+
+        const sheetObj = {
+            system: '7thsea',
+            isLocked: true,
+            updatedAt: Date.now(),
+            _s7Rev: typeof newS7Rev === 'function' ? newS7Rev() : ('s7_' + Date.now()),
             name: pcData.name || "Eroe di Théah",
-            nation: pcData.nation || "Castille",
+            nation: pcData.nation || "",
             nationBonusTrait: null,
-            concept: pcData.concept || `${pcData.archetype || 'Eroe'} • ${pcData.nation || 'Théah'}`,
-            faith: pcData.faith || "Chiesa del Vaticinio",
-            heroPoints: 3,
+            concept: pcData.concept || `${pcData.archetype || 'Eroe'} • ${pcData.nationLabel || pcData.nation || 'Théah'}`,
+            faith: pcData.faith || "",
+            heroPoints: pcData.heroPoints !== undefined ? pcData.heroPoints : 3,
             wealth: startWealth,
             duelingStyle: pcData.duelingStyle || "Nessuna",
             duelingStyles: Array.isArray(pcData.duelingStyles) ? [...pcData.duelingStyles] : (pcData.duelingStyle && pcData.duelingStyle !== "Nessuna" ? [pcData.duelingStyle] : []),
@@ -3032,7 +3371,9 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
             studiosoManeuver: pcData.studiosoManeuver || "Finta",
             lastManeuverUsed: "",
             sorcery: pcData.sorcery || "Nessuna",
+            sorceryRank: pcData.sorceryRank || 1,
             sorceryItems: [],
+            sorceryMeta: getDefaultSorceryMeta(),
             traits: {
                 "Vigore": pcData.traits?.Vigore || 2,
                 "Grazia": pcData.traits?.Grazia || 2,
@@ -3058,16 +3399,18 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                 "Notare": pcData.skills?.Notare || 0,
                 "Rissa": pcData.skills?.Rissa || 0
             },
-            backgrounds: pcData.peculiarities ? [pcData.peculiarities.slice(0, 35)] : ["Eroe di Théah"],
+            backgrounds: matchedBgs,
+            heroPeculiarities,
+            heroProfile,
             bgAppliedSkills: [[], []],
             bgAppliedAdvantages: [[], []],
             virtue: matchArcanaValue(pcData.virtue, 'virtue'),
             hubris: matchArcanaValue(pcData.hubris, 'hubris'),
-            advantages: (pcData.advantages || []).map(adv => (typeof adv === 'string' ? { name: adv, cost: 2, desc: adv } : adv)),
+            advantages: resolvedAdvantages,
             stories: [
                 {
-                    title: `Destino di ${pcData.name}`,
-                    goal: pcData.objectives ? pcData.objectives.slice(0, 90) : "Compiere la propria missione",
+                    title: `Destino di ${pcData.name || 'Eroe'}`,
+                    goal: pcData.objectives ? pcData.objectives.slice(0, 120) : "Compiere la propria missione",
                     steps: [
                         { desc: pcData.objectives || "Inseguire il proprio ideale", done: false }
                     ]
@@ -3079,8 +3422,30 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
             maxWoundsPerThreshold: 5
         };
 
-        normalizeCharacterDuelingState(character);
-        normalizeCharacterSorceryState(character);
+        normalizeCharacterDuelingState(sheetObj);
+        if (pcData.sorceryDetails) {
+            applyHeroSorceryDetails(sheetObj, pcData.sorceryDetails);
+        }
+        normalizeCharacterSorceryState(sheetObj);
+        if (getHeroMaxWounds(sheetObj) === 25 && sheetObj.dramaticWounds.length < 5) {
+            sheetObj.dramaticWounds = [false, false, false, false, false];
+        }
+        return sheetObj;
+    }
+
+    // CARICA UN EROE UFFICIALE / PNG PREGENERATO (DA EROI & MALVAGI)
+    function loadHeroData(pcData, opts = {}) {
+        if (!pcData) return;
+        const built = buildHeroPcSheet(pcData);
+        if (!built) return;
+        isDetachedPreview = !!(opts && opts.detachToken);
+        if (isDetachedPreview) {
+            currentTokenId = null;
+        }
+        isLocked = false;
+        customDiceModifier = 0;
+        updateCustomDiceModifierUI();
+        character = built;
 
         // Trova il tratto e l'abilità più alti per la selezione predefinita
         let bestTrait = "Vigore", maxT = -1;
@@ -3098,8 +3463,10 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         syncDropdownsWithCharacter();
         updateLockUI();
         renderSeventhSeaSheet();
-        if (typeof saveCharacterToVttToken === "function" && !window._s7LoadingFromToken) saveCharacterToVttToken();
-        showS7Toast(`Eroe ufficiale '${character.name}' (${character.nation}) caricato con successo!`, "success");
+        if (!(opts && opts.detachToken) && typeof saveCharacterToVttToken === "function" && !window._s7LoadingFromToken) {
+            saveCharacterToVttToken();
+        }
+        showS7Toast(`Eroe ufficiale '${character.name}' (${character.nation || 'Théah'}) caricato con successo!`, "success");
     }
 
     // SCHEDA VERGINE VUOTA PER NUOVO PERSONAGGIO
@@ -3135,6 +3502,8 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                 "Nascondersi": 0, "Navigazione": 0, "Notare": 0, "Rissa": 0
             },
             backgrounds: ["", ""],
+            heroPeculiarities: [],
+            heroProfile: null,
             bgAppliedSkills: [[], []],
             bgAppliedAdvantages: [[], []],
             virtue: "",
@@ -3347,7 +3716,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                 styleBtnLabel.textContent = "Nessuno Stile (Non Duellante)";
                 styleBtnLabel.className = 'truncate text-gray-400';
             } else {
-                const stObj = duelingStylesDb[curStyle];
+                const stObj = getDuelingStyleDef(curStyle);
                 styleBtnLabel.textContent = `${curStyle} (${stObj ? (stObj.nation || 'Gilda') : 'Gilda'})`;
                 styleBtnLabel.className = 'truncate text-amber-200 font-medium';
             }
@@ -3433,7 +3802,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         if (!nationName || !NATIONS_CONFIG[nationName]) {
             const opt = document.createElement('option');
             opt.value = '';
-            opt.innerText = '-- Seleziona prima Nazione --';
+            opt.innerText = nationName === 'Numa' ? '-- Numa (Origine descrittiva) --' : '-- Seleziona prima Nazione --';
             sel.appendChild(opt);
             return;
         }
@@ -3638,20 +4007,141 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         if (bg) showS7Toast(`${idx + 1}° Background applicato: <b>${bg.name}</b> (+1 alle sue 5 Abilità & Vantaggi Gratuiti)`, "success");
     }
 
+    function triggerPeculiarity(idx) {
+        const list = Array.isArray(character && character.heroPeculiarities) ? character.heroPeculiarities : [];
+        let label = 'Peculiarità';
+        if (list[idx]) {
+            label = list[idx].name || 'Peculiarità';
+        } else {
+            const bgName = (character && character.backgrounds && character.backgrounds[idx]) || '';
+            if (bgName) label = bgName;
+        }
+        changeHeroPoints(1);
+        showS7Toast(`Hai attivato la Peculiarità <b>${escS7Html(label)}</b>! Guadagni <b>+1 Punto Eroe</b>.`, "success");
+    }
+
     function updateBgDisplays() {
         const d1 = document.getElementById('bg-display-1');
         const d2 = document.getElementById('bg-display-2');
+        const bgGrid = document.getElementById('bg-displays-grid');
+        const heroPecPanel = document.getElementById('hero-peculiarities-panel');
+        const heroPecQuick = document.getElementById('hero-peculiarities-quick');
+
+        const heroPecs = Array.isArray(character && character.heroPeculiarities) ? character.heroPeculiarities : [];
+        if (heroPecs.length > 0) {
+            if (bgGrid) bgGrid.classList.add('hidden');
+            if (heroPecPanel) {
+                heroPecPanel.classList.remove('hidden');
+                heroPecPanel.innerHTML = heroPecs.map((p, idx) => `
+                    <div class="bg-[#151722] p-3 rounded-xl border border-amber-500/35 flex flex-col justify-between gap-2">
+                        <div>
+                            <div class="flex items-center justify-between gap-2">
+                                <b class="text-amber-300 text-xs">${idx + 1}° ${escS7Html(p.name || 'Peculiarità')}</b>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-950/70 border border-amber-600/40 text-amber-200 font-semibold">Peculiarità</span>
+                            </div>
+                            <p class="text-gray-300 text-xs mt-1 leading-relaxed">${escS7Html(p.desc || '')}</p>
+                        </div>
+                        <button type="button" onclick="triggerPeculiarity(${idx})" class="w-full py-1 px-2 rounded-lg bg-amber-950/80 hover:bg-amber-900 border border-amber-600/60 text-[11px] font-bold text-amber-200 transition">
+                            ✨ Attiva Peculiarità (+1 PE)
+                        </button>
+                    </div>
+                `).join('');
+            }
+            if (heroPecQuick) {
+                heroPecQuick.classList.remove('hidden');
+                heroPecQuick.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <span class="text-amber-400 font-bold text-[11px] uppercase tracking-wide">🎭 Peculiarità</span>
+                        <span class="text-[10px] text-gray-400">Clicca per +1 PE</span>
+                    </div>
+                    <div class="space-y-1.5">
+                        ${heroPecs.map((p, idx) => `
+                            <div class="flex items-start justify-between gap-2 bg-[#161922] border border-[#2a3040] rounded-lg px-2 py-1.5">
+                                <div class="min-w-0">
+                                    <b class="text-amber-200 text-[11px] block">${escS7Html(p.name || 'Peculiarità')}</b>
+                                    <p class="text-[10px] text-gray-400 leading-snug">${escS7Html(p.desc || '')}</p>
+                                </div>
+                                <button type="button" onclick="triggerPeculiarity(${idx})" class="flex-shrink-0 px-2 py-1 rounded bg-amber-950/80 hover:bg-amber-900 border border-amber-600/60 text-[10px] font-bold text-amber-200 transition" title="Attiva questa Peculiarità per guadagnare +1 Punto Eroe">
+                                    +1 PE
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            return;
+        }
+
+        if (bgGrid) bgGrid.classList.remove('hidden');
+        if (heroPecPanel) { heroPecPanel.classList.add('hidden'); heroPecPanel.innerHTML = ''; }
+        if (heroPecQuick) { heroPecQuick.classList.add('hidden'); heroPecQuick.innerHTML = ''; }
+
         const bg1Name = (character.backgrounds && character.backgrounds[0]) || "Nessuno";
         const bg2Name = (character.backgrounds && character.backgrounds[1]) || "Nessuno";
         const bg1 = backgroundsDb.find(b => b.name.toLowerCase() === bg1Name.toLowerCase());
         const bg2 = backgroundsDb.find(b => b.name.toLowerCase() === bg2Name.toLowerCase());
 
-        if (d1) d1.innerHTML = `<b class="text-white">1° ${bg1Name} (${bg1 ? bg1.nation : 'Generale'}):</b><p class="text-gray-300 text-xs mt-1 leading-relaxed">${bg1 ? bg1.quirk : 'Nessuna peculiarità selezionata.'}</p>`;
-        if (d2) d2.innerHTML = `<b class="text-white">2° ${bg2Name} (${bg2 ? bg2.nation : 'Generale'}):</b><p class="text-gray-300 text-xs mt-1 leading-relaxed">${bg2 ? bg2.quirk : 'Nessuna peculiarità selezionata.'}</p>`;
+        if (d1) d1.innerHTML = `
+            <div class="flex items-center justify-between gap-2">
+                <b class="text-white">1° ${escS7Html(bg1Name)} (${bg1 ? escS7Html(bg1.nation) : 'Generale'}):</b>
+                ${bg1 ? `<button type="button" onclick="triggerPeculiarity(0)" class="px-2 py-0.5 rounded bg-amber-950/80 hover:bg-amber-900 border border-amber-600/60 text-[10px] font-bold text-amber-200">+1 PE</button>` : ''}
+            </div>
+            <p class="text-gray-300 text-xs mt-1 leading-relaxed">${bg1 ? escS7Html(bg1.quirk) : 'Nessuna peculiarità selezionata.'}</p>`;
+        if (d2) d2.innerHTML = `
+            <div class="flex items-center justify-between gap-2">
+                <b class="text-white">2° ${escS7Html(bg2Name)} (${bg2 ? escS7Html(bg2.nation) : 'Generale'}):</b>
+                ${bg2 ? `<button type="button" onclick="triggerPeculiarity(1)" class="px-2 py-0.5 rounded bg-amber-950/80 hover:bg-amber-900 border border-amber-600/60 text-[10px] font-bold text-amber-200">+1 PE</button>` : ''}
+            </div>
+            <p class="text-gray-300 text-xs mt-1 leading-relaxed">${bg2 ? escS7Html(bg2.quirk) : 'Nessuna peculiarità selezionata.'}</p>`;
+    }
+
+    function renderHeroProfile() {
+        const card = document.getElementById('hero-profile-card');
+        if (!card) return;
+        const prof = character && character.heroProfile;
+        if (!prof || (!prof.story && !prof.objectives && !prof.playNotes && !prof.quote)) {
+            card.classList.add('hidden');
+            card.innerHTML = '';
+            return;
+        }
+        const heroName = escS7Html(character.name || 'Eroe');
+        const quoteHtml = prof.quote
+            ? `<blockquote class="bg-[#12141c] border-l-2 border-amber-400 px-3 py-2 rounded-r-lg text-xs italic text-amber-100/90 leading-relaxed">“${escS7Html(prof.quote)}”</blockquote>`
+            : '';
+        const objectivesHtml = prof.objectives
+            ? `<div class="bg-[#151722] p-3 rounded-xl border border-[#2d3444] space-y-1">
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-300">🎯 Obiettivi</h4>
+                    <p class="text-gray-300 text-xs leading-relaxed whitespace-pre-line">${escS7Html(prof.objectives)}</p>
+               </div>`
+            : '';
+        const playNotesHtml = prof.playNotes
+            ? `<div class="bg-[#151722] p-3 rounded-xl border border-amber-500/30 space-y-1">
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-amber-300">🎭 Giocare ${heroName}</h4>
+                    <p class="text-gray-300 text-xs leading-relaxed whitespace-pre-line">${escS7Html(prof.playNotes)}</p>
+               </div>`
+            : '';
+        const storyHtml = prof.story
+            ? `<details open class="bg-[#151722] p-3 rounded-xl border border-[#2d3444]">
+                    <summary class="cursor-pointer text-xs font-bold uppercase tracking-wider text-sky-300 select-none">📜 Storia di ${heroName}</summary>
+                    <p class="text-gray-300 text-xs leading-relaxed mt-2 whitespace-pre-line">${escS7Html(prof.story)}</p>
+               </details>`
+            : '';
+        card.classList.remove('hidden');
+        card.innerHTML = `
+            <h3 class="text-xs md:text-sm font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5 border-b border-[#252a35] pb-2">
+                <span>📖</span> Profilo Ufficiale — Storia, Obiettivi &amp; Interpretazione
+            </h3>
+            ${quoteHtml}
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                ${objectivesHtml}
+                ${playNotesHtml}
+            </div>
+            ${storyHtml}
+        `;
     }
 
     function onStyleChange(val) {
-        const styleVal = (val && duelingStylesDb[val]) ? val : "Nessuna";
+        const styleVal = (val && getDuelingStyleDef(val)) ? val : "Nessuna";
         character.duelingStyle = styleVal;
         if (!Array.isArray(character.duelingStyles)) character.duelingStyles = [];
         if (styleVal !== "Nessuna" && !character.duelingStyles.includes(styleVal)) {
@@ -3665,7 +4155,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                 styleBtnLabel.textContent = "Nessuno Stile (Non Duellante)";
                 styleBtnLabel.className = 'truncate text-gray-400';
             } else {
-                const stObj = duelingStylesDb[styleVal];
+                const stObj = getDuelingStyleDef(styleVal);
                 styleBtnLabel.textContent = `${styleVal} (${stObj ? (stObj.nation || 'Gilda') : 'Gilda'})`;
                 styleBtnLabel.className = 'truncate text-amber-200 font-medium';
             }
@@ -3693,23 +4183,70 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         if (typeof saveCharacterToVttToken === "function" && !window._s7LoadingFromToken) saveCharacterToVttToken();
     }
 
+    // Mappa alias femminili -> chiave canonica maschile di arcanaDb (nessun duplicato in arcanaDb)
+    const ARCANA_FEM_TO_CANONICAL = {
+        virtue: {
+            "scaltra": "Scaltro",
+            "determinata": "Determinato",
+            "riservata": "Riservato",
+            "coraggiosa": "Coraggioso",
+            "intuitiva": "Intuitivo",
+            "appassionata": "Appassionato",
+            "temeraria": "Temerario",
+            "maestosa": "Maestoso",
+            "illuminata": "Illuminato",
+            "fortunata": "Fortunato",
+            "vittoriosa": "Vittorioso",
+            "discreta": "Discreto",
+            "gloriosa": "Glorioso"
+        },
+        hubris: {
+            "curiosa": "Curioso",
+            "insicura": "Insicuro",
+            "ambiziosa": "Ambizioso",
+            "gelosa": "Geloso",
+            "testarda": "Testardo",
+            "vendicativa": "Vendicativo",
+            "superstiziosa": "Superstizioso",
+            "sospettosa": "Sospettoso",
+            "ostinata": "Ostinato",
+            "sfortunata": "Sfortunato",
+            "fiduciosa": "Fiducioso",
+            "indecisa": "Indeciso",
+            "avventata": "Avventato",
+            "invidiosa": "Invidioso",
+            "manipolatrice": "Manipolatore",
+            "confusa": "Confuso",
+            "orgogliosa": "Orgoglioso"
+        }
+    };
+
     // Testo importato ("Virtù: L'Impiccato Altruista. Attivando...") -> nome ufficiale dell'Arcano ("Altruista"); vuoto se assente
     function matchArcanaValue(text, field) {
         if (!text) return "";
         const clean = String(text).replace(/^(Virtù|Hubris|Superbia):\s*/i, '').trim();
         if (!clean) return "";
         const low = clean.toLowerCase();
+        const femMap = ARCANA_FEM_TO_CANONICAL[field] || {};
+        if (femMap[low]) return femMap[low];
         const exact = arcanaDb.find(a => a[field] && a[field].toLowerCase() === low);
         if (exact) return exact[field];
         const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        // il nome che compare per primo nel testo (la descrizione che segue può contenere altre parole)
+        // il nome che compare per primo nel testo (la descrizione che segue può contenere altre parole);
+        // supporta sia la forma canonica maschile sia gli alias femminili che puntano alla stessa voce maschile
         let best = null, bestPos = Infinity;
+        const candidates = [];
         arcanaDb.forEach(a => {
-            if (!a[field]) return;
-            const m = new RegExp('(^|[\\s\'’])' + esc(a[field].toLowerCase()) + '($|[\\s.,;:!])').exec(low);
-            if (m && m.index < bestPos) { bestPos = m.index; best = a; }
+            if (a[field]) candidates.push({ term: a[field].toLowerCase(), canonical: a[field] });
         });
-        return best ? best[field] : clean.slice(0, 30);
+        Object.entries(femMap).forEach(([fem, canon]) => {
+            candidates.push({ term: fem, canonical: canon });
+        });
+        candidates.forEach(c => {
+            const m = new RegExp('(^|[\\s\'’])' + esc(c.term) + '($|[\\s.,;:!])').exec(low);
+            if (m && m.index < bestPos) { bestPos = m.index; best = c.canonical; }
+        });
+        return best ? best : clean.slice(0, 30);
     }
 
     // Riquadri Virtù e Superbia in scheda: sempre i valori del personaggio (anche all'apertura, non solo al cambio)
@@ -3726,6 +4263,43 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         if (vDesc) vDesc.innerText = arcV ? (arcV.virtueDesc || `Dall'Arcano ${arcV.arcanum}.`) : (v ? "" : "Nessuna Virtù selezionata.");
         if (hName) hName.innerText = h || "-- Seleziona --";
         if (hDesc) hDesc.innerText = arcH ? (arcH.hubrisDesc || `Dall'Arcano ${arcH.arcanum}.`) : (h ? "" : "Nessuna Superbia selezionata.");
+
+        const selVirtue = document.getElementById('sel-virtue');
+        if (selVirtue) selVirtue.value = v;
+        const selHubris = document.getElementById('sel-hubris');
+        if (selHubris) selHubris.value = h;
+
+        const vBtnLabel = document.getElementById('virtue-custom-btn-label');
+        if (vBtnLabel) {
+            if (!v) {
+                vBtnLabel.textContent = "-- Seleziona Virtù --";
+                vBtnLabel.className = 'truncate text-gray-400';
+            } else {
+                vBtnLabel.textContent = arcV ? `${v} (${arcV.arcanum})` : v;
+                vBtnLabel.className = 'truncate text-emerald-300 font-semibold';
+            }
+        }
+        const vSum = document.getElementById('virtue-summary');
+        if (vSum) {
+            vSum.innerText = arcV ? (arcV.virtueDesc || '') : '';
+            vSum.title = arcV ? (arcV.virtueDesc || '') : '';
+        }
+
+        const hBtnLabel = document.getElementById('hubris-custom-btn-label');
+        if (hBtnLabel) {
+            if (!h) {
+                hBtnLabel.textContent = "-- Seleziona Superbia --";
+                hBtnLabel.className = 'truncate text-gray-400';
+            } else {
+                hBtnLabel.textContent = arcH ? `${h} (${arcH.arcanum})` : h;
+                hBtnLabel.className = 'truncate text-rose-300 font-semibold';
+            }
+        }
+        const hSum = document.getElementById('hubris-summary');
+        if (hSum) {
+            hSum.innerText = arcH ? (arcH.hubrisDesc || '') : '';
+            hSum.title = arcH ? (arcH.hubrisDesc || '') : '';
+        }
     }
 
     function onVirtueChange(val) {
@@ -4155,11 +4729,13 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
     // RENDER SCUOLA DI SCHERMA E MANOVRE DI DUELLO (MANUALE BASE PAG. 234-239, NAZIONI VOL. 1 & VOL. 2)
     function hasCharacterAdvantage(advName) {
         if (!character || !Array.isArray(character.advantages)) return false;
-        const target = advName.toLowerCase().trim().replace(/’/g, "'");
+        if (window.seventhSeaRules && typeof window.seventhSeaRules.hasAdvantage === 'function') {
+            return window.seventhSeaRules.hasAdvantage(character, advName);
+        }
+        const target = canonicalizeAdvKey(advName, true);
         return character.advantages.some(a => {
             if (!a || !a.name) return false;
-            const n = a.name.toLowerCase().trim().replace(/’/g, "'");
-            return n === target || n.startsWith(target + " (");
+            return canonicalizeAdvKey(a.name, true) === target;
         });
     }
 
@@ -4185,7 +4761,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
     }
 
     function switchActiveDuelingStyle(styleName, spendPE = false) {
-        if (!styleName || !duelingStylesDb[styleName]) return;
+        if (!styleName || !getDuelingStyleDef(styleName)) return;
         if (spendPE) {
             const curPE = parseInt(character.heroPoints) || 0;
             if (curPE < 1) {
@@ -4378,7 +4954,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                 };
             }
             case "STYLE_MANEUVER": {
-                const st = duelingStylesDb[activeStyle];
+                const st = getDuelingStyleDef(activeStyle);
                 if (!st || activeStyle === "Nessuna") return null;
                 let calcText = st.cost;
                 let cRaises = 1;
@@ -4439,6 +5015,9 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                     cRaises = 0;
                 } else if (activeStyle === "Le Strade") {
                     calcText = `Previene ${athletics} Ferite (Atletica) + Conseguenza ambientale per l'avversario (${finesse} Ferite di Grazia a fine Round se non spende 1 Incr., Max 1/Round)`;
+                } else if (activeStyle === "Lakedaimon Agoge") {
+                    calcText = `[Descrittivo — automazione futura] Con un arco usa Mira invece di Mischia; sostituisce Affondo con Colpo dell'Agoge (Mira + Incrementi spesi, poi Recuperare nella prossima Azione con 1 Incremento).`;
+                    cRaises = 0;
                 }
                 return {
                     name: st.maneuver,
@@ -4528,7 +5107,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
     function renderDuelingStyle() {
         normalizeCharacterDuelingState(character);
         const styleName = character.duelingStyle || "Nessuna";
-        const style = duelingStylesDb[styleName] || duelingStylesDb["Nessuna"];
+        const style = getDuelingStyleDef(styleName) || duelingStylesDb["Nessuna"];
         const titleEl = document.getElementById('dueling-style-title');
         const weaponsEl = document.getElementById('dueling-weapons-desc');
         const costEl = document.getElementById('dueling-cost-badge');
@@ -6128,7 +6707,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                     <div class="space-y-1.5">
                         <div class="flex flex-wrap items-center justify-between gap-1 border-b border-[#292238] pb-1.5">
                             <div>
-                                <b class="text-purple-200 text-xs md:text-sm font-bold">${item.name}</b>
+                                <b class="text-purple-200 text-xs md:text-sm font-bold">${item.name}${item.detail ? ` (${escS7Html(item.detail)})` : ''}</b>
                                 <span class="text-[10px] text-purple-300 bg-purple-950/80 border border-purple-700/50 px-1.5 py-0.5 rounded ml-1">${item.type || 'Potere'}</span>
                             </div>
                             <div class="flex items-center gap-1.5">
@@ -6151,6 +6730,12 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                 + Aggiungi Potere (${currentSorc.powers.length} Ufficiali)
             </button>
         `;
+
+        const officialNoteHtml = (meta && meta.officialHeroSorceryNote) ? `
+            <div class="bg-[#181428] border border-purple-500/35 rounded-xl px-3 py-2 text-[11px] text-purple-100/90 leading-relaxed">
+                <b class="text-amber-300">📜 Nota Ufficiale dal Manuale:</b> ${escS7Html(meta.officialHeroSorceryNote)}
+            </div>
+        ` : '';
 
         container.innerHTML = `
             <div class="sheet-card rounded-xl p-3.5 md:p-4 border-purple-500/30 bg-[#141320] space-y-3">
@@ -6175,6 +6760,8 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                         ${addBtn}
                     </div>
                 </div>
+
+                ${officialNoteHtml}
 
                 ${dashboardHtml}
 
@@ -6541,14 +7128,35 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         const bg0 = document.getElementById('bg-custom-dropdown-0');
         const bg1 = document.getElementById('bg-custom-dropdown-1');
         const st = document.getElementById('style-custom-dropdown');
+        const vt = document.getElementById('virtue-custom-dropdown');
+        const hb = document.getElementById('hubris-custom-dropdown');
         const isAnyOpen = (bg0 && !bg0.classList.contains('hidden')) ||
                           (bg1 && !bg1.classList.contains('hidden')) ||
-                          (st && !st.classList.contains('hidden'));
+                          (st && !st.classList.contains('hidden')) ||
+                          (vt && !vt.classList.contains('hidden')) ||
+                          (hb && !hb.classList.contains('hidden'));
         if (isAnyOpen) {
             wizardPanel.classList.add('has-dropdown-open');
         } else {
             wizardPanel.classList.remove('has-dropdown-open');
         }
+    }
+
+    function closeAllWizardCustomDropdowns(exceptId) {
+        const pairs = [
+            ['bg-custom-dropdown-0', 'bg-custom-chevron-0'],
+            ['bg-custom-dropdown-1', 'bg-custom-chevron-1'],
+            ['style-custom-dropdown', 'style-custom-chevron'],
+            ['virtue-custom-dropdown', 'virtue-custom-chevron'],
+            ['hubris-custom-dropdown', 'hubris-custom-chevron']
+        ];
+        pairs.forEach(([ddId, chevId]) => {
+            if (ddId === exceptId) return;
+            const dd = document.getElementById(ddId);
+            const chev = document.getElementById(chevId);
+            if (dd) dd.classList.add('hidden');
+            if (chev) chev.style.transform = 'rotate(0deg)';
+        });
     }
 
     // STATI FILTRO PER SORGENTE MANUALE (Base / Vol. 1 / Vol. 2)
@@ -6585,25 +7193,11 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
 
     // LOGICA MENU A TENDINA PERSONALIZZATO BACKGROUND & POPUP LATERALE HOVER
     function toggleBgCustomDropdown(slot) {
-        const dd0 = document.getElementById('bg-custom-dropdown-0');
-        const dd1 = document.getElementById('bg-custom-dropdown-1');
-        const chev0 = document.getElementById('bg-custom-chevron-0');
-        const chev1 = document.getElementById('bg-custom-chevron-1');
-        
-        const target = slot === 0 ? dd0 : dd1;
-        const other = slot === 0 ? dd1 : dd0;
-        const targetChev = slot === 0 ? chev0 : chev1;
-        const otherChev = slot === 0 ? chev1 : chev0;
+        const targetId = `bg-custom-dropdown-${slot}`;
+        const target = document.getElementById(targetId);
+        const targetChev = document.getElementById(`bg-custom-chevron-${slot}`);
 
-        if (other) other.classList.add('hidden');
-        if (otherChev) otherChev.style.transform = 'rotate(0deg)';
-
-        // Chiudi anche menu stili se aperto
-        const stDd = document.getElementById('style-custom-dropdown');
-        const stChev = document.getElementById('style-custom-chevron');
-        if (stDd) stDd.classList.add('hidden');
-        if (stChev) stChev.style.transform = 'rotate(0deg)';
-
+        closeAllWizardCustomDropdowns(targetId);
         hideBgHoverPopup();
 
         if (target) {
@@ -6798,13 +7392,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
     function toggleStyleCustomDropdown() {
         const dd = document.getElementById('style-custom-dropdown');
         const chev = document.getElementById('style-custom-chevron');
-        // Chiudi eventuali dropdown background aperti
-        [0, 1].forEach(slot => {
-            const bgDd = document.getElementById(`bg-custom-dropdown-${slot}`);
-            const bgChev = document.getElementById(`bg-custom-chevron-${slot}`);
-            if (bgDd) bgDd.classList.add('hidden');
-            if (bgChev) bgChev.style.transform = 'rotate(0deg)';
-        });
+        closeAllWizardCustomDropdowns('style-custom-dropdown');
         hideBgHoverPopup();
 
         if (dd) {
@@ -6950,7 +7538,266 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         hideBgHoverPopup();
     }
 
-    // Chiudi dropdown background e stili cliccando all'esterno
+    // LOGICA MENU A TENDINA PERSONALIZZATO VIRTÙ & HUBRIS (ARCANI) & POPUP LATERALE HOVER
+    function toggleVirtueCustomDropdown() {
+        const dd = document.getElementById('virtue-custom-dropdown');
+        const chev = document.getElementById('virtue-custom-chevron');
+        closeAllWizardCustomDropdowns('virtue-custom-dropdown');
+        hideBgHoverPopup();
+
+        if (dd) {
+            const isHidden = dd.classList.contains('hidden');
+            if (isHidden) {
+                dd.classList.remove('hidden');
+                if (chev) chev.style.transform = 'rotate(180deg)';
+                const searchInp = document.getElementById('virtue-search-inp');
+                if (searchInp) {
+                    searchInp.value = '';
+                    filterVirtueCustomDropdown('');
+                    setTimeout(() => searchInp.focus(), 50);
+                }
+            } else {
+                dd.classList.add('hidden');
+                if (chev) chev.style.transform = 'rotate(0deg)';
+            }
+        }
+        updateDropdownWizardZIndex();
+    }
+
+    function filterVirtueCustomDropdown(query) {
+        const inp = document.getElementById('virtue-search-inp');
+        const q = (query !== undefined ? query : (inp ? inp.value : '')).toLowerCase().trim();
+        const list = document.getElementById('virtue-custom-list');
+        if (!list) return;
+
+        const items = list.querySelectorAll('.virtue-dropdown-item');
+        items.forEach(el => {
+            const isNone = el.hasAttribute('data-virtue-none');
+            if (isNone) {
+                el.style.display = (!q || 'nessuna'.includes(q) || 'deseleziona'.includes(q)) ? '' : 'none';
+                return;
+            }
+            const name = (el.getAttribute('data-virtue-name') || '').toLowerCase();
+            const arc = (el.getAttribute('data-virtue-arcanum') || '').toLowerCase();
+            const desc = (el.getAttribute('data-virtue-desc') || '').toLowerCase();
+            el.style.display = (!q || name.includes(q) || arc.includes(q) || desc.includes(q)) ? '' : 'none';
+        });
+    }
+
+    function selectVirtueCustom(virtueName) {
+        const val = virtueName || "";
+        const sel = document.getElementById('sel-virtue');
+        if (sel) sel.value = val;
+        onVirtueChange(val);
+        const dd = document.getElementById('virtue-custom-dropdown');
+        if (dd) dd.classList.add('hidden');
+        const chev = document.getElementById('virtue-custom-chevron');
+        if (chev) chev.style.transform = 'rotate(0deg)';
+        hideVirtueHoverPopup();
+        updateDropdownWizardZIndex();
+    }
+
+    function showVirtueHoverPopup(virtueName, event) {
+        const popup = document.getElementById('bg-hover-popup');
+        if (!popup) return;
+        const arc = arcanaDb.find(a => a.virtue === virtueName);
+        if (!arc) {
+            popup.classList.add('hidden');
+            return;
+        }
+
+        popup.innerHTML = `
+            <div class="flex items-start justify-between gap-2 border-b border-[#232838] pb-1.5">
+                <div>
+                    <h4 class="text-xs md:text-sm font-bold text-emerald-300 flex items-center gap-1.5">
+                        <span>✨</span> Virtù: ${escapeHtml(arc.virtue)}
+                    </h4>
+                    <p class="text-[10px] text-emerald-400/90 font-semibold pt-0.5">📖 Manuale Base (Passo 6: Arcani, pagg. 156–158)</p>
+                </div>
+                <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-[#1a2030] text-amber-300 border border-amber-500/40 whitespace-nowrap">
+                    🃏 ${escapeHtml(arc.arcanum)}
+                </span>
+            </div>
+
+            <div class="bg-[#12151f] p-2 rounded-lg border border-emerald-500/40 space-y-1">
+                <div class="flex items-center justify-between gap-1">
+                    <b class="text-emerald-300 text-[11px] flex items-center gap-1">
+                        <span>🌟</span> Effetto della Virtù
+                    </b>
+                    <span class="text-[9px] text-emerald-300 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-600/40 font-bold">1 / Sessione • 0 PE</span>
+                </div>
+                <p class="text-gray-200 leading-snug text-[10.5px]">${escapeHtml(arc.virtueDesc || '')}</p>
+            </div>
+
+            <div class="bg-[#151822] p-1.5 rounded-lg border border-[#272e3d] text-[10px] text-gray-300 space-y-0.5">
+                <b class="text-amber-300 flex items-center gap-1">
+                    <span>⚖️</span> Regola di Attivazione:
+                </b>
+                <p class="text-gray-300 leading-tight text-[10px]">Le Virtù possono essere usate solo una volta a sessione, non richiedono alcun costo (non consumano Punti Eroe) e funzionano nelle circostanze specifiche descritte.</p>
+            </div>
+
+            <div class="text-[9.5px] text-gray-400 border-t border-[#232838] pt-1 flex items-center justify-between">
+                <span>Superbia della stessa carta: <b class="text-rose-300">${escapeHtml(arc.hubris)}</b></span>
+                <span class="italic text-gray-500">(Scelta libera tra i 20 Arcani)</span>
+            </div>
+        `;
+
+        const targetEl = (event && (event.currentTarget || event.target)) || document.getElementById('virtue-custom-btn');
+        const rect = targetEl ? targetEl.getBoundingClientRect() : { right: 200, left: 100, top: 100 };
+        const popupWidth = 360;
+        const popupHeight = 260;
+
+        let left = rect.right + 12;
+        if (left + popupWidth > window.innerWidth - 10) {
+            left = rect.left - popupWidth - 12;
+        }
+        if (left < 10) left = 10;
+
+        let top = rect.top - 15;
+        if (top + popupHeight > window.innerHeight - 10) {
+            top = window.innerHeight - popupHeight - 10;
+        }
+        if (top < 10) top = 10;
+
+        popup.style.left = `${left}px`;
+        popup.style.top = `${top}px`;
+        popup.classList.remove('hidden');
+    }
+
+    function hideVirtueHoverPopup() {
+        hideBgHoverPopup();
+    }
+
+    function toggleHubrisCustomDropdown() {
+        const dd = document.getElementById('hubris-custom-dropdown');
+        const chev = document.getElementById('hubris-custom-chevron');
+        closeAllWizardCustomDropdowns('hubris-custom-dropdown');
+        hideBgHoverPopup();
+
+        if (dd) {
+            const isHidden = dd.classList.contains('hidden');
+            if (isHidden) {
+                dd.classList.remove('hidden');
+                if (chev) chev.style.transform = 'rotate(180deg)';
+                const searchInp = document.getElementById('hubris-search-inp');
+                if (searchInp) {
+                    searchInp.value = '';
+                    filterHubrisCustomDropdown('');
+                    setTimeout(() => searchInp.focus(), 50);
+                }
+            } else {
+                dd.classList.add('hidden');
+                if (chev) chev.style.transform = 'rotate(0deg)';
+            }
+        }
+        updateDropdownWizardZIndex();
+    }
+
+    function filterHubrisCustomDropdown(query) {
+        const inp = document.getElementById('hubris-search-inp');
+        const q = (query !== undefined ? query : (inp ? inp.value : '')).toLowerCase().trim();
+        const list = document.getElementById('hubris-custom-list');
+        if (!list) return;
+
+        const items = list.querySelectorAll('.hubris-dropdown-item');
+        items.forEach(el => {
+            const isNone = el.hasAttribute('data-hubris-none');
+            if (isNone) {
+                el.style.display = (!q || 'nessuna'.includes(q) || 'deseleziona'.includes(q)) ? '' : 'none';
+                return;
+            }
+            const name = (el.getAttribute('data-hubris-name') || '').toLowerCase();
+            const arc = (el.getAttribute('data-hubris-arcanum') || '').toLowerCase();
+            const desc = (el.getAttribute('data-hubris-desc') || '').toLowerCase();
+            el.style.display = (!q || name.includes(q) || arc.includes(q) || desc.includes(q)) ? '' : 'none';
+        });
+    }
+
+    function selectHubrisCustom(hubrisName) {
+        const val = hubrisName || "";
+        const sel = document.getElementById('sel-hubris');
+        if (sel) sel.value = val;
+        onHubrisChange(val);
+        const dd = document.getElementById('hubris-custom-dropdown');
+        if (dd) dd.classList.add('hidden');
+        const chev = document.getElementById('hubris-custom-chevron');
+        if (chev) chev.style.transform = 'rotate(0deg)';
+        hideHubrisHoverPopup();
+        updateDropdownWizardZIndex();
+    }
+
+    function showHubrisHoverPopup(hubrisName, event) {
+        const popup = document.getElementById('bg-hover-popup');
+        if (!popup) return;
+        const arc = arcanaDb.find(a => a.hubris === hubrisName);
+        if (!arc) {
+            popup.classList.add('hidden');
+            return;
+        }
+
+        popup.innerHTML = `
+            <div class="flex items-start justify-between gap-2 border-b border-[#232838] pb-1.5">
+                <div>
+                    <h4 class="text-xs md:text-sm font-bold text-rose-300 flex items-center gap-1.5">
+                        <span>🔥</span> Superbia / Hubris: ${escapeHtml(arc.hubris)}
+                    </h4>
+                    <p class="text-[10px] text-rose-400/90 font-semibold pt-0.5">📖 Manuale Base (Passo 6: Arcani, pagg. 156–158)</p>
+                </div>
+                <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-[#1a2030] text-amber-300 border border-amber-500/40 whitespace-nowrap">
+                    🃏 ${escapeHtml(arc.arcanum)}
+                </span>
+            </div>
+
+            <div class="bg-[#12151f] p-2 rounded-lg border border-rose-500/40 space-y-1">
+                <div class="flex items-center justify-between gap-1">
+                    <b class="text-rose-300 text-[11px] flex items-center gap-1">
+                        <span>⚡</span> Innesco dell'Hubris
+                    </b>
+                    <span class="text-[9px] text-rose-200 bg-rose-950/80 px-1.5 py-0.2 rounded border border-rose-600/40 font-bold">1 / Sessione • +1 PE</span>
+                </div>
+                <p class="text-gray-200 leading-snug text-[10.5px]">${escapeHtml(arc.hubrisDesc || '')}</p>
+            </div>
+
+            <div class="bg-[#151822] p-1.5 rounded-lg border border-[#272e3d] text-[10px] text-gray-300 space-y-0.5">
+                <b class="text-amber-300 flex items-center gap-1">
+                    <span>⚖️</span> Regola di Attivazione:
+                </b>
+                <p class="text-gray-300 leading-tight text-[10px]">Si può attivare solo una volta per sessione guadagnando 1 Punto Eroe (anche su offerta del GM, che il giocatore può rifiutare).</p>
+            </div>
+
+            <div class="text-[9.5px] text-gray-400 border-t border-[#232838] pt-1 flex items-center justify-between">
+                <span>Virtù della stessa carta: <b class="text-emerald-300">${escapeHtml(arc.virtue)}</b></span>
+                <span class="italic text-gray-500">(Scelta libera tra i 20 Arcani)</span>
+            </div>
+        `;
+
+        const targetEl = (event && (event.currentTarget || event.target)) || document.getElementById('hubris-custom-btn');
+        const rect = targetEl ? targetEl.getBoundingClientRect() : { right: 200, left: 100, top: 100 };
+        const popupWidth = 360;
+        const popupHeight = 260;
+
+        let left = rect.right + 12;
+        if (left + popupWidth > window.innerWidth - 10) {
+            left = rect.left - popupWidth - 12;
+        }
+        if (left < 10) left = 10;
+
+        let top = rect.top - 15;
+        if (top + popupHeight > window.innerHeight - 10) {
+            top = window.innerHeight - popupHeight - 10;
+        }
+        if (top < 10) top = 10;
+
+        popup.style.left = `${left}px`;
+        popup.style.top = `${top}px`;
+        popup.classList.remove('hidden');
+    }
+
+    function hideHubrisHoverPopup() {
+        hideBgHoverPopup();
+    }
+
+    // Chiudi dropdown background, stili, virtù e hubris cliccando all'esterno
     document.addEventListener('click', (e) => {
         let changed = false;
         [0, 1].forEach(slot => {
@@ -6974,6 +7821,28 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                 stDd.classList.add('hidden');
                 if (stChev) stChev.style.transform = 'rotate(0deg)';
                 hideStyleHoverPopup();
+                changed = true;
+            }
+        }
+        const vtWrapper = document.getElementById('virtue-selector-wrapper');
+        const vtDd = document.getElementById('virtue-custom-dropdown');
+        const vtChev = document.getElementById('virtue-custom-chevron');
+        if (vtWrapper && vtDd && !vtWrapper.contains(e.target)) {
+            if (!vtDd.classList.contains('hidden')) {
+                vtDd.classList.add('hidden');
+                if (vtChev) vtChev.style.transform = 'rotate(0deg)';
+                hideVirtueHoverPopup();
+                changed = true;
+            }
+        }
+        const hbWrapper = document.getElementById('hubris-selector-wrapper');
+        const hbDd = document.getElementById('hubris-custom-dropdown');
+        const hbChev = document.getElementById('hubris-custom-chevron');
+        if (hbWrapper && hbDd && !hbWrapper.contains(e.target)) {
+            if (!hbDd.classList.contains('hidden')) {
+                hbDd.classList.add('hidden');
+                if (hbChev) hbChev.style.transform = 'rotate(0deg)';
+                hideHubrisHoverPopup();
                 changed = true;
             }
         }
@@ -7134,6 +8003,38 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                 selVirtue.appendChild(optV);
             });
 
+            const customVirtueList = document.getElementById('virtue-custom-list');
+            if (customVirtueList) {
+                const renderVirtueItem = (a) => {
+                    const safeName = a.virtue.replace(/'/g, "\\'");
+                    return `
+                        <div onclick="selectVirtueCustom('${safeName}')"
+                             onmouseenter="showVirtueHoverPopup('${safeName}', event)"
+                             onmouseleave="hideVirtueHoverPopup()"
+                             class="virtue-dropdown-item px-3 py-2 cursor-pointer hover:bg-[#1a2030] hover:text-emerald-300 text-gray-200 text-xs flex items-center justify-between transition-colors group"
+                             data-virtue-name="${escapeHtml(a.virtue)}"
+                             data-virtue-arcanum="${escapeHtml(a.arcanum)}"
+                             data-virtue-desc="${escapeHtml(a.virtueDesc || '')}">
+                            <div class="flex flex-col min-w-0 pr-2">
+                                <span class="font-bold text-emerald-300 group-hover:text-emerald-200 truncate">✨ ${escapeHtml(a.virtue)}</span>
+                                <span class="text-[10px] text-gray-400 truncate">${escapeHtml(a.virtueDesc || '')}</span>
+                            </div>
+                            <span class="text-[9px] px-1.5 py-0.5 rounded bg-[#151822] border border-[#2b3242] text-amber-300/90 group-hover:border-emerald-500/40 flex-shrink-0">🃏 ${escapeHtml(a.arcanum)}</span>
+                        </div>
+                    `;
+                };
+                customVirtueList.innerHTML = `
+                    <div onclick="selectVirtueCustom('')" onmouseenter="hideVirtueHoverPopup()" class="virtue-dropdown-item px-3 py-2 cursor-pointer hover:bg-[#1a2030] text-gray-400 text-xs italic transition-colors" data-virtue-none="true" data-virtue-name="" data-virtue-arcanum="" data-virtue-desc="">
+                        -- Nessuna Virtù (Deseleziona) --
+                    </div>
+                    <div class="s7-dropdown-header-divider">
+                        <span>🃏 MAZZO DELLA SORTE (MANUALE BASE)</span>
+                        <span class="text-[9px] text-emerald-400/90 font-semibold">${sortedVirtues.length} virtù</span>
+                    </div>
+                    ${sortedVirtues.map(renderVirtueItem).join('')}
+                `;
+            }
+
             // Superbia (Hubris) in ordine alfabetico
             const sortedHubris = [...arcanaDb].sort((a, b) => a.hubris.localeCompare(b.hubris, 'it', { sensitivity: 'base' }));
             sortedHubris.forEach(a => {
@@ -7142,6 +8043,38 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
                 optH.innerText = `${a.hubris} (${a.arcanum})`;
                 selHubris.appendChild(optH);
             });
+
+            const customHubrisList = document.getElementById('hubris-custom-list');
+            if (customHubrisList) {
+                const renderHubrisItem = (a) => {
+                    const safeName = a.hubris.replace(/'/g, "\\'");
+                    return `
+                        <div onclick="selectHubrisCustom('${safeName}')"
+                             onmouseenter="showHubrisHoverPopup('${safeName}', event)"
+                             onmouseleave="hideHubrisHoverPopup()"
+                             class="hubris-dropdown-item px-3 py-2 cursor-pointer hover:bg-[#1a2030] hover:text-rose-300 text-gray-200 text-xs flex items-center justify-between transition-colors group"
+                             data-hubris-name="${escapeHtml(a.hubris)}"
+                             data-hubris-arcanum="${escapeHtml(a.arcanum)}"
+                             data-hubris-desc="${escapeHtml(a.hubrisDesc || '')}">
+                            <div class="flex flex-col min-w-0 pr-2">
+                                <span class="font-bold text-rose-300 group-hover:text-rose-200 truncate">🔥 ${escapeHtml(a.hubris)}</span>
+                                <span class="text-[10px] text-gray-400 truncate">${escapeHtml(a.hubrisDesc || '')}</span>
+                            </div>
+                            <span class="text-[9px] px-1.5 py-0.5 rounded bg-[#151822] border border-[#2b3242] text-amber-300/90 group-hover:border-rose-500/40 flex-shrink-0">🃏 ${escapeHtml(a.arcanum)}</span>
+                        </div>
+                    `;
+                };
+                customHubrisList.innerHTML = `
+                    <div onclick="selectHubrisCustom('')" onmouseenter="hideHubrisHoverPopup()" class="hubris-dropdown-item px-3 py-2 cursor-pointer hover:bg-[#1a2030] text-gray-400 text-xs italic transition-colors" data-hubris-none="true" data-hubris-name="" data-hubris-arcanum="" data-hubris-desc="">
+                        -- Nessuna Superbia (Deseleziona) --
+                    </div>
+                    <div class="s7-dropdown-header-divider">
+                        <span>🃏 MAZZO DELLA SORTE (MANUALE BASE)</span>
+                        <span class="text-[9px] text-rose-400/90 font-semibold">${sortedHubris.length} superbie</span>
+                    </div>
+                    ${sortedHubris.map(renderHubrisItem).join('')}
+                `;
+            }
         }
 
         const selAdv = document.getElementById('sel-new-adv');
@@ -8304,6 +9237,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         renderSorcery();
         renderStories();
         updateBgDisplays();
+        renderHeroProfile();
         renderHeroEnemyBonusWidget();
         const hpEl = document.getElementById('hero-points');
         if (hpEl) hpEl.innerText = character.heroPoints || 2;
@@ -8337,10 +9271,12 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
         setTuraMarkLocation, setTuraTask, changeTuraTaskActs,
         renderStories, toggleStoryStep, toggleNewStoryForm,
         addNewStoryPrompt, openEditStory, confirmAddNewStory, removeStory,
-        onNationChange, onNationTraitChange, onBgChange, updateBgDisplays, toggleBgCustomDropdown, filterBgCustomDropdown, selectBgCustom, setBgSourceFilter, showBgHoverPopup, hideBgHoverPopup,
+        onNationChange, onNationTraitChange, onBgChange, updateBgDisplays, triggerPeculiarity, renderHeroProfile, resolveCanonicalAdvantage, toggleBgCustomDropdown, filterBgCustomDropdown, selectBgCustom, setBgSourceFilter, showBgHoverPopup, hideBgHoverPopup,
         onStyleChange, toggleStyleCustomDropdown, filterStyleCustomDropdown, selectStyleCustom, setStyleSourceFilter, showStyleHoverPopup, hideStyleHoverPopup,
         setDrexelGuard, setStudiosoManeuverChoice, resetDuelManeuverLock, switchActiveDuelingStyle, activateVeronicaInganno, computeManeuverEffectForHero, executeDuelManeuver,
         onSorceryChange, onVirtueChange, onHubrisChange,
+        toggleVirtueCustomDropdown, filterVirtueCustomDropdown, selectVirtueCustom, showVirtueHoverPopup, hideVirtueHoverPopup,
+        toggleHubrisCustomDropdown, filterHubrisCustomDropdown, selectHubrisCustom, showHubrisHoverPopup, hideHubrisHoverPopup,
         onSecretSocietyChange, changeFavor, spendFavorAction, gainFavorAction,
         openSocietyDetailsModal, closeSocietyDetailsModal, renderSecretSocietyPanel,
         secretSocietiesDb,
@@ -8479,6 +9415,7 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
 
     const seventhSeaSheetManager = {
         open(token = null) {
+            isDetachedPreview = false;
             const target = token || getActiveToken();
             if (!target) {
                 showS7Toast('Seleziona prima il token del tuo Eroe sulla mappa!', "error");
@@ -8634,10 +9571,13 @@ A: "Bel cappotto." — B: "Me lo ha dato Uppman." — A: "Potrebbe stare bene an
             }
         },
 
-        loadHeroData(pcData) {
+        buildHeroPcSheet,
+        getHeroMaxWounds,
+
+        loadHeroData(pcData, opts) {
             const win = ensureS7ModalDOM();
             win.style.display = 'flex';
-            loadHeroData(pcData);
+            loadHeroData(pcData, opts);
         },
 
         changeWealth,

@@ -1339,8 +1339,22 @@ class VTTEngine {
             const showDetailedHp = this.isDM || isControlledByMe;
             const hpStyle = this.hpDisplayStyle || 'bar';
             const showBar = isControlledByMe || hpStyle === 'bar' || hpStyle === 'both';
+            let customHpBarHeight = null;
             
             if (showBar && token.hpMax && token.hpMax > 0) {
+                if (showDetailedHp || token.hpVisibleToPlayers !== false) {
+                    if (typeof window !== 'undefined' && window.systemManager && typeof window.systemManager.drawTokenHpBar === 'function') {
+                        const customRes = window.systemManager.drawTokenHpBar(ctx, token, {
+                            showDetailedHp, isDM: this.isDM, isControlledByMe, hpStyle
+                        });
+                        if (customRes && customRes.handled) {
+                            customHpBarHeight = customRes.barHeight || (showDetailedHp ? 20 : 12);
+                        }
+                    }
+                }
+            }
+
+            if (customHpBarHeight === null && showBar && token.hpMax && token.hpMax > 0) {
                 if (showDetailedHp || token.hpVisibleToPlayers !== false) {
                     const hpMax = token.hpMax;
                     const hpCurr = token.hpCurrent || 0;
@@ -1599,7 +1613,7 @@ class VTTEngine {
                     const hasHpBar = (showDetailedHp || hpStyle === 'bar' || hpStyle === 'both') && 
                                      token.hpMax && token.hpMax > 0 && 
                                      (showDetailedHp || token.hpVisibleToPlayers !== false);
-                    const barHeight = showDetailedHp ? 16 : 10;
+                    const barHeight = (customHpBarHeight !== null) ? customHpBarHeight : (showDetailedHp ? 16 : 10);
                     const barTopY = hasHpBar ? (py + sizePx - barHeight - 3) : (py + sizePx - 2);
 
                     const canShowName = (this.isDM || token.nameVisibleToPlayers !== false) && token.name && token.name.trim() !== '';

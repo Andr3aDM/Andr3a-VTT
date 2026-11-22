@@ -1698,6 +1698,9 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
             color: t.color || null,
             hasStatblock: !!t.statblock,
             statblockName: t.statblock ? t.statblock.name : null,
+            ...((window.systemManager && typeof window.systemManager.getTokenNetworkMeta === 'function')
+                ? (() => { const m = window.systemManager.getTokenNetworkMeta(t); return m ? { sysMeta: m } : {}; })()
+                : {}),
             imgKey: imgKey,
             src: isShortUrl ? cleanSrc : null
         };

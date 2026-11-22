@@ -637,17 +637,68 @@
         }
     }
 
+    // Mappa canonica centrale: tutte le varianti femminili e gli alias ufficiali fanno capo
+    // alla singola voce maschile/canonica di advantagesDb (nessun duplicato nei cataloghi).
+    const ADVANTAGE_ALIAS_TO_CANONICAL = {
+        "bevitrice emerita": "bevitore emerito",
+        "consacrata": "consacrato",
+        "dura da uccidere": "duro da uccidere",
+        "esperta di sopravvivenza": "esperto di sopravvivenza",
+        "minuta": "minuto",
+        "ricca": "ricco",
+        "rissosa": "rissoso",
+        "scafata": "scafato",
+        "sola contro tutti": "solo contro tutti",
+        "sposata al mare": "sposato al mare",
+        "schermitrice": "schermidore",
+        "cecchina": "cecchino",
+        "pugilatrice": "pugilatore",
+        "fiduciosa": "fiducioso",
+        "nata in sella": "nato in sella",
+        "duellante esperta": "duellante esperto",
+        "studiosa di lotta": "studioso di lotta",
+        "non siamo poi tanto diversi...": "non siamo poi così diversi",
+        "non siamo poi tanto diversi": "non siamo poi così diversi",
+        "tutto può essere un'arma se usato nel modo giusto": "tutto è un'arma se usato nel modo giusto"
+    };
+
+    function canonicalizeAdvantageName(name, stripDetail = true) {
+        if (!name) return "";
+        let s = String(name)
+            .toLowerCase()
+            .replace(/[’‘`´]/g, "'")
+            .replace(/…/g, "...")
+            .replace(/\s+/g, " ")
+            .trim();
+        if (stripDetail) {
+            // Rimuove suffisso di dettaglio tra parentesi o dopo ":" (es. "Sala d'Armi: Aldana", "Fama (Eroico)")
+            const cutIdx = (() => {
+                const iCol = s.indexOf(":");
+                const iPar = s.indexOf(" (");
+                if (iCol >= 0 && iPar >= 0) return Math.min(iCol, iPar);
+                if (iCol >= 0) return iCol;
+                if (iPar >= 0) return iPar;
+                return -1;
+            })();
+            if (cutIdx > 0) s = s.slice(0, cutIdx).trim();
+        }
+        return ADVANTAGE_ALIAS_TO_CANONICAL[s] || s;
+    }
+
     function hasAdvantage(charObj, name) {
         if (!charObj || !Array.isArray(charObj.advantages)) return false;
-        const target = name.toLowerCase().trim();
+        const targetFull = canonicalizeAdvantageName(name, false);
+        const targetBase = canonicalizeAdvantageName(name, true);
+        if (!targetBase) return false;
         return charObj.advantages.some(a => {
-            if (!a || !a.name) return false;
-            const n = a.name.toLowerCase().trim();
-            if (n === target) return true;
-            // Supporta varianti con apostrofo tipografico e specificazione tra parentesi es. "Sala d’Armi (De Vore)"
-            const normN = n.replace(/’/g, "'");
-            const normTarget = target.replace(/’/g, "'");
-            return normN === normTarget || normN.startsWith(normTarget + ' (');
+            const raw = typeof a === 'string' ? a : (a && a.name ? a.name : '');
+            if (!raw) return false;
+            const advFull = canonicalizeAdvantageName(raw, false);
+            const advBase = canonicalizeAdvantageName(raw, true);
+            if (advFull === targetFull) return true;
+            // Se il chiamante cerca il nome base (senza dettaglio), matcha sia il nome esatto che con dettaglio "(" o ":"
+            if (targetFull === targetBase && advBase === targetBase) return true;
+            return false;
         });
     }
 
@@ -712,9 +763,7 @@
         const dw = sheet.dramaticWounds;
         let bonus = 0;
         if (dw[1]) bonus += 2;
-        const hasDuro = Array.isArray(sheet.advantages) && sheet.advantages.some(a => 
-            (a.name || '').toLowerCase().trim().includes('duro da uccidere')
-        );
+        const hasDuro = hasAdvantage(sheet, 'Duro Da Uccidere');
         if (dw[3] && hasDuro) bonus += 1;
         return bonus;
     }
@@ -722,9 +771,7 @@
     function getEnemyBonusBreakdown(sheet) {
         if (!sheet || !Array.isArray(sheet.dramaticWounds)) return "";
         const dw = sheet.dramaticWounds;
-        const hasDuro = Array.isArray(sheet.advantages) && sheet.advantages.some(a => 
-            (a.name || '').toLowerCase().trim().includes('duro da uccidere')
-        );
+        const hasDuro = hasAdvantage(sheet, 'Duro Da Uccidere');
         if (dw[3] && hasDuro) return "2ª FD (+2) + 4ª FD Duro da Uccidere (+1)";
         if (dw[1]) return "2ª FD (+2 Nemici)";
         return "";
@@ -809,6 +856,7 @@
         broadcastAdvantageActivationToVttChat,
         broadcastDuelManeuverToVttChat,
         broadcastSecretSocietyFavorToVttChat,
+        canonicalizeAdvantageName,
         hasAdvantage,
         getActiveInstitute,
         CONTEXTUAL_BONUS_ADVANTAGES,

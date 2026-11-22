@@ -778,7 +778,28 @@ const dict = {
     "⚙️ Link": "⚙️ Link",
     "🔗 1. Apri Dati": "🔗 1. Open Data",
     "📋 2. Incolla Appunti": "📋 2. Paste Clipboard",
-    "Nessun token ti è ancora stato assegnato dal Master sulla mappa!": "No token has been assigned to you by the GM on the map yet!"
+    "Nessun token ti è ancora stato assegnato dal Master sulla mappa!": "No token has been assigned to you by the GM on the map yet!",
+    "Virtù (Sorte Deck)": "Virtue (Sorte Deck)",
+    "Superbia / Hubris": "Hubris",
+    "Passa il mouse per info": "Hover for info",
+    "-- Seleziona Virtù --": "-- Select Virtue --",
+    "-- Seleziona Superbia --": "-- Select Hubris --",
+    "Virtù attiva": "Active Virtue",
+    "Superbia / Hubris attiva": "Active Hubris",
+    "🔍 Cerca Virtù o Arcano...": "🔍 Search Virtue or Arcanum...",
+    "🔍 Cerca Superbia o Arcano...": "🔍 Search Hubris or Arcanum...",
+    "-- Nessuna Virtù (Deseleziona) --": "-- No Virtue (Deselect) --",
+    "-- Nessuna Superbia (Deseleziona) --": "-- No Hubris (Deselect) --",
+    "🃏 MAZZO DELLA SORTE (MANUALE BASE)": "🃏 SORTE DECK (CORE RULEBOOK)",
+    "📖 Manuale Base (Passo 6: Arcani, pagg. 156–158)": "📖 Core Rulebook (Step 6: Arcana, pp. 156–158)",
+    "Effetto della Virtù": "Virtue Effect",
+    "Innesco dell'Hubris": "Hubris Trigger",
+    "1 / Sessione • 0 PE": "1 / Session • 0 HP",
+    "1 / Sessione • +1 PE": "1 / Session • +1 HP",
+    "Regola di Attivazione:": "Activation Rule:",
+    "Le Virtù possono essere usate solo una volta a sessione, non richiedono alcun costo (non consumano Punti Eroe) e funzionano nelle circostanze specifiche descritte.": "Virtues can only be used once per session, require no cost (do not spend Hero Points), and work in the specific circumstances described.",
+    "Si può attivare solo una volta per sessione guadagnando 1 Punto Eroe (anche su offerta del GM, che il giocatore può rifiutare).": "Can only be activated once per session to gain 1 Hero Point (including when offered by the GM, which the player may refuse).",
+    "(Scelta libera tra i 20 Arcani)": "(Free choice among the 20 Arcana)"
 };
 
 const dynamicPatterns = [
