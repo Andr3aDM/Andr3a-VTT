@@ -1602,6 +1602,7 @@ function syncState(force = false, sendFullImages = false, targetPeerId = null) {
     }
     if (!targetPeerId) {
         lastSyncTime = now;
+        if (typeof reconcileSecretAreaCombatSession === 'function') reconcileSecretAreaCombatSession();
         if (!isSuppressingDirty && currentMapBase64) {
             markMapDirty(true);
         }
@@ -1876,14 +1877,14 @@ if (mapUploadEl) {
 const mainCanvasDropArea = document.getElementById('main-canvas-container');
 if (mainCanvasDropArea) {
     mainCanvasDropArea.addEventListener('dragover', (e) => {
-        if (e.target && e.target.closest && e.target.closest('#token-panel, #compendium-panel, #shared-images-panel, #pc-sheet-modal')) return;
+        if (e.target && e.target.closest && e.target.closest('#token-panel, #compendium-panel, #shared-images-panel, #pc-sheet-modal, #dm-secret-area-window')) return;
         if (e.dataTransfer && e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files')) {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'copy';
         }
     });
     mainCanvasDropArea.addEventListener('drop', (e) => {
-        if (e.target && e.target.closest && e.target.closest('#token-panel, #compendium-panel, #shared-images-panel, #pc-sheet-modal')) return;
+        if (e.target && e.target.closest && e.target.closest('#token-panel, #compendium-panel, #shared-images-panel, #pc-sheet-modal, #dm-secret-area-window')) return;
         if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             const file = e.dataTransfer.files[0];
             if (file && file.type && file.type.startsWith('image/')) {
@@ -2193,6 +2194,7 @@ function openNewCampaignModal() {
             currentLoadedMapId = null;
             currentLoadedMapName = "";
             currentCampaignTokens = [];
+            if (typeof resetSecretAreaState === 'function') resetSecretAreaState(true);
 
             const newCamp = await vttDB.addCampaign(name, chosenSys);
             if (window.systemManager) window.systemManager.setActiveSystem(chosenSys);
@@ -2331,6 +2333,7 @@ document.getElementById('campaign-select').addEventListener('change', async (e) 
         currentLoadedMapId = null;
         currentLoadedMapName = "";
         currentCampaignTokens = [];
+        if (typeof resetSecretAreaState === 'function') resetSecretAreaState(true);
 
         currentCampaignId = id;
         currentSelectedFolder = "";
@@ -2470,6 +2473,7 @@ function getEngineMapState() {
     return {
         grid: engine.grid,
         tokens: engine.tokens.map(t => ({...t, imageObj: null})),
+        secretTokens: (typeof getSerializedMapSecretTokens === 'function') ? getSerializedMapSecretTokens() : [],
         shapes: engine.shapes,
         initiative: engine.initiative,
         publicStrokes: engine.publicStrokes,
@@ -2740,6 +2744,9 @@ document.getElementById('btn-load-map').addEventListener('click', async () => {
                 isSuppressingDirty = false;
                 markMapDirty(false);
                 updateLoadedMapIndicator();
+                if (typeof loadMapSecretTokensFromState === 'function') {
+                    loadMapSecretTokensFromState(state.secretTokens);
+                }
                 if (select) {
                     select.value = mapData.id;
                 }
@@ -3534,6 +3541,9 @@ async function loadCampaignTokensFor(campaignId) {
             }
             if (campObj && window.systemManager) {
                 window.systemManager.setActiveSystem(campObj.system || 'dnd5e');
+            }
+            if (typeof loadCampaignSecretTokensFromCampaign === 'function') {
+                loadCampaignSecretTokensFromCampaign(campObj && campObj.secretTokens);
             }
             // Filtra e assicura il tag di appartenenza campaignId
             loaded = loaded.filter(t => !t.campaignId || t.campaignId === campaignId);
@@ -6516,6 +6526,9 @@ function handleMove(e) {
                     }
                 }
             }
+            if (typeof updateSecretAreaDragHover === 'function' && e) {
+                updateSecretAreaDragHover(e.clientX, e.clientY);
+            }
             engine.requestTokenLayerRender();
         } else if (isShape) {
             activeStroke.x = worldPos.x;
@@ -6759,7 +6772,23 @@ function handleEnd(e) {
 
         // Snap per i token (salvo Shift premuto per movimento fluido libero). Le AoE si muovono liberamente e non si "snappano".
         if (isToken) {
-            if (activeStroke._hasMovedDuringDrag) {
+            if (typeof clearSecretAreaDragHover === 'function') clearSecretAreaDragHover();
+            if (activeStroke._hasMovedDuringDrag && e && typeof isPointOverSecretArea === 'function' && isPointOverSecretArea(e.clientX, e.clientY)) {
+                const draggedList = [activeStroke];
+                if (activeStroke._groupDragOffsets && activeStroke._groupDragOffsets.length > 0) {
+                    activeStroke._groupDragOffsets.forEach(item => {
+                        if (item && item.token && !draggedList.includes(item.token)) draggedList.push(item.token);
+                    });
+                }
+                activeStroke._groupDragOffsets = null;
+                activeStroke._hasMovedDuringDrag = false;
+                activeStroke._freeMoveShift = false;
+                activeStroke._shiftTogglePending = false;
+                if (typeof stashTokensToSecretArea === 'function') {
+                    stashTokensToSecretArea(draggedList);
+                }
+                needsTokenLayerRender = true;
+            } else if (activeStroke._hasMovedDuringDrag) {
                 const isFreeMove = !!(e && e.shiftKey) || !!window._vttShiftDown || !!activeStroke._freeMoveShift;
                 const gSize = (engine.grid && engine.grid.size) ? engine.grid.size : 50;
                 const effOffsetX = ((engine.grid && engine.grid.offsetX) || 0) % gSize;
@@ -7239,3 +7268,704 @@ const handoutResizeObserver = new ResizeObserver(() => {
     }
 });
 handoutResizeObserver.observe(document.getElementById('dm-handout-window'));
+
+// =========================================================================
+// AREA SEGRETA (ZONA FRANCA SOLO DM — QUESTA MAPPA & CAMPAGNA)
+// - Invisibile al 100% ai Giocatori (mai in engine.tokens né in STATE_SYNC)
+// - Le auree e gli effetti dei token parcheggiati non toccano mai la mappa
+// - Conserva tutte le proprietà del token (visibilità, PV, auree, condizioni, schede)
+// - Conserva il tiro/posizione in Iniziativa finché lo stesso combattimento è attivo;
+//   se il combattimento finisce/si resetta mentre è nell'Area Segreta, rientra come token normale.
+// =========================================================================
+let mapSecretTokens = [];
+let campaignSecretTokens = [];
+let activeSecretAreaTab = 'map'; // 'map' | 'campaign'
+let secretAreaCollapsed = false;
+let secretAreaExpandedHeight = '500px';
+let draggingSecretTokenRef = null; // { scope, tokenId }
+
+function serializeSecretToken(tok) {
+    if (!tok) return null;
+    const copy = {};
+    Object.keys(tok).forEach(k => {
+        if (k === 'imageObj' || k === '_condRingCacheCanvas' || k === '_groupDragOffsets') return;
+        copy[k] = tok[k];
+    });
+    try {
+        return JSON.parse(JSON.stringify(copy));
+    } catch (e) {
+        return { ...copy, imageObj: null };
+    }
+}
+
+function cloneSecretTokenSafe(tok) {
+    return serializeSecretToken(tok);
+}
+
+function getSerializedMapSecretTokens() {
+    return mapSecretTokens.map(serializeSecretToken).filter(Boolean);
+}
+
+function saveCampaignSecretTokensToDB() {
+    if (!currentCampaignId || typeof vttDB === 'undefined' || !vttDB || typeof vttDB.updateCampaignField !== 'function') return;
+    const payload = campaignSecretTokens.map(serializeSecretToken).filter(Boolean);
+    vttDB.updateCampaignField(currentCampaignId, 'secretTokens', payload).catch(err => {
+        console.warn('[Area Segreta] Errore salvataggio token segreti campagna:', err);
+    });
+}
+
+function resetSecretAreaState(clearCampaignToo = false) {
+    mapSecretTokens = [];
+    if (clearCampaignToo) campaignSecretTokens = [];
+    renderSecretAreaUI();
+}
+
+function loadMapSecretTokensFromState(savedList) {
+    mapSecretTokens = Array.isArray(savedList) ? savedList.map(cloneSecretTokenSafe).filter(Boolean) : [];
+    // Se al caricamento della mappa non c'è combattimento attivo, pulisce eventuali iniziative residue
+    if (!engine || !engine.initiative || !engine.initiative.active) {
+        mapSecretTokens.forEach(t => { if (t && t._stashedInit) delete t._stashedInit; });
+    }
+    renderSecretAreaUI();
+}
+
+function loadCampaignSecretTokensFromCampaign(savedList) {
+    campaignSecretTokens = Array.isArray(savedList) ? savedList.map(cloneSecretTokenSafe).filter(Boolean) : [];
+    if (!engine || !engine.initiative || !engine.initiative.active) {
+        campaignSecretTokens.forEach(t => { if (t && t._stashedInit) delete t._stashedInit; });
+    }
+    renderSecretAreaUI();
+}
+
+function clearAllStashedInitiatives() {
+    if (engine && engine.initiative) {
+        delete engine.initiative._combatSessionId;
+    }
+    let changedMap = false;
+    let changedCamp = false;
+    mapSecretTokens.forEach(t => {
+        if (t && t._stashedInit) { delete t._stashedInit; changedMap = true; }
+    });
+    campaignSecretTokens.forEach(t => {
+        if (t && t._stashedInit) { delete t._stashedInit; changedCamp = true; }
+    });
+    if (changedMap && currentMapBase64) markMapDirty(true);
+    if (changedCamp) saveCampaignSecretTokensToDB();
+    if (changedMap || changedCamp) renderSecretAreaUI();
+}
+
+let lastObservedInitiativeActive = false;
+function reconcileSecretAreaCombatSession() {
+    const isActive = !!(engine && engine.initiative && engine.initiative.active);
+    if (isActive && !lastObservedInitiativeActive) {
+        if (!engine.initiative._combatSessionId) {
+            engine.initiative._combatSessionId = 'cbt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+        }
+        const curSid = engine.initiative._combatSessionId;
+        let changedMap = false;
+        let changedCamp = false;
+        mapSecretTokens.forEach(t => {
+            if (t && t._stashedInit && t._stashedInit.combatSessionId !== curSid) { delete t._stashedInit; changedMap = true; }
+        });
+        campaignSecretTokens.forEach(t => {
+            if (t && t._stashedInit && t._stashedInit.combatSessionId !== curSid) { delete t._stashedInit; changedCamp = true; }
+        });
+        if (changedMap && currentMapBase64) markMapDirty(true);
+        if (changedCamp) saveCampaignSecretTokensToDB();
+        if (changedMap || changedCamp) renderSecretAreaUI();
+    } else if (!isActive && lastObservedInitiativeActive) {
+        clearAllStashedInitiatives();
+    }
+    lastObservedInitiativeActive = isActive;
+}
+
+function ensureCombatSessionId() {
+    reconcileSecretAreaCombatSession();
+    if (!engine || !engine.initiative || !engine.initiative.active) return null;
+    if (!engine.initiative._combatSessionId) {
+        engine.initiative._combatSessionId = 'cbt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    }
+    return engine.initiative._combatSessionId;
+}
+
+function isPointOverSecretArea(clientX, clientY) {
+    const win = document.getElementById('dm-secret-area-window');
+    if (!win || win.style.display === 'none' || !win.style.display) return false;
+    const rect = win.getBoundingClientRect();
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+}
+
+function updateSecretAreaDragHover(clientX, clientY) {
+    const win = document.getElementById('dm-secret-area-window');
+    if (!win || win.style.display === 'none' || !win.style.display) return;
+    const over = isPointOverSecretArea(clientX, clientY);
+    const banner = document.getElementById('secret-area-drop-banner');
+    if (over) {
+        win.style.borderColor = '#ffd54f';
+        win.style.boxShadow = '0 0 22px rgba(255, 213, 79, 0.55)';
+        if (banner) {
+            banner.style.background = 'rgba(255, 213, 79, 0.22)';
+            banner.style.color = '#ffe082';
+            const msg = typeof window.t === 'function' ? window.t("📥 Rilascia qui per archiviare nell'Area Segreta!") : "📥 Rilascia qui per archiviare nell'Area Segreta!";
+            banner.textContent = msg;
+        }
+    } else {
+        clearSecretAreaDragHover();
+    }
+}
+
+function clearSecretAreaDragHover() {
+    const win = document.getElementById('dm-secret-area-window');
+    if (!win) return;
+    win.style.borderColor = '#ab47bc';
+    win.style.boxShadow = '0 8px 26px rgba(0,0,0,0.85)';
+    const banner = document.getElementById('secret-area-drop-banner');
+    if (banner) {
+        banner.style.background = 'rgba(74, 20, 140, 0.18)';
+        banner.style.color = '#b39ddb';
+        const msg = typeof window.t === 'function' ? window.t('Trascina qui un token dalla mappa, o trascinalo fuori per schierarlo.') : 'Trascina qui un token dalla mappa, o trascinalo fuori per schierarlo.';
+        banner.textContent = msg;
+    }
+}
+
+function stashTokensToSecretArea(tokensToStash, targetScope = null) {
+    if (!Array.isArray(tokensToStash) || tokensToStash.length === 0 || !engine || !Array.isArray(engine.tokens)) return 0;
+    const scope = (targetScope === 'campaign' || targetScope === 'map') ? targetScope : activeSecretAreaTab;
+    const destList = (scope === 'campaign') ? campaignSecretTokens : mapSecretTokens;
+    const idsToRemove = new Set();
+    let initTouched = false;
+    const combatSid = (engine.initiative && engine.initiative.active) ? ensureCombatSessionId() : null;
+
+    tokensToStash.forEach(tok => {
+        if (!tok || !tok.id) return;
+        const liveTok = engine.tokens.find(t => t.id === tok.id) || tok;
+        idsToRemove.add(liveTok.id);
+
+        const stashed = serializeSecretToken(liveTok);
+        if (!stashed) return;
+
+        // Se il combattimento/Sequenza è attivo e il token è nel Tracker, rimuovilo dal Tracker
+        // salvando il suo tiro/partecipante legato a questa sessione di combattimento.
+        if (combatSid && engine.initiative && Array.isArray(engine.initiative.participants)) {
+            const pIdx = engine.initiative.participants.findIndex(p => String(p.tokenId) === String(liveTok.id));
+            if (pIdx >= 0) {
+                const partCopy = JSON.parse(JSON.stringify(engine.initiative.participants[pIdx]));
+                stashed._stashedInit = {
+                    combatSessionId: combatSid,
+                    system: (window.systemManager ? window.systemManager.getActiveSystemId() : 'dnd5e'),
+                    participant: partCopy,
+                    originalIndex: pIdx
+                };
+                if (typeof engine.initiative.currentTurnIndex === 'number' && pIdx < engine.initiative.currentTurnIndex) {
+                    engine.initiative.currentTurnIndex = Math.max(0, engine.initiative.currentTurnIndex - 1);
+                }
+                engine.initiative.participants.splice(pIdx, 1);
+                if (typeof engine.initiative.currentTurnIndex === 'number' && engine.initiative.currentTurnIndex >= engine.initiative.participants.length) {
+                    engine.initiative.currentTurnIndex = Math.max(0, engine.initiative.participants.length - 1);
+                }
+                initTouched = true;
+            }
+        } else if (stashed._stashedInit) {
+            delete stashed._stashedInit;
+        }
+
+        // Evita duplicati con lo stesso ID nella stessa area
+        const existingIdx = destList.findIndex(x => x.id === stashed.id);
+        if (existingIdx >= 0) destList[existingIdx] = stashed;
+        else destList.push(stashed);
+    });
+
+    if (idsToRemove.size === 0) return 0;
+
+    // Rimuove i token dalla mappa (le auree, condizioni ed effetti spariscono subito dal canvas!)
+    engine.tokens = engine.tokens.filter(t => !idsToRemove.has(t.id));
+    if (engine.selectedTokens) {
+        idsToRemove.forEach(id => engine.selectedTokens.delete(id));
+    }
+    if (engine.selectedTokenId && idsToRemove.has(engine.selectedTokenId)) {
+        engine.selectedTokenId = (engine.selectedTokens && engine.selectedTokens.size > 0) ? Array.from(engine.selectedTokens).pop() : null;
+    }
+    if (engine.selectedTokenId) {
+        const prim = engine.tokens.find(t => t.id === engine.selectedTokenId);
+        if (prim && typeof window.updateSelectedTokenControls === 'function') window.updateSelectedTokenControls(prim);
+    } else if (typeof updateTokenControlsVisibility === 'function') {
+        updateTokenControlsVisibility(false);
+    }
+
+    if (scope === 'campaign') {
+        saveCampaignSecretTokensToDB();
+    } else if (currentMapBase64) {
+        markMapDirty(true);
+    }
+
+    if (typeof engine.updateTokensInShapes === 'function') engine.updateTokensInShapes();
+    if (typeof engine.renderAll === 'function') engine.renderAll();
+    if (initTouched && typeof renderTrackerList === 'function') renderTrackerList({ skipRenderAndSync: true });
+    if (typeof updateMapTokensGallery === 'function') updateMapTokensGallery();
+    if (typeof syncState === 'function') syncState(true, false);
+    renderSecretAreaUI();
+
+    if (typeof showToast === 'function') {
+        const destLabel = scope === 'campaign' ? 'Campagna' : 'Questa Mappa';
+        const cnt = idsToRemove.size;
+        showToast(cnt === 1 ? `🕵️ Token spostato nell'Area Segreta (${destLabel})` : `🕵️ ${cnt} token spostati nell'Area Segreta (${destLabel})`);
+    }
+    return idsToRemove.size;
+}
+
+function deploySecretTokenToMap(scope, tokenId, worldX = null, worldY = null, asDuplicate = false) {
+    reconcileSecretAreaCombatSession();
+    const srcList = (scope === 'campaign') ? campaignSecretTokens : mapSecretTokens;
+    const idx = srcList.findIndex(t => t.id === tokenId);
+    if (idx < 0 || !engine || !Array.isArray(engine.tokens)) return null;
+
+    const stored = srcList[idx];
+    const tok = cloneSecretTokenSafe(stored);
+    if (!tok) return null;
+
+    if (asDuplicate) {
+        tok.id = 'token_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+        delete tok._stashedInit;
+    } else {
+        srcList.splice(idx, 1);
+    }
+
+    // Calcola posizione di arrivo (coordinate del drop o centro della vista) con snap griglia
+    const gSize = (engine.grid && engine.grid.size) ? engine.grid.size : 50;
+    const effOffsetX = ((engine.grid && engine.grid.offsetX) || 0) % gSize;
+    const effOffsetY = ((engine.grid && engine.grid.offsetY) || 0) % gSize;
+    const sizeMult = Number(tok.sizeMultiplier) || 1;
+    tok.width = gSize * sizeMult;
+    tok.height = gSize * sizeMult;
+
+    let targetX = worldX;
+    let targetY = worldY;
+    if (targetX === null || targetY === null || !Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+        if (engine.layers && engine.layers.ui && typeof engine.screenToWorld === 'function') {
+            const centerWorld = engine.screenToWorld(engine.layers.ui.width / 2, engine.layers.ui.height / 2);
+            targetX = centerWorld.x - tok.width / 2;
+            targetY = centerWorld.y - tok.height / 2;
+        } else {
+            targetX = effOffsetX;
+            targetY = effOffsetY;
+        }
+    } else {
+        targetX = targetX - tok.width / 2;
+        targetY = targetY - tok.height / 2;
+    }
+
+    if (gSize > 0) {
+        tok.x = Math.round((targetX - effOffsetX) / gSize) * gSize + effOffsetX;
+        tok.y = Math.round((targetY - effOffsetY) / gSize) * gSize + effOffsetY;
+    } else {
+        tok.x = targetX;
+        tok.y = targetY;
+    }
+    tok._baseMapX = tok.x;
+    tok._baseMapY = tok.y;
+    tok._lastGridResizeX = tok.x;
+    tok._lastGridResizeY = tok.y;
+
+    // Gestione intelligente dell'Iniziativa:
+    // - Se lo STESSO combattimento è ancora attivo -> ripristina alla posizione/tiro originale preservando il turno!
+    // - Se il combattimento è finito/resettato (o è uno nuovo) -> scarta _stashedInit (token normale)!
+    let restoredInit = false;
+    const stashedInit = tok._stashedInit;
+    delete tok._stashedInit;
+
+    if (
+        !asDuplicate &&
+        stashedInit &&
+        engine.initiative &&
+        engine.initiative.active &&
+        engine.initiative._combatSessionId &&
+        stashedInit.combatSessionId === engine.initiative._combatSessionId &&
+        Array.isArray(engine.initiative.participants)
+    ) {
+        const curIdx = (typeof engine.initiative.currentTurnIndex === 'number') ? engine.initiative.currentTurnIndex : 0;
+        const curActivePart = engine.initiative.participants[curIdx] || null;
+        const curActiveKey = curActivePart ? String(curActivePart.tokenId || curActivePart.id || curActivePart.name) : null;
+
+        const restoredPart = Object.assign({}, stashedInit.participant, {
+            tokenId: tok.id,
+            name: tok.name || stashedInit.participant.name,
+            isHidden: tok.visible === false,
+            hpCurrent: tok.hpCurrent,
+            hpMax: tok.hpMax,
+            ac: tok.ac || 0
+        });
+        if (!engine.initiative.participants.some(p => String(p.tokenId) === String(tok.id))) {
+            engine.initiative.participants.push(restoredPart);
+            if (typeof sortInitiativeParticipants === 'function') {
+                sortInitiativeParticipants();
+            } else {
+                engine.initiative.participants.sort((a, b) => (parseFloat(b.init) || 0) - (parseFloat(a.init) || 0));
+            }
+            if (curActiveKey !== null) {
+                const newActiveIdx = engine.initiative.participants.findIndex(p => String(p.tokenId || p.id || p.name) === curActiveKey);
+                if (newActiveIdx >= 0) engine.initiative.currentTurnIndex = newActiveIdx;
+            }
+            restoredInit = true;
+        }
+    }
+
+    // Ricrea imageObj per il canvas
+    tok.imageObj = null;
+    if (tok.src) {
+        const imgObj = new Image();
+        imgObj.onload = () => {
+            tok.imageObj = imgObj;
+            if (typeof engine.renderAll === 'function') engine.renderAll();
+        };
+        imgObj.src = tok.src;
+    }
+
+    engine.tokens.push(tok);
+    if (engine.selectedTokens) {
+        engine.selectedTokens.clear();
+        engine.selectedTokens.add(tok.id);
+    }
+    engine.selectedTokenId = tok.id;
+    if (typeof window.upsertTokenInCampaign === 'function') window.upsertTokenInCampaign(tok);
+    if (typeof window.updateSelectedTokenControls === 'function') window.updateSelectedTokenControls(tok);
+
+    if (scope === 'campaign' && !asDuplicate) {
+        saveCampaignSecretTokensToDB();
+    }
+    if (currentMapBase64) markMapDirty(true);
+
+    if (typeof engine.updateTokensInShapes === 'function') engine.updateTokensInShapes();
+    if (typeof engine.renderAll === 'function') engine.renderAll();
+    if (restoredInit && typeof renderTrackerList === 'function') renderTrackerList({ skipRenderAndSync: true });
+    if (typeof updateMapTokensGallery === 'function') updateMapTokensGallery();
+    if (typeof syncState === 'function') syncState(true, false);
+    if (tok.pcSheet && typeof window.broadcastPcSheetSync === 'function') {
+        window.broadcastPcSheetSync(tok);
+    }
+    renderSecretAreaUI();
+
+    if (typeof showToast === 'function') {
+        const initNote = restoredInit ? ' (ripristinato in Iniziativa)' : '';
+        showToast(`♟️ "${tok.name || 'Token'}" schierato in mappa${initNote}!`);
+    }
+    return tok;
+}
+
+function moveSecretTokenScope(fromScope, tokenId) {
+    const src = (fromScope === 'campaign') ? campaignSecretTokens : mapSecretTokens;
+    const dst = (fromScope === 'campaign') ? mapSecretTokens : campaignSecretTokens;
+    const idx = src.findIndex(t => t.id === tokenId);
+    if (idx < 0) return;
+    const [item] = src.splice(idx, 1);
+    const existing = dst.findIndex(t => t.id === item.id);
+    if (existing >= 0) dst[existing] = item;
+    else dst.push(item);
+
+    saveCampaignSecretTokensToDB();
+    if (currentMapBase64) markMapDirty(true);
+    renderSecretAreaUI();
+}
+
+function toggleSecretTokenVisibility(scope, tokenId) {
+    const list = (scope === 'campaign') ? campaignSecretTokens : mapSecretTokens;
+    const tok = list.find(t => t.id === tokenId);
+    if (!tok) return;
+    tok.visible = (tok.visible === false);
+    if (scope === 'campaign') saveCampaignSecretTokensToDB();
+    else if (currentMapBase64) markMapDirty(true);
+    renderSecretAreaUI();
+}
+
+async function deleteSecretToken(scope, tokenId) {
+    const list = (scope === 'campaign') ? campaignSecretTokens : mapSecretTokens;
+    const idx = list.findIndex(t => t.id === tokenId);
+    if (idx < 0) return;
+    const tok = list[idx];
+    if (tok.pcSheet && typeof vttConfirm === 'function') {
+        const ok = await vttConfirm(`Rimuovere definitivamente "${tok.name || 'Token'}" (ha una scheda PG/Eroe) dall'Area Segreta?`);
+        if (!ok) return;
+    }
+    list.splice(idx, 1);
+    if (scope === 'campaign') saveCampaignSecretTokensToDB();
+    else if (currentMapBase64) markMapDirty(true);
+    renderSecretAreaUI();
+}
+
+function switchSecretAreaTab(tab) {
+    activeSecretAreaTab = (tab === 'campaign') ? 'campaign' : 'map';
+    const btnMap = document.getElementById('btn-secret-tab-map');
+    const btnCamp = document.getElementById('btn-secret-tab-campaign');
+    if (btnMap) {
+        const active = activeSecretAreaTab === 'map';
+        btnMap.style.background = active ? '#2d1444' : 'transparent';
+        btnMap.style.color = active ? '#f3e5f5' : '#9e9e9e';
+        btnMap.style.borderBottomColor = active ? '#ce93d8' : 'transparent';
+    }
+    if (btnCamp) {
+        const active = activeSecretAreaTab === 'campaign';
+        btnCamp.style.background = active ? '#2d1444' : 'transparent';
+        btnCamp.style.color = active ? '#f3e5f5' : '#9e9e9e';
+        btnCamp.style.borderBottomColor = active ? '#ce93d8' : 'transparent';
+    }
+    renderSecretAreaUI();
+}
+
+function renderSecretAreaUI() {
+    const mCnt = mapSecretTokens.length;
+    const cCnt = campaignSecretTokens.length;
+    const total = mCnt + cCnt;
+
+    const dockBadge = document.getElementById('secret-area-dock-badge');
+    if (dockBadge) {
+        dockBadge.textContent = String(total);
+        dockBadge.style.display = total > 0 ? 'inline-flex' : 'none';
+    }
+    const hdrCount = document.getElementById('secret-area-header-count');
+    if (hdrCount) {
+        hdrCount.textContent = `M:${mCnt} • C:${cCnt}`;
+    }
+    const tabMapCount = document.getElementById('secret-tab-map-count');
+    if (tabMapCount) tabMapCount.textContent = `(${mCnt})`;
+    const tabCampCount = document.getElementById('secret-tab-campaign-count');
+    if (tabCampCount) tabCampCount.textContent = `(${cCnt})`;
+
+    const grid = document.getElementById('secret-area-grid');
+    if (!grid) return;
+
+    const list = (activeSecretAreaTab === 'campaign') ? campaignSecretTokens : mapSecretTokens;
+    grid.innerHTML = '';
+
+    if (list.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = 'grid-column: 1 / -1; text-align: center; color: #8c7a9e; font-size: 11px; font-style: italic; padding: 26px 10px;';
+        const emptyKey = activeSecretAreaTab === 'campaign'
+            ? 'Nessun token parcheggiato nella campagna.'
+            : 'Nessun token parcheggiato in questa mappa.';
+        empty.textContent = typeof window.t === 'function' ? window.t(emptyKey) : emptyKey;
+        grid.appendChild(empty);
+        return;
+    }
+
+    const activeCombatSid = (engine && engine.initiative && engine.initiative.active && engine.initiative._combatSessionId)
+        ? engine.initiative._combatSessionId : null;
+
+    list.forEach(tok => {
+        const card = document.createElement('div');
+        card.draggable = true;
+        card.dataset.secretScope = activeSecretAreaTab;
+        card.dataset.secretTokenId = tok.id;
+        card.style.cssText = 'background: #1e182b; border: 1px solid #4a2d6b; border-radius: 6px; padding: 6px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: grab; user-select: none; position: relative; box-sizing: border-box;';
+
+        card.addEventListener('dragstart', (ev) => {
+            draggingSecretTokenRef = { scope: activeSecretAreaTab, tokenId: tok.id };
+            try {
+                ev.dataTransfer.setData('text/plain', JSON.stringify(draggingSecretTokenRef));
+                ev.dataTransfer.effectAllowed = 'move';
+            } catch (err) {}
+            card.style.opacity = '0.55';
+        });
+        card.addEventListener('dragend', () => {
+            card.style.opacity = '1';
+            setTimeout(() => { draggingSecretTokenRef = null; }, 50);
+        });
+
+        // Avatar
+        const img = document.createElement('img');
+        img.src = tok.src || '';
+        img.alt = tok.name || 'Token';
+        img.draggable = false;
+        img.style.cssText = `width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 2px solid ${tok.visible === false ? '#ef5350' : '#ce93d8'}; background: #111; opacity: ${tok.visible === false ? '0.65' : '1'};`;
+        card.appendChild(img);
+
+        // Nome
+        const nameEl = document.createElement('div');
+        nameEl.textContent = tok.name || 'Token';
+        nameEl.title = tok.name || 'Token';
+        nameEl.style.cssText = 'font-size: 11px; font-weight: bold; color: #f3e5f5; width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
+        card.appendChild(nameEl);
+
+        // Badge stato (Invisibile, Aura, Condizioni, PV, Iniziativa salvata)
+        const badges = [];
+        if (tok.visible === false) badges.push('🙈');
+        if (tok.aura && tok.aura.active) badges.push('✨');
+        const condCount = (Array.isArray(tok.conditions) ? tok.conditions.length : 0) + (tok.condition && tok.condition.active ? 1 : 0);
+        if (condCount > 0) badges.push(`⚡${condCount}`);
+        if (tok.hpMax && tok.hpMax > 0) badges.push(`❤️${tok.hpCurrent ?? tok.hpMax}/${tok.hpMax}`);
+        if (activeCombatSid && tok._stashedInit && tok._stashedInit.combatSessionId === activeCombatSid) {
+            const iv = tok._stashedInit.participant ? tok._stashedInit.participant.init : '';
+            badges.push(`⚔️${iv !== '' && iv !== undefined ? iv : 'Init'}`);
+        }
+        const metaEl = document.createElement('div');
+        metaEl.textContent = badges.join(' ') || '👁️ Pronto';
+        metaEl.style.cssText = 'font-size: 9.5px; color: #ce93d8; text-align: center; min-height: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;';
+        card.appendChild(metaEl);
+
+        // Pulsanti azione compatti (zero padding ereditato)
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display: flex; gap: 3px; width: 100%; margin-top: 2px;';
+
+        const mkBtn = (label, bg, color, title, onClick, flexVal = '1') => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = label;
+            b.title = typeof window.t === 'function' ? window.t(title) : title;
+            b.style.cssText = `flex: ${flexVal}; display: inline-flex; align-items: center; justify-content: center; padding: 2px 3px; height: 22px; font-size: 10px; font-weight: bold; background: ${bg}; color: ${color}; border: 1px solid rgba(255,255,255,0.16); border-radius: 4px; cursor: pointer; line-height: 1;`;
+            b.addEventListener('click', (ev) => { ev.stopPropagation(); onClick(); });
+            return b;
+        };
+
+        actions.appendChild(mkBtn('→', '#2e7d32', '#fff', '→ Mappa', () => deploySecretTokenToMap(activeSecretAreaTab, tok.id), '1.2'));
+        actions.appendChild(mkBtn(tok.visible === false ? '🙈' : '👁️', '#263238', '#fff', tok.visible === false ? 'Rendi Visibile al rientro' : 'Prepara Invisibile al rientro', () => toggleSecretTokenVisibility(activeSecretAreaTab, tok.id), '1'));
+        if (activeSecretAreaTab === 'campaign') {
+            actions.appendChild(mkBtn('📋', '#0277bd', '#fff', 'Duplica sulla Mappa', () => deploySecretTokenToMap('campaign', tok.id, null, null, true), '1'));
+        }
+        actions.appendChild(mkBtn('⇄', '#4a148c', '#e1bee7', activeSecretAreaTab === 'map' ? 'Sposta in Campagna' : 'Sposta in Questa Mappa', () => moveSecretTokenScope(activeSecretAreaTab, tok.id), '1'));
+        actions.appendChild(mkBtn('✕', '#4a1c1c', '#ef9a9a', "Elimina dall'Area Segreta", () => deleteSecretToken(activeSecretAreaTab, tok.id), '0.9'));
+
+        card.appendChild(actions);
+        grid.appendChild(card);
+    });
+}
+
+(function initSecretAreaUI() {
+    const win = document.getElementById('dm-secret-area-window');
+    const hdr = document.getElementById('dm-secret-area-header');
+    const body = document.getElementById('dm-secret-area-body');
+    const btnToggle = document.getElementById('btn-toggle-secret-area');
+    const btnCollapse = document.getElementById('btn-collapse-secret-area');
+    const btnClose = document.getElementById('btn-close-secret-area');
+    const btnTabMap = document.getElementById('btn-secret-tab-map');
+    const btnTabCamp = document.getElementById('btn-secret-tab-campaign');
+    const btnStashSel = document.getElementById('btn-stash-selected-tokens');
+
+    if (win && hdr && window.makeDraggable) {
+        window.makeDraggable(win, hdr);
+    }
+
+    if (btnToggle && win) {
+        btnToggle.addEventListener('click', () => {
+            const isHidden = win.style.display === 'none' || !win.style.display;
+            win.style.display = isHidden ? 'flex' : 'none';
+            if (isHidden) renderSecretAreaUI();
+        });
+    }
+
+    if (btnClose && win) {
+        btnClose.addEventListener('click', () => {
+            win.style.display = 'none';
+        });
+    }
+
+    if (btnCollapse && win && body) {
+        btnCollapse.addEventListener('click', (e) => {
+            e.stopPropagation();
+            secretAreaCollapsed = !secretAreaCollapsed;
+            if (secretAreaCollapsed) {
+                if (win.style.height && win.style.height !== 'auto') secretAreaExpandedHeight = win.style.height;
+                body.style.display = 'none';
+                win.style.height = 'auto';
+                win.style.resize = 'none';
+                btnCollapse.textContent = '▾';
+            } else {
+                body.style.display = 'flex';
+                win.style.height = secretAreaExpandedHeight || '500px';
+                win.style.resize = 'both';
+                btnCollapse.textContent = '▴';
+            }
+        });
+    }
+
+    if (btnTabMap) btnTabMap.addEventListener('click', () => switchSecretAreaTab('map'));
+    if (btnTabCamp) btnTabCamp.addEventListener('click', () => switchSecretAreaTab('campaign'));
+
+    if (btnStashSel) {
+        btnStashSel.addEventListener('click', () => {
+            const targets = (typeof getSelectedTargetTokens === 'function') ? getSelectedTargetTokens() : [];
+            if (!targets || targets.length === 0) return;
+            stashTokensToSecretArea(targets, activeSecretAreaTab);
+            if (win && (win.style.display === 'none' || !win.style.display)) {
+                win.style.display = 'flex';
+            }
+        });
+    }
+
+    // Drop Area Segreta -> Mappa (sul contenitore canvas #main-canvas-container)
+    const viewportEl = document.getElementById('main-canvas-container') || document.body;
+    if (viewportEl) {
+        viewportEl.addEventListener('dragover', (e) => {
+            if (!draggingSecretTokenRef) return;
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        });
+        viewportEl.addEventListener('drop', (e) => {
+            let ref = draggingSecretTokenRef;
+            if (!ref && e.dataTransfer) {
+                try {
+                    const parsed = JSON.parse(e.dataTransfer.getData('text/plain') || '');
+                    if (parsed && parsed.scope && parsed.tokenId) ref = parsed;
+                } catch (err) {}
+            }
+            if (!ref || !ref.tokenId) return;
+            // Se rilasciato dentro la finestra stessa dell'Area Segreta, non schierare
+            if (isPointOverSecretArea(e.clientX, e.clientY)) {
+                draggingSecretTokenRef = null;
+                return;
+            }
+            e.preventDefault();
+            let wx = null, wy = null;
+            if (engine && engine.layers && engine.layers.ui && typeof engine.screenToWorld === 'function') {
+                const rect = engine.layers.ui.getBoundingClientRect();
+                const pt = engine.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+                wx = pt.x;
+                wy = pt.y;
+            }
+            deploySecretTokenToMap(ref.scope, ref.tokenId, wx, wy, false);
+            draggingSecretTokenRef = null;
+        });
+    }
+
+    // Aggancio non invasivo al ciclo di Iniziativa (ZERO modifiche a initiative.js!):
+    // - Ferma/Reset: invalida tutte le iniziative parcheggiate nell'Area Segreta
+    // - Avvia Combattimento: crea un nuovo combatSessionId univoco se il combattimento era spento
+    const btnTrackerReset = document.getElementById('btn-tracker-reset');
+    if (btnTrackerReset) {
+        btnTrackerReset.addEventListener('click', () => {
+            setTimeout(() => {
+                if (!engine || !engine.initiative || !engine.initiative.active) {
+                    clearAllStashedInitiatives();
+                }
+            }, 0);
+        });
+    }
+    const btnTrackerState = document.getElementById('btn-tracker-state');
+    if (btnTrackerState) {
+        btnTrackerState.addEventListener('click', () => {
+            const wasActive = !!(engine && engine.initiative && engine.initiative.active);
+            setTimeout(() => {
+                if (!wasActive && engine && engine.initiative && engine.initiative.active) {
+                    engine.initiative._combatSessionId = 'cbt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+                    // Eventuali vecchie iniziative parcheggiate appartenevano a un combattimento precedente: ripulisci
+                    mapSecretTokens.forEach(t => { if (t && t._stashedInit && t._stashedInit.combatSessionId !== engine.initiative._combatSessionId) delete t._stashedInit; });
+                    campaignSecretTokens.forEach(t => { if (t && t._stashedInit && t._stashedInit.combatSessionId !== engine.initiative._combatSessionId) delete t._stashedInit; });
+                    renderSecretAreaUI();
+                }
+            }, 0);
+        }, true);
+    }
+
+    window.dmSecretArea = {
+        getMapTokens: () => mapSecretTokens,
+        getCampaignTokens: () => campaignSecretTokens,
+        getActiveTab: () => activeSecretAreaTab,
+        switchTab: switchSecretAreaTab,
+        stashTokens: stashTokensToSecretArea,
+        deployToken: deploySecretTokenToMap,
+        moveScope: moveSecretTokenScope,
+        toggleVisibility: toggleSecretTokenVisibility,
+        deleteToken: deleteSecretToken,
+        clearAllStashedInitiatives,
+        render: renderSecretAreaUI
+    };
+
+    renderSecretAreaUI();
+})();

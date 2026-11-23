@@ -799,7 +799,25 @@ const dict = {
     "Regola di Attivazione:": "Activation Rule:",
     "Le Virtù possono essere usate solo una volta a sessione, non richiedono alcun costo (non consumano Punti Eroe) e funzionano nelle circostanze specifiche descritte.": "Virtues can only be used once per session, require no cost (do not spend Hero Points), and work in the specific circumstances described.",
     "Si può attivare solo una volta per sessione guadagnando 1 Punto Eroe (anche su offerta del GM, che il giocatore può rifiutare).": "Can only be activated once per session to gain 1 Hero Point (including when offered by the GM, which the player may refuse).",
-    "(Scelta libera tra i 20 Arcani)": "(Free choice among the 20 Arcana)"
+    "(Scelta libera tra i 20 Arcani)": "(Free choice among the 20 Arcana)",
+
+    // --- AREA SEGRETA (SOLO DM) ---
+    "Area Segreta (Solo DM)": "Secret Area (DM Only)",
+    "Area Segreta (Solo DM — Token fuori mappa)": "Secret Area (DM Only — Off-map Tokens)",
+    "🗺️ Questa Mappa": "🗺️ This Map",
+    "🌍 Campagna": "🌍 Campaign",
+    "🕵️ Sposta in Area Segreta": "🕵️ Move to Secret Area",
+    "Trascina qui un token dalla mappa, o trascinalo fuori per schierarlo.": "Drag a token here from the map, or drag it out to deploy.",
+    "📥 Rilascia qui per archiviare nell'Area Segreta!": "📥 Drop here to store in Secret Area!",
+    "Riduci a sola intestazione / Espandi": "Collapse to header / Expand",
+    "Chiudi Area Segreta": "Close Secret Area",
+    "Nessun token parcheggiato in questa mappa.": "No tokens stored for this map.",
+    "Nessun token parcheggiato nella campagna.": "No tokens stored in this campaign.",
+    "→ Mappa": "→ Map",
+    "Sposta in Campagna": "Move to Campaign",
+    "Sposta in Questa Mappa": "Move to This Map",
+    "Duplica sulla Mappa": "Duplicate to Map",
+    "Elimina dall'Area Segreta": "Remove from Secret Area"
 };
 
 const dynamicPatterns = [
