@@ -2732,6 +2732,10 @@ document.getElementById('btn-load-map').addEventListener('click', async () => {
             }
 
             const finishLoadingMap = () => {
+                // Prima i token dell'Area Segreta di questa mappa: così i PG parcheggiati non vengono riportati in mappa
+                if (typeof loadMapSecretTokensFromState === 'function') {
+                    loadMapSecretTokensFromState(state.secretTokens);
+                }
                 syncCampaignPlayerCharactersToMap();
                 if (typeof rescueOutOfBoundsTokens === 'function') {
                     rescueOutOfBoundsTokens();
@@ -2744,9 +2748,6 @@ document.getElementById('btn-load-map').addEventListener('click', async () => {
                 isSuppressingDirty = false;
                 markMapDirty(false);
                 updateLoadedMapIndicator();
-                if (typeof loadMapSecretTokensFromState === 'function') {
-                    loadMapSecretTokensFromState(state.secretTokens);
-                }
                 if (select) {
                     select.value = mapData.id;
                 }
@@ -3622,13 +3623,43 @@ function syncCampaignPlayerCharactersToMap() {
     const spawnBaseY = Math.round(((engine.mapImage ? engine.mapImage.height / 2 : 400) - effOffsetY) / engine.grid.size) * engine.grid.size + effOffsetY;
 
     let spawnedCount = 0;
+    // PG parcheggiati nell'Area Segreta (Questa Mappa o Campagna): NON vanno riportati in mappa in automatico.
+    // Si aggiorna solo la loro copia parcheggiata con i dati freschi della campagna.
+    const secretPools = [
+        (typeof mapSecretTokens !== 'undefined' && Array.isArray(mapSecretTokens)) ? mapSecretTokens : [],
+        (typeof campaignSecretTokens !== 'undefined' && Array.isArray(campaignSecretTokens)) ? campaignSecretTokens : []
+    ];
+    let secretTouchedCampaign = false;
     campaignPgs.forEach(cpg => {
         const cleanName = (cpg.name || '').trim().toLowerCase();
-        let mapTok = engine.tokens.find(t => {
+        const matchesPg = (t) => {
+            if (!t) return false;
             if (t.id === cpg.id) return true;
             if (cleanName && t.name && t.name.trim().toLowerCase() === cleanName) return true;
             return false;
-        });
+        };
+        let mapTok = engine.tokens.find(matchesPg);
+
+        if (!mapTok) {
+            let stashedTok = null;
+            let stashedInCampaign = false;
+            secretPools.forEach((pool, poolIdx) => {
+                if (stashedTok) return;
+                const found = pool.find(matchesPg);
+                if (found) { stashedTok = found; stashedInCampaign = poolIdx === 1; }
+            });
+            if (stashedTok) {
+                if (cpg.pcSheet) stashedTok.pcSheet = JSON.parse(JSON.stringify(cpg.pcSheet));
+                if (cpg.adventureJournal !== undefined) stashedTok.adventureJournal = cpg.adventureJournal;
+                if (cpg.hpCurrent !== undefined) stashedTok.hpCurrent = cpg.hpCurrent;
+                if (cpg.hpMax !== undefined && cpg.hpMax > 0) stashedTok.hpMax = cpg.hpMax;
+                if (cpg.ac !== undefined && cpg.ac > 0) stashedTok.ac = cpg.ac;
+                if (cpg.owners && cpg.owners.length > 0) stashedTok.owners = [...cpg.owners];
+                if (cpg.owner) stashedTok.owner = cpg.owner;
+                if (stashedInCampaign) secretTouchedCampaign = true;
+                return;
+            }
+        }
 
         if (mapTok) {
             // Aggiorna con i dati freschi della campagna (Scheda, Giornale, PV, CA, Proprietari)
@@ -3678,6 +3709,7 @@ function syncCampaignPlayerCharactersToMap() {
             engine.tokens.push(newTok);
         }
     });
+    if (secretTouchedCampaign && typeof saveCampaignSecretTokensToDB === 'function') saveCampaignSecretTokensToDB();
 }
 window.syncCampaignPlayerCharactersToMap = syncCampaignPlayerCharactersToMap;
 
@@ -6235,13 +6267,19 @@ function handleStart(e) {
                 if (activeStroke) {
                     activeStroke._hasMovedDuringDrag = false;
                     activeStroke._freeMoveShift = !!(e.shiftKey || window._vttShiftDown);
+                    activeStroke._dragStartX = activeStroke.x;
+                    activeStroke._dragStartY = activeStroke.y;
                 }
 
                 // Se stiamo trascinando un token che fa parte di una selezione multipla, prepara gli offset del gruppo!
                 if (activeStroke && engine.selectedTokens && engine.selectedTokens.size > 1 && engine.selectedTokens.has(activeStroke.id)) {
                     activeStroke._groupDragOffsets = engine.tokens
                         .filter(gt => gt.id !== activeStroke.id && engine.selectedTokens.has(gt.id))
-                        .map(gt => ({ token: gt, dx: gt.x - activeStroke.x, dy: gt.y - activeStroke.y }));
+                        .map(gt => {
+                            gt._dragStartX = gt.x;
+                            gt._dragStartY = gt.y;
+                            return { token: gt, dx: gt.x - activeStroke.x, dy: gt.y - activeStroke.y };
+                        });
                 } else if (activeStroke) {
                     activeStroke._groupDragOffsets = null;
                 }
@@ -6787,21 +6825,59 @@ function handleEnd(e) {
                 if (typeof stashTokensToSecretArea === 'function') {
                     stashTokensToSecretArea(draggedList);
                 }
+                // Se tra i token trascinati sull'Area Segreta c'erano PG (che vengono bloccati dallo stash),
+                // riportali alla loro posizione di partenza in mappa così non cadono mai nella zona nera!
+                draggedList.forEach(t => {
+                    if (engine.tokens.some(live => live === t)) {
+                        if (typeof t._dragStartX === 'number' && typeof t._dragStartY === 'number') {
+                            t.x = t._dragStartX;
+                            t.y = t._dragStartY;
+                            t._baseMapX = t.x;
+                            t._baseMapY = t.y;
+                            t._lastGridResizeX = t.x;
+                            t._lastGridResizeY = t.y;
+                        }
+                    }
+                    delete t._dragStartX;
+                    delete t._dragStartY;
+                });
                 needsTokenLayerRender = true;
             } else if (activeStroke._hasMovedDuringDrag) {
                 const isFreeMove = !!(e && e.shiftKey) || !!window._vttShiftDown || !!activeStroke._freeMoveShift;
                 const gSize = (engine.grid && engine.grid.size) ? engine.grid.size : 50;
                 const effOffsetX = ((engine.grid && engine.grid.offsetX) || 0) % gSize;
                 const effOffsetY = ((engine.grid && engine.grid.offsetY) || 0) % gSize;
+                const mapW = (engine.mapImage && engine.mapImage.width) ? engine.mapImage.width : null;
+                const mapH = (engine.mapImage && engine.mapImage.height) ? engine.mapImage.height : null;
+
+                const clampToMapBounds = (tok, rawX, rawY) => {
+                    let cx = rawX;
+                    let cy = rawY;
+                    if (mapW !== null && mapH !== null) {
+                        const tw = tok.width || gSize;
+                        const th = tok.height || gSize;
+                        const maxX = Math.max(0, mapW - tw);
+                        const maxY = Math.max(0, mapH - th);
+                        cx = Math.max(0, Math.min(maxX, cx));
+                        cy = Math.max(0, Math.min(maxY, cy));
+                    }
+                    return { x: cx, y: cy };
+                };
                 
                 if (!isFreeMove && gSize > 0) {
                     activeStroke.x = Math.round((activeStroke.x - effOffsetX) / gSize) * gSize + effOffsetX;
                     activeStroke.y = Math.round((activeStroke.y - effOffsetY) / gSize) * gSize + effOffsetY;
                 }
+                const clampedPrimary = clampToMapBounds(activeStroke, activeStroke.x, activeStroke.y);
+                activeStroke.x = clampedPrimary.x;
+                activeStroke.y = clampedPrimary.y;
                 activeStroke._baseMapX = activeStroke.x;
                 activeStroke._baseMapY = activeStroke.y;
                 activeStroke._lastGridResizeX = activeStroke.x;
                 activeStroke._lastGridResizeY = activeStroke.y;
+                delete activeStroke._dragStartX;
+                delete activeStroke._dragStartY;
+
                 if (activeStroke._groupDragOffsets && activeStroke._groupDragOffsets.length > 0) {
                     const batch = [];
                     if (activeStroke.visible !== false) {
@@ -6815,10 +6891,15 @@ function handleEnd(e) {
                             item.token.x = activeStroke.x + item.dx;
                             item.token.y = activeStroke.y + item.dy;
                         }
+                        const clampedItem = clampToMapBounds(item.token, item.token.x, item.token.y);
+                        item.token.x = clampedItem.x;
+                        item.token.y = clampedItem.y;
                         item.token._baseMapX = item.token.x;
                         item.token._baseMapY = item.token.y;
                         item.token._lastGridResizeX = item.token.x;
                         item.token._lastGridResizeY = item.token.y;
+                        delete item.token._dragStartX;
+                        delete item.token._dragStartY;
                         if (item.token.visible !== false) {
                             batch.push({ id: item.token.id, x: item.token.x, y: item.token.y });
                         }
@@ -7430,13 +7511,39 @@ function clearSecretAreaDragHover() {
 
 function stashTokensToSecretArea(tokensToStash, targetScope = null) {
     if (!Array.isArray(tokensToStash) || tokensToStash.length === 0 || !engine || !Array.isArray(engine.tokens)) return 0;
+
+    // Regola: i Personaggi Giocatori (PG) non possono essere nascosti nell'Area Segreta.
+    // L'Area Segreta è la zona franca riservata al Master per mostri, PNG, sgherri e incontri.
+    const pgTokens = [];
+    const validTokens = [];
+    tokensToStash.forEach(t => {
+        if (!t) return;
+        const live = engine.tokens.find(x => x.id === t.id) || t;
+        if (typeof isPlayableCharacterToken === 'function' && isPlayableCharacterToken(live)) {
+            pgTokens.push(live);
+        } else {
+            validTokens.push(live);
+        }
+    });
+
+    if (pgTokens.length > 0) {
+        const msg = (pgTokens.length === 1)
+            ? `⚠️ I Personaggi Giocatori non possono essere nascosti nell'Area Segreta (${pgTokens[0].name || 'PG'}).`
+            : `⚠️ I Personaggi Giocatori non possono essere nascosti nell'Area Segreta (${pgTokens.length} PG esclusi).`;
+        if (typeof showToast === 'function') {
+            showToast(typeof window.t === 'function' ? window.t(msg) : msg);
+        }
+    }
+
+    if (validTokens.length === 0) return 0;
+
     const scope = (targetScope === 'campaign' || targetScope === 'map') ? targetScope : activeSecretAreaTab;
     const destList = (scope === 'campaign') ? campaignSecretTokens : mapSecretTokens;
     const idsToRemove = new Set();
     let initTouched = false;
     const combatSid = (engine.initiative && engine.initiative.active) ? ensureCombatSessionId() : null;
 
-    tokensToStash.forEach(tok => {
+    validTokens.forEach(tok => {
         if (!tok || !tok.id) return;
         const liveTok = engine.tokens.find(t => t.id === tok.id) || tok;
         idsToRemove.add(liveTok.id);
@@ -7528,6 +7635,13 @@ function deploySecretTokenToMap(scope, tokenId, worldX = null, worldY = null, as
         delete tok._stashedInit;
     } else {
         srcList.splice(idx, 1);
+        // Se in mappa esiste già un token con lo stesso ID (es. copia automatica di un PG creata da una versione
+        // precedente), la copia dell'Area Segreta è quella autorevole: rimuovi il doppione per non avere 2 token con lo stesso ID.
+        const dupIdx = engine.tokens.findIndex(t => t && t.id === tok.id);
+        if (dupIdx >= 0) {
+            engine.tokens.splice(dupIdx, 1);
+            if (engine.selectedTokens) engine.selectedTokens.delete(tok.id);
+        }
     }
 
     // Calcola posizione di arrivo (coordinate del drop o centro della vista) con snap griglia

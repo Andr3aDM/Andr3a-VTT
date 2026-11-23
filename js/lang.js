@@ -817,7 +817,8 @@ const dict = {
     "Sposta in Campagna": "Move to Campaign",
     "Sposta in Questa Mappa": "Move to This Map",
     "Duplica sulla Mappa": "Duplicate to Map",
-    "Elimina dall'Area Segreta": "Remove from Secret Area"
+    "Elimina dall'Area Segreta": "Remove from Secret Area",
+    "⚠️ I Personaggi Giocatori non possono essere nascosti nell'Area Segreta": "⚠️ Player Characters cannot be hidden in the Secret Area"
 };
 
 const dynamicPatterns = [
@@ -833,6 +834,7 @@ const dynamicPatterns = [
     { re: /^Sei sicuro di voler eliminare la cartella "(.+)"\?\s*Le mappe al suo interno NON verranno cancellate ma spostate in "Senza Cartella \(Generale\)"\.$/i, en: (m) => `Are you sure you want to delete the folder "${m[1]}"?\nMaps inside will NOT be deleted but moved to "No Folder (General)".` },
     { re: /^Ci sono modifiche non salvate alla mappa "(.+)"!\s*Vuoi salvare prima di procedere\?$/i, en: (m) => `There are unsaved changes to the map "${m[1]}"!\nDo you want to save before proceeding?` },
     { re: /^Mappa spostata con successo nella cartella "(.+)"!$/i, en: (m) => `Map moved successfully to the folder "${m[1]}"!` },
+    { re: /^⚠️ I Personaggi Giocatori non possono essere nascosti nell'Area Segreta \((.+)\)\.$/i, en: (m) => `⚠️ Player Characters cannot be hidden in the Secret Area (${m[1]}).` },
     { re: /^Mappa spostata con successo in "Senza Cartella \(Generale\)"!$/i, en: () => `Map moved successfully to "No Folder (General)"!` },
     { re: /^File di backup non valido o danneggiato:\s*(.+)$/i, en: (m) => `Invalid or corrupted backup file: ${m[1]}` },
     { re: /^Errore nella lettura della scheda:\s*(.+)$/i, en: (m) => `Error reading the sheet: ${m[1]}` },
