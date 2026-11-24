@@ -3211,13 +3211,20 @@ function updateToolControlsVisibility() {
     if (fogControls) fogControls.style.display = currentTool.startsWith('fog-') ? 'block' : 'none';
     const gridControls = document.getElementById('grid-align-controls');
     if (gridControls) gridControls.style.display = currentTool === 'move-grid' ? 'block' : 'none';
+    const activeToolLabel = document.getElementById('active-tool-name');
+    if (activeToolLabel) {
+        const activeBtn = document.querySelector(`.tool-btn[data-tool="${currentTool}"]`);
+        const rawLabel = (activeBtn && activeBtn.dataset.toolLabel) ? activeBtn.dataset.toolLabel : 'Muovi/Seleziona';
+        activeToolLabel.setAttribute('data-i18n', rawLabel);
+        activeToolLabel.textContent = (typeof window.t === 'function') ? window.t(rawLabel) : rawLabel;
+    }
 }
 
 document.querySelectorAll('.tool-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', () => {
         document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-        e.target.classList.add('active');
-        currentTool = e.target.dataset.tool;
+        btn.classList.add('active');
+        currentTool = btn.dataset.tool;
 
         updateToolControlsVisibility();
         if (!currentTool.startsWith('fog-')) {
@@ -4363,6 +4370,12 @@ window.updateSelectedTokenControls = function(ent) {
         } else {
             titleEl.innerHTML = `🎯 Token Selezionato`;
         }
+    }
+    const quickNameEl = document.getElementById('selected-token-quick-name');
+    if (quickNameEl) {
+        const displayName = (targets.length === 1 && ent) ? (ent.name || (ent.originalName ? ent.originalName.replace(/\.[^/.]+$/, "") : '')) : '';
+        quickNameEl.textContent = displayName;
+        quickNameEl.title = displayName;
     }
 
     updateVisibilityButtonUI(targets);
@@ -7821,6 +7834,10 @@ function switchSecretAreaTab(tab) {
         btnCamp.style.color = active ? '#f3e5f5' : '#9e9e9e';
         btnCamp.style.borderBottomColor = active ? '#ce93d8' : 'transparent';
     }
+    const selStashScope = document.getElementById('stash-secret-scope');
+    if (selStashScope && selStashScope.value !== activeSecretAreaTab) {
+        selStashScope.value = activeSecretAreaTab;
+    }
     renderSecretAreaUI();
 }
 
@@ -7996,9 +8013,16 @@ function renderSecretAreaUI() {
         btnStashSel.addEventListener('click', () => {
             const targets = (typeof getSelectedTargetTokens === 'function') ? getSelectedTargetTokens() : [];
             if (!targets || targets.length === 0) return;
-            stashTokensToSecretArea(targets, activeSecretAreaTab);
-            if (win && (win.style.display === 'none' || !win.style.display)) {
-                win.style.display = 'flex';
+            const selScope = document.getElementById('stash-secret-scope');
+            const chosenScope = (selScope && (selScope.value === 'campaign' || selScope.value === 'map'))
+                ? selScope.value
+                : activeSecretAreaTab;
+            const moved = stashTokensToSecretArea(targets, chosenScope);
+            if (moved > 0) {
+                switchSecretAreaTab(chosenScope);
+                if (win && (win.style.display === 'none' || !win.style.display)) {
+                    win.style.display = 'flex';
+                }
             }
         });
     }
@@ -8082,4 +8106,131 @@ function renderSecretAreaUI() {
     };
 
     renderSecretAreaUI();
+})();
+
+// =========================================================================
+// CORE UI: SELETTORE LAYOUT STRUMENTI DM (Barra Icone ↔ Con Testo + Riduci/Apri)
+// Valido su tutti i sistemi di gioco (D&D 5e, 7th Sea, NCS e moduli futuri).
+// Sposta lo stesso #dm-tool-rail senza duplicare alcun pulsante o ID nel DOM.
+// =========================================================================
+(function initDmToolsLayoutSwitcher() {
+    const STORAGE_MODE_KEY = 'vtt_dm_tools_layout';
+    const STORAGE_OPEN_KEY = 'vtt_dm_tools_inline_open';
+
+    const rail = document.getElementById('dm-tool-rail');
+    const sidebar = document.getElementById('sidebar');
+    const inlineSlot = document.getElementById('dm-inline-tools-slot');
+    const layoutSelect = document.getElementById('dm-tools-layout-select');
+    const btnToggleInline = document.getElementById('btn-toggle-inline-tools');
+    const tokControls = document.getElementById('selected-token-controls');
+    if (!rail || !sidebar || !inlineSlot || !layoutSelect) return;
+
+    let currentMode = 'rail';
+    let inlineOpen = true;
+    let activeTokTab = 'combat';
+
+    try {
+        const savedMode = localStorage.getItem(STORAGE_MODE_KEY);
+        if (savedMode === 'inline' || savedMode === 'rail') currentMode = savedMode;
+        const savedOpen = localStorage.getItem(STORAGE_OPEN_KEY);
+        if (savedOpen === '0') inlineOpen = false;
+    } catch (e) {}
+
+    function setTokenTab(tab) {
+        if (tab !== 'combat' && tab !== 'effects' && tab !== 'info') tab = 'combat';
+        activeTokTab = tab;
+        if (!tokControls) return;
+        tokControls.querySelectorAll('.tok-tab-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.tokTab === activeTokTab);
+        });
+        tokControls.querySelectorAll('.tok-tab-pane').forEach(p => {
+            p.classList.toggle('active', p.dataset.tokPane === activeTokTab);
+        });
+    }
+
+    function applyLayout(persist = true) {
+        if (layoutSelect.value !== currentMode) layoutSelect.value = currentMode;
+
+        if (currentMode === 'rail') {
+            rail.classList.remove('inline-mode');
+            rail.style.display = 'flex';
+            if (rail.parentNode !== document.body || rail.nextSibling !== sidebar) {
+                document.body.insertBefore(rail, sidebar);
+            }
+            if (btnToggleInline) btnToggleInline.style.display = 'none';
+            if (tokControls) tokControls.classList.remove('tok-tabbed');
+        } else {
+            rail.classList.add('inline-mode');
+            if (rail.parentNode !== inlineSlot) {
+                inlineSlot.appendChild(rail);
+            }
+            rail.style.display = inlineOpen ? 'grid' : 'none';
+            if (btnToggleInline) {
+                btnToggleInline.style.display = 'inline-flex';
+                const rawLbl = inlineOpen ? '▴ Riduci' : '▾ Apri';
+                btnToggleInline.setAttribute('data-i18n', rawLbl);
+                btnToggleInline.textContent = (typeof window.t === 'function') ? window.t(rawLbl) : rawLbl;
+                btnToggleInline.style.background = inlineOpen ? '#2c2538' : '#1b3a4b';
+                btnToggleInline.style.borderColor = inlineOpen ? '#7b1fa2' : '#0288d1';
+                btnToggleInline.style.color = inlineOpen ? '#e1bee7' : '#81d4fa';
+            }
+            if (tokControls) tokControls.classList.add('tok-tabbed');
+            setTokenTab(activeTokTab);
+        }
+
+        if (persist) {
+            try {
+                localStorage.setItem(STORAGE_MODE_KEY, currentMode);
+                localStorage.setItem(STORAGE_OPEN_KEY, inlineOpen ? '1' : '0');
+            } catch (e) {}
+        }
+
+        requestAnimationFrame(() => {
+            if (typeof engine !== 'undefined' && engine) {
+                if (typeof engine.resize === 'function') engine.resize();
+                else if (typeof engine.renderAll === 'function') engine.renderAll();
+            }
+        });
+    }
+
+    layoutSelect.addEventListener('change', () => {
+        currentMode = (layoutSelect.value === 'inline') ? 'inline' : 'rail';
+        // Quando si passa a "Con Testo", parte sempre srotolato così gli strumenti sono subito visibili
+        if (currentMode === 'inline') inlineOpen = true;
+        applyLayout(true);
+    });
+
+    if (btnToggleInline) {
+        btnToggleInline.addEventListener('click', () => {
+            if (currentMode !== 'inline') return;
+            inlineOpen = !inlineOpen;
+            applyLayout(true);
+        });
+    }
+
+    if (tokControls) {
+        tokControls.querySelectorAll('.tok-tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                setTokenTab(btn.dataset.tokTab);
+            });
+        });
+    }
+
+    window.dmToolsLayout = {
+        getMode: () => currentMode,
+        setMode: (m) => {
+            currentMode = (m === 'inline') ? 'inline' : 'rail';
+            if (currentMode === 'inline') inlineOpen = true;
+            applyLayout(true);
+        },
+        isInlineOpen: () => inlineOpen,
+        setInlineOpen: (open) => {
+            inlineOpen = !!open;
+            applyLayout(true);
+        },
+        getTokenTab: () => activeTokTab,
+        setTokenTab
+    };
+
+    applyLayout(false);
 })();

@@ -805,7 +805,9 @@ const dict = {
     "Area Segreta (Solo DM)": "Secret Area (DM Only)",
     "Area Segreta (Solo DM — Token fuori mappa)": "Secret Area (DM Only — Off-map Tokens)",
     "🗺️ Questa Mappa": "🗺️ This Map",
+    "🗺️ Mappa": "🗺️ Map",
     "🌍 Campagna": "🌍 Campaign",
+    "🕵️ Area Segreta": "🕵️ Secret Area",
     "🕵️ Sposta in Area Segreta": "🕵️ Move to Secret Area",
     "Trascina qui un token dalla mappa, o trascinalo fuori per schierarlo.": "Drag a token here from the map, or drag it out to deploy.",
     "📥 Rilascia qui per archiviare nell'Area Segreta!": "📥 Drop here to store in Secret Area!",
@@ -818,7 +820,30 @@ const dict = {
     "Sposta in Questa Mappa": "Move to This Map",
     "Duplica sulla Mappa": "Duplicate to Map",
     "Elimina dall'Area Segreta": "Remove from Secret Area",
-    "⚠️ I Personaggi Giocatori non possono essere nascosti nell'Area Segreta": "⚠️ Player Characters cannot be hidden in the Secret Area"
+    "⚠️ I Personaggi Giocatori non possono essere nascosti nell'Area Segreta": "⚠️ Player Characters cannot be hidden in the Secret Area",
+    "Tieni premuto per Ping": "Hold for Ping",
+    "Muovi/Seleziona (Tieni premuto per Ping)": "Move/Select (Hold for Ping)",
+    "📐 Barra Icone": "📐 Icon Rail",
+    "📋 Con Testo": "📋 With Labels",
+    "▴ Riduci": "▴ Collapse",
+    "▾ Apri": "▾ Expand",
+    "⚔️ Combat": "⚔️ Combat",
+    "✨ Auree/Stati": "✨ Auras/Status",
+    "⚙️ Dettagli": "⚙️ Details",
+    "Muovi": "Move",
+    "Lazo": "Lasso",
+    "Griglia": "Grid",
+    "Metro": "Ruler",
+    "Dis. Tutti": "Draw All",
+    "Dis. DM": "Draw DM",
+    "+ Nebbia": "+ Fog",
+    "- Nebbia": "- Fog",
+    "Pin DM": "DM Pin",
+    "Laser": "Laser",
+    "Copri Nebbia": "Cover Fog",
+    "Via Nebbia": "Clear Fog",
+    "Pulisci Pub": "Clear Pub",
+    "Pulisci DM": "Clear DM"
 };
 
 const dynamicPatterns = [
@@ -1087,7 +1112,13 @@ const observer = new MutationObserver((mutations) => {
 });
 
 window.addEventListener('DOMContentLoaded', () => {
-    // Inserisci pulsante toggle lingua accanto al titolo in index.html
+    // Se il pulsante #lang-toggle è già presente nell'header compatto di index.html, collegalo subito
+    const existingBtn = document.getElementById('lang-toggle');
+    if (existingBtn && !existingBtn.onclick) {
+        existingBtn.onclick = toggleLanguage;
+    }
+
+    // Inserisci pulsante toggle lingua accanto al titolo in index.html (fallback se non presente)
     const title = document.querySelector('#sidebar h2');
     if (title && !document.getElementById('lang-toggle')) {
         const btn = document.createElement('button');
