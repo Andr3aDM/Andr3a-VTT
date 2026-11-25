@@ -1516,15 +1516,22 @@ window.addEventListener('resize', () => {
 // --- PLAYER TOOLBAR ---
 let currentTool = 'move';
 let currentSharedImageId = null;
-document.querySelectorAll('.ptool-btn').forEach(btn => {
+const playerToolBtns = document.querySelectorAll('.ptool-btn[data-tool]');
+playerToolBtns.forEach(btn => {
     btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.ptool-btn').forEach(b => b.style.opacity = '0.5');
+        const nextTool = e.currentTarget.dataset.tool;
+        if (!nextTool) return;
+        playerToolBtns.forEach(b => {
+            b.style.opacity = '0.5';
+            b.classList.remove('active');
+        });
         e.currentTarget.style.opacity = '1';
-        currentTool = e.currentTarget.dataset.tool;
+        e.currentTarget.classList.add('active');
+        currentTool = nextTool;
     });
 });
-// Init opacity
-document.querySelectorAll('.ptool-btn').forEach(b => b.style.opacity = b.classList.contains('active') ? '1' : '0.5');
+// Init opacity (solo sugli strumenti reali con data-tool; dadi/chat/audio non cambiano mai currentTool)
+playerToolBtns.forEach(b => b.style.opacity = b.classList.contains('active') ? '1' : '0.5');
 
 // Shape spawners
 function spawnShape(type) {

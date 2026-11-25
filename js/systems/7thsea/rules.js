@@ -446,6 +446,13 @@
 
         // Dati strutturati per la Sequenza d'Azione (js/systems/7thsea/initiative.js): Incrementi e token di chi tira
         const rollId = 'roll_s7_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+        const s7Color = (typeof window !== 'undefined' && window.vttDice3d && typeof window.vttDice3d.getColor === 'function') ? window.vttDice3d.getColor() : undefined;
+        const s7Dice = Array.isArray(result.dice) ? result.dice.map(d => Number(d)).filter(n => !isNaN(n)) : undefined;
+        try {
+            if (typeof window !== 'undefined' && window.vttDice3d && typeof window.vttDice3d.onSeventhSeaRoll === 'function') {
+                window.vttDice3d.onSeventhSeaRoll(heroName || 'Eroe', result, s7Color, rollId);
+            }
+        } catch (d3dErr) { console.warn('[7thSea] Dice3D:', d3dErr); }
         const s7Risk = { totalRaises: Number(result.totalRaises) || 0, tokenId: (result.tokenId !== undefined && result.tokenId !== null) ? result.tokenId : null, name: heroName || '', unused: Array.isArray(result.remaining) ? result.remaining.length : 0 };
         try {
             if (typeof window !== 'undefined' && window.seventhSeaInitiative && typeof window.seventhSeaInitiative.onRiskRoll === 'function') {
@@ -458,6 +465,8 @@
                 const payload = {
                     id: rollId,
                     s7Risk: s7Risk,
+                    s7Dice: s7Dice,
+                    diceColor: s7Color,
                     sender: heroName || 'Eroe',
                     formula: `Rischio ${formulaLabel}`,
                     result: `${result.totalRaises} Incrementi`,

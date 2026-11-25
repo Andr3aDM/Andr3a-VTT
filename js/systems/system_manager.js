@@ -222,6 +222,19 @@
             }
         },
 
+        // Controlli salute personalizzati nel pannello Token Selezionato del Master (facoltativo per l'adattatore).
+        // Restituisce true se il modulo del sistema attivo gestisce il riquadro, false per lasciare i controlli standard (5e/NCS).
+        renderTokenHealthControls(container, token, targets, helpers) {
+            const a = systems.get(activeSystemId);
+            if (!a || typeof a.renderTokenHealthControls !== 'function') return false;
+            try {
+                return !!a.renderTokenHealthControls(container, token, targets, helpers);
+            } catch (e) {
+                console.warn('renderTokenHealthControls error (' + activeSystemId + '):', e);
+                return false;
+            }
+        },
+
         updateSystemUI() {
             if (typeof document === 'undefined') return;
             const badge = document.getElementById('campaign-system-badge');
@@ -240,6 +253,12 @@
             const tempHpBox = document.getElementById('token-temp-hp-box');
             if (acBox) acBox.style.display = u.hideAc ? 'none' : 'flex';
             if (tempHpBox) tempHpBox.style.display = u.hideTempHp ? 'none' : 'flex';
+
+            if (typeof window !== 'undefined' && typeof window.updateSelectedTokenControls === 'function' &&
+                typeof engine !== 'undefined' && engine && engine.selectedTokenId && Array.isArray(engine.tokens)) {
+                const selTok = engine.tokens.find(t => t && t.id === engine.selectedTokenId);
+                if (selTok) window.updateSelectedTokenControls(selTok);
+            }
 
             if (typeof window !== 'undefined' && window.seventhSeaCompendium && typeof window.seventhSeaCompendium.syncCompendiumSystemUI === 'function') {
                 window.seventhSeaCompendium.syncCompendiumSystemUI();

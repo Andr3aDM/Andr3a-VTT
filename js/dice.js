@@ -166,7 +166,14 @@ window.appendRollToChat = function(playerOrData, dice, bonus, result) {
             // Modalità: A ciascun dado (Vantaggio / Svantaggio / Prove)
             const bSign = data.bonus > 0 ? `+${data.bonus}` : (data.bonus < 0 ? `${data.bonus}` : '');
             const bLabel = data.bonus !== 0 ? ` (${bSign} cad.)` : '';
-            li.style.borderLeft = '3px solid #2196f3';
+            const exprStr = String(data.expression || '');
+            const isAdvDis = data.rolls && data.rolls.length === 2 && /vantaggio|svantaggio|adv|dis/i.test(exprStr);
+            const isDis = isAdvDis && /svantaggio|dis/i.test(exprStr);
+            const chosenRaw = isAdvDis
+                ? (isDis ? Math.min(data.rolls[0].raw, data.rolls[1].raw) : Math.max(data.rolls[0].raw, data.rolls[1].raw))
+                : null;
+            let chosenHighlighted = false;
+            li.style.borderLeft = isDis ? '3px solid #fb7185' : '3px solid #2196f3';
             
             let badgesHtml = '';
             if (data.rolls && data.rolls.length > 0) {
@@ -174,18 +181,24 @@ window.appendRollToChat = function(playerOrData, dice, bonus, result) {
                 data.rolls.forEach((r, idx) => {
                     const isNat20 = r.dice === 20 && r.raw === 20;
                     const isNat1 = r.dice === 20 && r.raw === 1;
-                    const borderColor = isNat20 ? '#4caf50' : (isNat1 ? '#f44336' : '#555');
+                    const isChosen = isAdvDis && !chosenHighlighted && r.raw === chosenRaw;
+                    if (isChosen) chosenHighlighted = true;
+                    const borderColor = isNat20 ? '#4caf50' : (isNat1 ? '#f44336' : (isChosen ? (isDis ? '#fb7185' : '#38bdf8') : '#555'));
+                    const dimStyle = (isAdvDis && !isChosen) ? 'opacity:0.55;text-decoration:line-through;' : '';
                     const critBadge = isNat20 ? ' <b style="color:#4caf50;">★ Nat 20!</b>' : (isNat1 ? ' <b style="color:#f44336;">⚠ Nat 1</b>' : '');
                     const calcStr = data.bonus !== 0 ? ` (${safeEscape(r.raw)}${bSign})` : '';
                     
-                    badgesHtml += `<span style="background: rgba(0,0,0,0.5); padding: 3px 7px; border-radius: 4px; border: 1px solid ${borderColor}; font-size: 12px;">` +
+                    badgesHtml += `<span style="background: rgba(0,0,0,0.5); padding: 3px 7px; border-radius: 4px; border: 1px solid ${borderColor}; font-size: 12px; ${dimStyle}">` +
                         `d${safeEscape(r.dice)} #${idx+1}: <strong style="font-size:14px; color:${isNat20 ? '#4caf50' : (isNat1 ? '#f44336' : '#ffcc00')};">${safeEscape(r.total)}</strong>` +
                         `<span style="color:#aaa; font-size:11px;">${calcStr}</span>${critBadge}</span>`;
                 });
                 badgesHtml += '</div>';
             }
+            const resSuffix = (isAdvDis && data.result !== undefined)
+                ? ` <strong style="font-size:15px; color:${isDis ? '#fb7185' : '#38bdf8'};">→ ${safeEscape(data.result)}</strong>`
+                : '';
             
-            li.innerHTML = `<div><strong style="color:#ffcc00;">${pName}</strong> tira <strong>${safeEscape(data.expression || '')}</strong>${bLabel}:</div>${badgesHtml}`;
+            li.innerHTML = `<div><strong style="color:#ffcc00;">${pName}</strong> tira <strong>${safeEscape(data.expression || '')}</strong>${bLabel}:${resSuffix}</div>${badgesHtml}`;
         } else {
             // Modalità: Al Totale (Danno / Somma)
             const bSign = data.bonus > 0 ? `+${data.bonus}` : (data.bonus < 0 ? `${data.bonus}` : '');
@@ -261,6 +274,7 @@ window.setupDiceSystem = function(isDM, networkObj) {
 
     // State per selezione dadi
     const selectedDice = { 4: 0, 6: 0, 8: 0, 10: 0, 12: 0, 20: 0, 100: 0 };
+    let advMode = 'normal'; // 'normal' | 'adv' | 'dis'
     let lastRollConfig = null;
 
     const dicePoolDisplay = document.getElementById('dice-pool-display');
@@ -273,6 +287,34 @@ window.setupDiceSystem = function(isDM, networkObj) {
     const diceRerollContainer = document.getElementById('dice-reroll-container');
     const btnDiceReroll = document.getElementById('btn-dice-reroll');
     const diceRerollLabel = document.getElementById('dice-reroll-label');
+    const advButtons = document.querySelectorAll('.dice-adv-btn');
+
+    function updateAdvButtonsUI() {
+        advButtons.forEach(btn => {
+            const val = btn.getAttribute('data-adv') || 'normal';
+            const isAct = val === advMode;
+            btn.classList.toggle('active', isAct);
+            if (isAct) {
+                btn.style.background = val === 'adv' ? '#0369a1' : (val === 'dis' ? '#be123c' : '#0288d1');
+                btn.style.borderColor = val === 'dis' ? '#fb7185' : '#38bdf8';
+                btn.style.color = '#ffffff';
+            } else {
+                btn.style.background = '#262b34';
+                btn.style.borderColor = '#3b4656';
+                btn.style.color = val === 'adv' ? '#7dd3fc' : (val === 'dis' ? '#fda4af' : '#cbd5e1');
+            }
+        });
+    }
+
+    advButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            advMode = btn.getAttribute('data-adv') || 'normal';
+            updateAdvButtonsUI();
+            updateDiceUI();
+        });
+    });
 
     function getSelectedFormula() {
         const parts = [];
@@ -314,7 +356,12 @@ window.setupDiceSystem = function(isDM, networkObj) {
             const bSign = bonus > 0 ? `+${bonus}` : (bonus < 0 ? `${bonus}` : '');
             const mode = modModeSelect ? modModeSelect.value : 'total';
             
-            if (formula) {
+            if (advMode === 'adv' || advMode === 'dis') {
+                const tag = advMode === 'adv' ? 'Vant.' : 'Svant.';
+                const base = (!formula || formula === '1d20') ? '2d20' : formula;
+                dicePoolDisplay.innerText = `${base} (${tag})${bSign ? ' ' + bSign : ''}`;
+                dicePoolDisplay.style.color = advMode === 'adv' ? '#38bdf8' : '#fb7185';
+            } else if (formula) {
                 let modSuffix = '';
                 if (bonus !== 0) {
                     modSuffix = mode === 'each' ? ` (${bSign} cad.)` : ` (${bSign})`;
@@ -331,6 +378,8 @@ window.setupDiceSystem = function(isDM, networkObj) {
     // Reset completo di dadi, bonus e stato
     function resetAll() {
         for (let k in selectedDice) selectedDice[k] = 0;
+        advMode = 'normal';
+        updateAdvButtonsUI();
         if (bonusInput) bonusInput.value = 0;
         if (modModeSelect) modModeSelect.value = 'total';
         lastRollConfig = null;
@@ -399,18 +448,36 @@ window.setupDiceSystem = function(isDM, networkObj) {
         let formulaBase = "";
         let bonus = 0;
         let mode = 'total';
+        let activeAdv = 'normal';
 
         if (customConfig) {
             diceList = customConfig.diceList;
             formulaBase = customConfig.formulaBase;
             bonus = customConfig.bonus;
             mode = customConfig.mode;
+            activeAdv = customConfig.advMode || 'normal';
         } else {
             let formula = getSelectedFormula();
             bonus = bonusInput ? (parseInt(bonusInput.value) || 0) : 0;
             mode = modModeSelect ? modModeSelect.value : 'total';
+            activeAdv = advMode;
 
-            if (!formula) {
+            if (activeAdv === 'adv' || activeAdv === 'dis') {
+                const tag = activeAdv === 'adv' ? 'Vantaggio' : 'Svantaggio';
+                if (!formula || formula === '1d20') {
+                    diceList = [20, 20];
+                    formulaBase = `2d20 (${tag})`;
+                } else {
+                    const order = [4, 6, 8, 10, 12, 20, 100];
+                    order.forEach(d => {
+                        const count = selectedDice[d] || 0;
+                        for (let i = 0; i < count; i++) diceList.push(d);
+                    });
+                    if (diceList.length === 1) diceList.push(diceList[0]);
+                    formulaBase = `${formula} (${tag})`;
+                }
+                mode = 'each';
+            } else if (!formula) {
                 // Se nessun dado selezionato, seleziona e lancia 1d20 di default
                 selectedDice[20] = 1;
                 updateDiceUI();
@@ -442,7 +509,13 @@ window.setupDiceSystem = function(isDM, networkObj) {
             });
         });
 
-        const totalResult = diceSum + bonus;
+        let totalResult = diceSum + bonus;
+        if ((activeAdv === 'adv' || activeAdv === 'dis') && rolledItems.length >= 2) {
+            const raws = rolledItems.map(r => r.raw);
+            const chosenRaw = activeAdv === 'adv' ? Math.max(...raws) : Math.min(...raws);
+            diceSum = chosenRaw;
+            totalResult = chosenRaw + bonus;
+        }
 
         // Determina nome giocatore o token assegnato
         let pName = "Giocatore";
@@ -502,7 +575,8 @@ window.setupDiceSystem = function(isDM, networkObj) {
             diceList: [...diceList],
             formulaBase: formulaBase,
             bonus: bonus,
-            mode: mode
+            mode: mode,
+            advMode: activeAdv
         };
         if (diceRerollContainer && diceRerollLabel) {
             const bSign = bonus > 0 ? `+${bonus}` : (bonus < 0 ? `${bonus}` : '');

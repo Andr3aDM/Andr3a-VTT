@@ -843,7 +843,28 @@ const dict = {
     "Copri Nebbia": "Cover Fog",
     "Via Nebbia": "Clear Fog",
     "Pulisci Pub": "Clear Pub",
-    "Pulisci DM": "Clear DM"
+    "Pulisci DM": "Clear DM",
+    "📄 Pagina Unica": "📄 Single Page",
+    "📑 Schede (Tab)": "📑 Tabs View",
+    "🎲 Dadi 3D": "🎲 3D Dice",
+    "🔊 Suono": "🔊 Sound",
+    "Suono clic dei dadi 3D": "3D dice clack sound",
+    "Blu Zaffiro": "Sapphire Blue",
+    "Rosso Rubino": "Ruby Red",
+    "Verde Smeraldo": "Emerald Green",
+    "Viola Ametista": "Amethyst Purple",
+    "Ambra": "Amber",
+    "Avorio": "Ivory",
+    "Ossidiana": "Obsidian",
+    "Colore personalizzato": "Custom color",
+    "Vantaggio": "Advantage",
+    "Svantaggio": "Disadvantage",
+    "Incrementi": "Raises",
+    "Normale": "Normal",
+    "✨ Vant.": "✨ Adv.",
+    "💢 Svant.": "💢 Dis.",
+    "Tira 2d20 e tiene il più alto": "Roll 2d20 and keep highest",
+    "Tira 2d20 e tiene il più basso": "Roll 2d20 and keep lowest"
 };
 
 const dynamicPatterns = [

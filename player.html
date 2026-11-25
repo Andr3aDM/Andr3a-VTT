@@ -295,6 +295,12 @@
             <button class="roll-btn" data-dice="100" type="button" style="grid-column: span 3; padding: 7px 2px; background: #383838; color: white; border: 1px solid #484848; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 3px;">d100 <span class="dice-badge" style="display:none; background:#ffcc00; color:#111; font-size:10px; font-weight:bold; border-radius:8px; padding:0 4px;">0</span></button>
         </div>
 
+        <div id="dice-adv-row" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; width: 100%; box-sizing: border-box;">
+            <button type="button" class="dice-adv-btn active" data-adv="normal" style="padding: 4px 2px; background: #0288d1; color: white; border: 1px solid #38bdf8; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px;">Normale</button>
+            <button type="button" class="dice-adv-btn" data-adv="adv" title="Tira 2d20 e tiene il più alto" style="padding: 4px 2px; background: #262b34; color: #7dd3fc; border: 1px solid #3b4656; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px;">✨ Vant.</button>
+            <button type="button" class="dice-adv-btn" data-adv="dis" title="Tira 2d20 e tiene il più basso" style="padding: 4px 2px; background: #262b34; color: #fda4af; border: 1px solid #3b4656; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px;">💢 Svant.</button>
+        </div>
+
         <div style="background: #222; border-radius: 4px; padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; width: 100%; box-sizing: border-box;">
             <div style="display: flex; align-items: center; justify-content: space-between;">
                 <span style="font-size: 11.5px; color: #ddd;">Modificatore:</span>
@@ -305,11 +311,37 @@
                 </div>
             </div>
             <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
-                <span style="color: #aaa;">Applica a:</span>
-                <select id="dice-mod-mode" style="background: #111; color: white; border: 1px solid #555; border-radius: 3px; padding: 2px 4px; font-size: 11px; cursor: pointer;">
+                <span style="color: #aaa; white-space: nowrap;">Applica a:</span>
+                <select id="dice-mod-mode" style="background: #111; color: white; border: 1px solid #555; border-radius: 3px; padding: 2px 4px; font-size: 11px; cursor: pointer; flex: 1; min-width: 0; margin-top: 0;">
                     <option value="total">Al Totale (Danno)</option>
                     <option value="each">A ciascun dado (Vantaggio)</option>
                 </select>
+            </div>
+        </div>
+
+        <div id="dice3d-settings-box" style="background: #1b1f26; border: 1px solid #303846; border-radius: 4px; padding: 6px 8px; display: flex; flex-direction: column; gap: 5px; width: 100%; box-sizing: border-box;">
+            <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                <label style="display: flex; align-items: center; gap: 4px; color: #7dd3fc; font-weight: bold; cursor: pointer; margin: 0;">
+                    <input type="checkbox" id="dice3d-enabled" checked style="cursor: pointer; margin: 0;">
+                    <span>🎲 Dadi 3D</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 3px; color: #cbd5e1; cursor: pointer; margin: 0;" title="Suono clic dei dadi 3D">
+                    <input type="checkbox" id="dice3d-sound" checked style="cursor: pointer; margin: 0;">
+                    <span>🔊 Suono</span>
+                </label>
+            </div>
+            <div id="dice3d-color-row" style="display: flex; align-items: center; justify-content: space-between; gap: 4px;">
+                <span style="font-size: 10.5px; color: #94a3b8;">Colore:</span>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                    <button type="button" class="dice3d-swatch" data-color="#0288d1" title="Blu Zaffiro" style="width:14px;height:14px;min-width:14px;padding:0;border-radius:50%;background:#0288d1;border:1px solid rgba(255,255,255,0.35);cursor:pointer;"></button>
+                    <button type="button" class="dice3d-swatch" data-color="#dc2626" title="Rosso Rubino" style="width:14px;height:14px;min-width:14px;padding:0;border-radius:50%;background:#dc2626;border:1px solid rgba(255,255,255,0.35);cursor:pointer;"></button>
+                    <button type="button" class="dice3d-swatch" data-color="#059669" title="Verde Smeraldo" style="width:14px;height:14px;min-width:14px;padding:0;border-radius:50%;background:#059669;border:1px solid rgba(255,255,255,0.35);cursor:pointer;"></button>
+                    <button type="button" class="dice3d-swatch" data-color="#9333ea" title="Viola Ametista" style="width:14px;height:14px;min-width:14px;padding:0;border-radius:50%;background:#9333ea;border:1px solid rgba(255,255,255,0.35);cursor:pointer;"></button>
+                    <button type="button" class="dice3d-swatch" data-color="#d97706" title="Ambra" style="width:14px;height:14px;min-width:14px;padding:0;border-radius:50%;background:#d97706;border:1px solid rgba(255,255,255,0.35);cursor:pointer;"></button>
+                    <button type="button" class="dice3d-swatch" data-color="#e5e7eb" title="Avorio" style="width:14px;height:14px;min-width:14px;padding:0;border-radius:50%;background:#e5e7eb;border:1px solid rgba(255,255,255,0.35);cursor:pointer;"></button>
+                    <button type="button" class="dice3d-swatch" data-color="#1f2937" title="Ossidiana" style="width:14px;height:14px;min-width:14px;padding:0;border-radius:50%;background:#1f2937;border:1px solid rgba(255,255,255,0.35);cursor:pointer;"></button>
+                    <input type="color" id="dice3d-color-picker" value="#0288d1" title="Colore personalizzato" style="width:18px;height:16px;padding:0;border:1px solid #555;border-radius:3px;background:transparent;cursor:pointer;">
+                </div>
             </div>
         </div>
 
@@ -439,18 +471,18 @@
     <script src="js/ui_dialogs.js?v=2"></script>
     <script src="js/engine.js?v=159"></script>
     <script src="js/network.js?v=14"></script>
-    <script src="js/dice.js?v=127"></script>
+    <script src="js/dice.js?v=128"></script>
     <script src="js/audio.js?v=120"></script>
     <script src="js/pcsheet.js?v=13"></script>
     <script src="js/compendium.js?v=28"></script>
-    <script src="js/systems/system_manager.js?v=7"></script>
+    <script src="js/systems/system_manager.js?v=8"></script>
     <script src="js/systems/dnd5e/adapter.js?v=4"></script>
     <!-- modulo:7thsea -->
     <script src="js/systems/7thsea/data.js?v=3"></script>
-    <script src="js/systems/7thsea/rules.js?v=7"></script>
+    <script src="js/systems/7thsea/rules.js?v=8"></script>
     <script src="js/systems/7thsea/sheet.js?v=22"></script>
     <script src="js/systems/7thsea/compendium.js?v=9"></script>
-    <script src="js/systems/7thsea/token_bar.js?v=1"></script>
+    <script src="js/systems/7thsea/token_bar.js?v=2"></script>
     <!-- /modulo:7thsea -->
     <!-- modulo:ncs -->
     <script src="js/systems/ncs/rules.js?v=1"></script>
@@ -459,8 +491,9 @@
     <script src="js/systems/ncs/coins.js?v=2"></script>
     <!-- /modulo:ncs -->
     <script src="js/diagnostica.js?v=1"></script>
-    <script src="js/player.js?v=181"></script>
-<script src="js/lang.js?v=41"></script>
+    <script src="js/player.js?v=182"></script>
+    <script src="js/dice3d.js?v=2"></script>
+<script src="js/lang.js?v=44"></script>
 
     
 

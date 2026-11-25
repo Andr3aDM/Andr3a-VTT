@@ -1,7 +1,7 @@
 # Andr3a VTT — Manuale d'uso / User Manual
 *Tavolo virtuale leggero per giocare di ruolo dal vivo, su TV o online — Lightweight virtual tabletop for in-person, TV and online play*
 
-Versione dell'interfaccia: **Beta 1.5** · Sistemi di gioco: **5ª Edizione (5e)** e **7th Sea 2ª Edizione**
+Versione dell'interfaccia: **Beta 1.5** · Sistemi di gioco: **5ª Edizione (5e)**, **7th Sea 2ª Edizione** e **Non Cedere al Sonno**
 
 ---
 
@@ -13,21 +13,22 @@ Versione dell'interfaccia: **Beta 1.5** · Sistemi di gioco: **5ª Edizione (5e)
 3. [Modalità di gioco](#3-modalità-di-gioco)
 4. [Campagne, sistemi di gioco e mappe salvate](#4-campagne-sistemi-di-gioco-e-mappe-salvate)
 5. [Mappa, griglia e visuale](#5-mappa-griglia-e-visuale)
-6. [Strumenti del Master e nebbia di guerra](#6-strumenti-del-master-e-nebbia-di-guerra)
-7. [Token pedine](#7-token-pedine)
+6. [DM Console, strumenti del Master e nebbia di guerra](#6-dm-console-strumenti-del-master-e-nebbia-di-guerra)
+7. [Token (pedine) e Area Segreta](#7-token-pedine-e-area-segreta)
 8. [Punti Ferita, aure e condizioni](#8-punti-ferita-aure-e-condizioni)
-9. [Zone d'effetto AoE](#9-zone-deffetto-aoe)
+9. [Zone d'effetto (AoE)](#9-zone-deffetto-aoe)
 10. [Tracker dell'iniziativa](#10-tracker-delliniziativa)
 11. [Dadi e chat](#11-dadi-e-chat)
-12. [Immagini condivise handout](#12-immagini-condivise-handout)
-13. [Audio musica ed effetti](#13-audio-musica-ed-effetti)
+12. [Immagini condivise (handout)](#12-immagini-condivise-handout)
+13. [Audio: musica ed effetti](#13-audio-musica-ed-effetti)
 14. [Schermo del Giocatore](#14-schermo-del-giocatore)
-15. [Sistema 5e scheda PG e compendio mostri](#15-sistema-5e-scheda-pg-e-compendio-mostri)
+15. [Sistema 5e: scheda PG e compendio mostri](#15-sistema-5e-scheda-pg-e-compendio-mostri)
 16. [Sistema 7th Sea 2e](#16-sistema-7th-sea-2e) — con la [guida passo passo all'iniziativa (Sequenza d'Azione)](#168-guida-pratica-la-prima-sequenza-passo-passo)
-17. [Tablet e touchscreen](#17-tablet-e-touchscreen)
-18. [Scorciatoie e comandi rapidi](#18-scorciatoie-e-comandi-rapidi)
-19. [Salvataggi, prestazioni e limiti noti](#19-salvataggi-prestazioni-e-limiti-noti)
-20. [Licenze, crediti e avvisi](#20-licenze-crediti-e-avvisi)
+17. [Sistema Non Cedere al Sonno (NCS)](#17-sistema-non-cedere-al-sonno-ncs)
+18. [Tablet e touchscreen](#18-tablet-e-touchscreen)
+19. [Scorciatoie e comandi rapidi](#19-scorciatoie-e-comandi-rapidi)
+20. [Salvataggi, prestazioni e limiti noti](#20-salvataggi-prestazioni-e-limiti-noti)
+21. [Licenze, crediti e avvisi](#21-licenze-crediti-e-avvisi)
 
 **Part II — English Manual**
 1. [Overview](#1-overview)
@@ -35,21 +36,22 @@ Versione dell'interfaccia: **Beta 1.5** · Sistemi di gioco: **5ª Edizione (5e)
 3. [Play modes](#3-play-modes)
 4. [Campaigns, game systems and saved maps](#4-campaigns-game-systems-and-saved-maps)
 5. [Map, grid and view](#5-map-grid-and-view)
-6. [GM tools and fog of war](#6-gm-tools-and-fog-of-war)
-7. [Tokens](#7-tokens)
+6. [GM Console, tools and fog of war](#6-gm-console-tools-and-fog-of-war)
+7. [Tokens and Secret Area](#7-tokens-and-secret-area)
 8. [Hit points, auras and conditions](#8-hit-points-auras-and-conditions)
 9. [Areas of effect](#9-areas-of-effect)
 10. [Initiative tracker](#10-initiative-tracker)
 11. [Dice and chat](#11-dice-and-chat)
-12. [Shared images handouts](#12-shared-images-handouts)
-13. [Audio music and sound effects](#13-audio-music-and-sound-effects)
+12. [Shared images (handouts)](#12-shared-images-handouts)
+13. [Audio: music and sound effects](#13-audio-music-and-sound-effects)
 14. [Player screen](#14-player-screen)
-15. [5e system character sheet and monster compendium](#15-5e-system-character-sheet-and-monster-compendium)
+15. [5e system: character sheet and monster compendium](#15-5e-system-character-sheet-and-monster-compendium)
 16. [7th Sea 2e system](#16-7th-sea-2e-system) — with the [step-by-step initiative guide (Action Sequence)](#168-practical-guide-your-first-sequence-step-by-step)
-17. [Tablets and touchscreens](#17-tablets-and-touchscreens)
-18. [Shortcuts and quick controls](#18-shortcuts-and-quick-controls)
-19. [Saving, performance and known limits](#19-saving-performance-and-known-limits)
-20. [Licences, credits and notices](#20-licences-credits-and-notices)
+17. [Don't Rest Your Head (NCS) system](#17-dont-rest-your-head-ncs-system)
+18. [Tablets and touchscreens](#18-tablets-and-touchscreens)
+19. [Shortcuts and quick controls](#19-shortcuts-and-quick-controls)
+20. [Saving, performance and known limits](#20-saving-performance-and-known-limits)
+21. [Licences, credits and notices](#21-licences-credits-and-notices)
 
 ---
 
@@ -57,23 +59,23 @@ Versione dell'interfaccia: **Beta 1.5** · Sistemi di gioco: **5ª Edizione (5e)
 
 ## 1. Panoramica
 
-**Andr3a VTT** è un tavolo virtuale (VTT) che gira interamente nel browser: niente installazioni, niente server da gestire, niente account. È fatto di due pagine:
+**Andr3a VTT** è un tavolo virtuale (VTT) che gira interamente nel browser: niente installazioni, niente server da gestire, niente account. È composto da due pagine:
 
-- **`index.html` — Console del Master (DM):** prepara le mappe, muove i token, gestisce nebbia, iniziativa, audio, schede e connessioni.
+- **`index.html` — Console del Master (DM):** prepara le mappe, muove i token, gestisce nebbia, Area Segreta, iniziativa, audio, schede e connessioni.
 - **`player.html` — Schermo dei Giocatori:** è sia lo schermo da mostrare su una TV o un secondo monitor, sia il client che ogni giocatore apre sul proprio PC, tablet o telefono per giocare online.
 
 ### Come è organizzato
 
-Il programma è diviso in due parti che restano separate di proposito:
+Il programma è diviso in due livelli separati e modulari:
 
-- **Il core**, comune a tutti i giochi: mappe, griglia, token, movimento, nebbia, disegni, zone d'effetto, iniziativa, dadi, chat, audio, rete e salvataggi.
-- **I sistemi di gioco**, ognuno con il proprio ecosistema di schede, regole e compendi. Oggi sono due: **5ª Edizione (5e)** e **7th Sea 2ª Edizione**. Ogni campagna è legata a un solo sistema (vedi cap. 4) e il programma apre automaticamente la scheda e il compendio giusti. Una modifica a un sistema non tocca l'altro né il core.
+- **Il Core**, comune a tutti i sistemi: mappe, griglia, token, Area Segreta del Master, layout personalizzabile della barra strumenti, movimento, nebbia, disegni, zone d'effetto, iniziativa, dadi, chat, audio per sistema, rete P2P, diagnostica, dialoghi in-page e salvataggi.
+- **I moduli dei sistemi di gioco**, ognuno con il proprio ecosistema isolato di schede, regole, barre sui token e compendi. I sistemi inclusi sono tre: **5ª Edizione (5e)**, **7th Sea 2ª Edizione** e **Non Cedere al Sonno (NCS)**. Ogni campagna è legata a un solo sistema (cap. 4) e il programma apre automaticamente le schede, i compendi e le meccaniche giuste. Se si apre una campagna di un modulo non incluso in una specifica pubblicazione ridotta, il programma avvisa esplicitamente senza mai ripiegare per errore sulla 5e.
 
 ### Principi di progettazione
 
-- **Leggero e fluido** anche su PC datati, tablet Android e TV: le mappe vengono ottimizzate al caricamento, le animazioni sono limitate a 30 fotogrammi al secondo e la mappa si sposta e si ingrandisce tramite la scheda grafica invece di essere ridisegnata.
+- **Leggero e fluido** anche su PC datati, tablet Android e TV: le mappe vengono ottimizzate al caricamento, i cataloghi corposi (Eroi e Malvagi di 7th Sea) vengono caricati solo su richiesta (*lazy-loading*), le animazioni sono limitate a 30 fotogrammi al secondo e la mappa si sposta e si ingrandisce tramite la scheda grafica invece di essere ridisegnata.
 - **Rete essenziale:** durante il gioco viaggiano solo messaggi molto piccoli (posizioni, stato dei token); immagini, schede e mappe vengono inviate a parte, una volta sola, a pezzi.
-- **Bilingue:** l'interfaccia del core e della 5e è disponibile in italiano e inglese.
+- **Bilingue:** l'interfaccia del core, della 5e e di Non Cedere al Sonno è disponibile in italiano e inglese; gli avvisi e le conferme usano finestre integrate nella pagina, senza popup bloccanti del browser.
 
 ---
 
@@ -81,9 +83,9 @@ Il programma è diviso in due parti che restano separate di proposito:
 
 - **Browser:** Chrome, Edge o un altro browser moderno (consigliato Chrome). Funziona su Windows, Android, iPad e sulle smart TV/box con un browser moderno.
 - **Avvio:** apri `index.html` per la console del Master. Lo schermo giocatori si apre dalla console stessa (cap. 3) oppure, per i giocatori online, dall'indirizzo `player.html` della stessa installazione.
-- **Pubblicazione:** essendo composto solo da file statici, può essere ospitato su qualunque hosting statico (per esempio GitHub Pages) e aperto da qualsiasi dispositivo.
+- **Pubblicazione:** essendo composto solo da file statici, può essere ospitato su qualunque hosting statico (per esempio GitHub Pages) e aperto da qualsiasi dispositivo. Il programma supporta anche la pubblicazione modulare (versione completa o con i soli moduli scelti).
 - **Connessione internet:** non serve per giocare in locale (Master + TV sullo stesso PC). Serve per: il gioco online (il collegamento iniziale tra i dispositivi passa da servizi pubblici gratuiti), la ricerca online nel compendio mostri 5e e le tracce musicali preimpostate in streaming.
-- **Dati:** campagne, mappe e token vengono salvati nel browser del Master (IndexedDB). Restano sul dispositivo finché non cancelli i dati del browser: esporta regolarmente le campagne (cap. 4).
+- **Dati:** campagne, mappe e token vengono salvati nel browser del Master (IndexedDB); i file audio di soundboard e playlist hanno un archivio IndexedDB dedicato e separato. Tutto resta sul dispositivo finché non cancelli i dati del browser: esporta regolarmente campagne e soundboard (cap. 4 e 13).
 
 ---
 
@@ -95,7 +97,7 @@ Il programma è diviso in due parti che restano separate di proposito:
 2. Si apre una nuova finestra con lo schermo giocatori in modalità TV: trascinala sulla TV o sul secondo monitor e mettila a schermo intero.
 3. Le due finestre comunicano direttamente all'interno dello stesso browser, senza rete e senza ritardi.
 
-La modalità TV mostra la mappa così come la vedono i giocatori (nebbia completamente opaca, token nascosti invisibili). Con **Nascondi Barra Giocatori (Modalità TV)** (pannello Mappa & Griglia) lo schermo resta pulito, senza pulsanti.
+La modalità TV mostra la mappa così come la vedono i giocatori (nebbia completamente opaca, token nascosti e Area Segreta del Master del tutto invisibili). Con **Nascondi Barra Giocatori (Modalità TV)** (pannello Mappa & Griglia) lo schermo resta pulito, senza pulsanti.
 
 Dalla schermata di accesso dello schermo giocatori è disponibile anche **Usa Schermo Locale (Offline)**: apre un giocatore locale con nome, collegato al Master dello stesso browser.
 
@@ -105,13 +107,15 @@ Dalla schermata di accesso dello schermo giocatori è disponibile anche **Usa Sc
 1. Seleziona la campagna. Nel riquadro **🌐 Multiplayer Online (P2P)** il campo **Codice Campagna** mostra il codice fisso di quella campagna: la prima volta ne viene proposto uno casuale (formato `ABCD-1234`), ma puoi scriverne uno tuo (per esempio `CORVO-2026`, da 6 a 24 lettere o cifre) e confermare con Invio, oppure generarne uno nuovo con 🎲. Il codice è salvato nella campagna e viaggia con l'esportazione; cambiarlo impedisce l'accesso a chi conosce solo quello vecchio.
 2. Premi **Avvia Stanza**: la stanza si apre sempre con il Codice Campagna, quindi i giocatori usano lo stesso codice in ogni sessione. Se il codice è ancora occupato dalla sessione precedente, il programma riprova da solo per qualche decina di secondi; se è occupato da un'altra stanza, ti chiede di cambiarlo. **Apri Schermo Online** apre uno schermo giocatore già collegato alla stanza, utile per provare.
 3. Durante la sessione la selezione della campagna è bloccata (**🔒 Campagna Bloccata**), così nessuno riceve per errore i dati di un'altra campagna.
-4. L'elenco **giocatori connessi** mostra chi è collegato; il pulsante accanto a ogni nome lo espelle dalla stanza.
+4. L'elenco **giocatori connessi** mostra chi è collegato; accanto a ogni nome c'è il pulsante per espellerlo dalla stanza e, se attivo il registro diagnostico, il pulsante **🩺** per scaricare il suo log diagnostico.
 5. **🔴 Chiudi Stanza** termina la sessione online e scollega tutti: i giocatori vedono un messaggio e non provano a rientrare.
 6. Se ricarichi la pagina con la stanza aperta, la stanza riparte da sola con lo stesso codice e i giocatori rientrano senza fare nulla (la mappa va ricaricata come sempre).
 
+**🩺 Registro diagnostico giocatori:** spento per impostazione predefinita (zero memoria e zero attività quando è spento). Se durante una sessione online compare un problema (es. su un tablet o su una rete instabile), il Master può spuntare **🩺 Registro diagnostico giocatori** nel pannello **Regia & Campagna**: i client dei giocatori conservano gli ultimi 10 minuti di eventi tecnici essenziali (senza immagini, né contenuti di schede, né movimenti continui), anche dopo un ricaricamento pagina. Premendo **🩺** accanto al nome del giocatore, il Master scarica il file di log da analizzare.
+
 **Lato Giocatore**
 1. Apri `player.html` e inserisci il **Codice Campagna**: maiuscole, spazi e trattini non contano (`corvo 2026` vale come `CORVO-2026`).
-2. Il menu **Scegli il tuo Personaggio** si riempie con i personaggi giocanti della campagna (solo veri PG: mostri, PNG ed evocazioni non compaiono). In alternativa scegli **✍️ Altro nome / Spettatore** e scrivi un nome.
+2. Il menu **Scegli il tuo Personaggio** si riempie con i veri personaggi giocanti della campagna: mostri, evocazioni e token spostati nelle categorie **PNG** o **Vari** (anche se hanno una scheda) non compaiono mai come giocabili all'accesso. In alternativa scegli **✍️ Altro nome / Spettatore** e scrivi un nome.
 3. Premi **Connetti Online**. Il Master invia mappa, token, immagini e schede necessarie.
 
 **↩️ Rientra in campagna:** dopo il primo ingresso, la schermata d'accesso mostra fino a 3 pulsanti con nome della campagna e personaggio, validi anche nei giorni successivi: un tocco e si entra, senza riscrivere nulla (la ✕ dimentica l'accesso). Se la pagina si ricarica nella stessa scheda (succede spesso sui telefoni), il giocatore rientra da solo, con un attimo per premere **Annulla** se vuole cambiare personaggio. Con la casella **Entra automaticamente su questo dispositivo** (spenta di base, da attivare solo sul proprio telefono o PC) si entra da soli anche aprendo il browser il giorno dopo.
@@ -128,16 +132,20 @@ Tutto si trova nel pannello **⚙️ Regia & Campagna** (icona nel dock a destra
 
 ### 4.1 Campagne e sistema di gioco
 
-- **Nuova** apre la finestra **📁 Crea Nuova Campagna**: scegli il nome e il **Sistema di Gioco** (⚔️ 5ª Edizione (5e) oppure ⛵ 7th Sea 2ª Edizione).
-- Il sistema scelto è **definitivo**: dopo la creazione resta bloccato (**🔒 Fisso**) e il badge accanto al titolo indica il sistema della campagna attiva. In questo modo schede, compendi e regole di un gioco non si mescolano mai con quelli dell'altro.
+- **Nuova** apre la finestra **📁 Crea Nuova Campagna**: scegli il nome e il **Sistema di Gioco**:
+  - **⚔️ 5ª Edizione (5e)**
+  - **⛵ 7th Sea 2ª Edizione**
+  - **🌙 Non Cedere al Sonno**
+- Il sistema scelto è **definitivo**: dopo la creazione resta bloccato (**🔒 Fisso**) e il badge accanto al titolo indica il sistema della campagna attiva. In questo modo schede, compendi, barre e regole di un gioco non si mescolano mai con quelli di un altro.
 - **Elimina** cancella la campagna selezionata.
-- **Esporta (JSON)** salva l'intera campagna (mappe, cartelle, token, schede, Codice Campagna) in un file `.json`; **Importa** la ricarica.
+- **Esporta (JSON)** salva l'intera campagna — mappe, cartelle, token, schede, Codice Campagna, **Area Segreta della Campagna**, Riserva di Pericolo (7th Sea) e Coppe di Disperazione/Speranza (NCS) — in un file `.json`; **Importa** la ricarica.
 
 ### 4.2 Mappe e cartelle
 
 - **Cartella:** organizza le mappe della campagna in cartelle (**+ Cartella**, elimina cartella: le mappe tornano in *Senza Cartella*). Il filtro mostra *Tutte le Mappe* o una sola cartella.
-- **Mappe della Campagna:** **Carica** apre la mappa selezionata (con token, nebbia, disegni e zone d'effetto); **Sovrascrivi** salva lo stato attuale sulla mappa caricata; **Salva Nuova** la salva come mappa nuova; **📁 Sposta in...** la cambia di cartella; **Elimina Mappa** la cancella. Il badge indica la mappa attualmente in uso.
+- **Mappe della Campagna:** **Carica** apre la mappa selezionata (con token, Area Segreta della mappa, nebbia, disegni e zone d'effetto); **Sovrascrivi** salva lo stato attuale sulla mappa caricata; **Salva Nuova** la salva come mappa nuova; **📁 Sposta in...** la cambia di cartella; **Elimina Mappa** la cancella. Il badge indica la mappa attualmente in uso.
 - **Modifiche non salvate:** se cambi mappa con modifiche in sospeso, una finestra chiede cosa fare: **✕ Annulla**, **🗑️ Elimina modifiche**, **➕ Salva come Nuova** o **💾 Sovrascrivi Mappa**.
+- **Riporto automatico dei PG:** caricando una mappa della campagna, i veri PG (categoria *Personaggi*) vengono riportati sulla mappa con i dati più recenti della campagna; i token spostati in *PNG* o *Vari* non vengono mai riportati automaticamente.
 
 ### 4.3 Gestione Party
 
@@ -171,48 +179,57 @@ Pannello **🗺️ Mappa & Griglia**.
 
 ### 5.4 Allineare la griglia a una mappa già quadrettata
 
-1. Seleziona lo strumento **Allinea Griglia** nella barra a sinistra.
+1. Seleziona lo strumento **⊞ Allinea Griglia**.
 2. Trascina sulla mappa per far scorrere la griglia virtuale finché combacia con quella disegnata.
 3. Con **⚓ Ancora Oggetti alla Griglia** attivo (predefinito) token, aure, sagome e note si spostano insieme alla griglia restando nella loro casella; disattivandolo si sposta solo la griglia.
 
 ---
 
-## 6. Strumenti del Master e nebbia di guerra
+## 6. DM Console, strumenti del Master e nebbia di guerra
 
-Barra **Strumenti Base** a sinistra:
+### 6.1 Layout personalizzabile della DM Console (Core — tutti i sistemi)
 
-| Strumento | Funzione |
-|---|---|
-| **Muovi/Seleziona** | Clic per selezionare un token, trascina per muoverlo (si aggancia alla griglia). Trascinando su un punto vuoto si sposta la mappa. |
-| **Seleziona (Lazo)** | Disegna un'area per selezionare più token e sagome insieme e muoverli in gruppo. |
-| **Allinea Griglia** | Vedi cap. 5.4. |
-| **Metro (ft/m)** | Trascina per misurare: mostra piedi, metri e caselle (1 casella = 5 ft = 1,5 m). |
-| **Disegna (Tutti)** | Disegno a mano libera visibile a tutti. |
-| **Disegna (Solo DM)** | Disegno a mano libera visibile solo al Master. |
-| **Aggiungi Nebbia / Cancella Nebbia** | Pennello per coprire o rivelare zone della mappa. |
-| **Pin Segreto (DM)** | Clic sulla mappa per piazzare una nota con titolo e testo, visibile solo al Master. Il pannello del pin permette di modificarla o eliminarla. |
-| **Puntatore Laser** | Traccia una scia luminosa visibile a tutti che svanisce dopo 5 secondi. |
+La parte sinistra della Console del Master è progettata per lasciare tutto il pannello **Token Selezionato** visibile senza dover scorrere la pagina:
+
+- **Intestazione compatta su 1 riga:** `Andr3a VTT 1.5`, pulsante lingua **🇮🇹 IT / 🇬🇧 EN** e link compatto **☕ Ko-fi**.
+- **⚔️ Tracker Iniziativa** subito sotto, seguito dalla barra dello strumento attivo (**🛠️ …**) con il **selettore di layout** (salvato automaticamente nel browser):
+  - **📐 Barra Icone (predefinito):** i 10 strumenti base e le 4 azioni rapide (Nebbia e Pulizia Disegni) stanno in una barra verticale sottile (46 px) fissa sul bordo sinistro, sempre a un clic; l'intera barra laterale è dedicata al pannello Token aperto in un blocco unico.
+  - **📋 Con Testo:** gli stessi strumenti compaiono in una griglia compatta a 2 colonne con **icona + etichetta leggibile** subito sotto il Tracker, liberando 46 px in larghezza per la mappa. La griglia resta sempre aperta anche quando selezioni o cambi token, e può essere arrotolata o srotolata in qualsiasi momento con il pulsante manuale **▴ Riduci / ▾ Apri**. In questa vista il pannello Token si organizza in **3 sotto-tab** (**⚔️ Combat**, **✨ Auree/Stati**, **⚙️ Dettagli**) con il nome del token in intestazione, mantenendo zero scroll anche con tutti gli strumenti aperti.
+
+### 6.2 Strumenti Base
+
+| Icona | Strumento | Funzione |
+|---|---|---|
+| ↖️ | **Muovi/Seleziona** | Clic per selezionare un token, trascina per muoverlo (si aggancia alla griglia). Trascinando su un punto vuoto si sposta la mappa. |
+| ⭕ | **Seleziona (Lazo)** | Disegna un'area per selezionare più token e sagome insieme e muoverli in gruppo. |
+| ⊞ | **Allinea Griglia** | Vedi cap. 5.4. |
+| 📏 | **Metro (ft/m)** | Trascina per misurare: mostra piedi, metri e caselle (1 casella = 5 ft = 1,5 m). |
+| ✏️ | **Disegna (Tutti)** | Disegno a mano libera visibile a tutti. |
+| 🔏 | **Disegna (Solo DM)** | Disegno a mano libera visibile solo al Master. |
+| 🌫️ / ☀️ | **Aggiungi Nebbia / Cancella Nebbia** | Pennello per coprire o rivelare zone della mappa. |
+| 📌 | **Pin Segreto (DM)** | Clic sulla mappa per piazzare una nota con titolo e testo, visibile solo al Master. Il pannello del pin permette di modificarla o eliminarla. |
+| 🔴 | **Puntatore Laser** | Traccia una scia luminosa visibile a tutti che svanisce dopo 5 secondi. |
 
 **Ping:** tieni premuto (circa 0,6 secondi) su un punto della mappa per far comparire un segnale visibile a tutti.
 
-**Pulizia disegni:** **Pulisci Dis. (Pub)** e **Pulisci Dis. (DM)** cancellano rispettivamente i disegni pubblici e quelli privati.
+**Azioni rapide in fondo alla barra strumenti:** **☁️ Copri tutto di Nebbia**, **🌤️ Rimuovi tutta la Nebbia**, **🧹 Pulisci Dis. (Pub)** e **🧽 Pulisci Dis. (DM)**.
 
-### Nebbia di guerra
+### 6.3 Nebbia di guerra
 
-- **Impostazioni Nebbia:** forma del pennello (Cerchio / Quadrato) e dimensione (predefinita 150 px).
-- **Copri tutto di Nebbia** copre l'intera mappa; **Rimuovi tutta la Nebbia** la elimina.
+- **Impostazioni Nebbia** (compaiono automaticamente quando selezioni Aggiungi o Cancella Nebbia): forma del pennello (Cerchio / Quadrato) e dimensione (predefinita 150 px).
+- **☁️ Copri tutto di Nebbia** copre l'intera mappa; **🌤️ Rimuovi tutta la Nebbia** la elimina.
 - Il Master vede la nebbia semitrasparente (circa 55%) per poter lavorare sotto; per i giocatori è completamente opaca. I giocatori non possono selezionare, pingare o interagire con ciò che sta sotto la nebbia.
 
 ---
 
-## 7. Token (pedine)
+## 7. Token (pedine) e Area Segreta
 
 ### 7.1 Libreria Token
 
-Pannello **♟️ Libreria Token**:
+Pannello **♟️ Libreria Token** (dock a destra):
 
 - **Caricamento:** scegli uno o più file immagine, oppure un'intera cartella del PC; il menu accanto decide in quale categoria finiscono (👹 Mostri, 🧑 PNG, 🛡️ Personaggi, 📦 Vari). Puoi anche trascinare le immagini sul pannello.
-- **Due schede:** **In Mappa / Campagna** mostra i token salvati nella campagna attiva (PG, PNG, creature); **Libreria** è l'archivio globale di tutte le immagini caricate, condiviso fra le campagne.
+- **Due schede:** **Campagna** mostra i token salvati nella campagna attiva (PG, PNG, creature); **Libreria** è l'archivio globale di tutte le immagini caricate, condiviso fra le campagne.
 - **Filtri per categoria:** Tutti, Mostri, PNG, PG, Vari.
 - **Piazzare un token:** clic sulla sua scheda: compare al centro della vista, agganciato alla griglia.
 - **Piazzamento nuovi token:** taglia predefinita (Media 1×1, Grande 2×2, Enorme 3×3, Mastodontica 4×4) e visibilità iniziale (👁️ Visibile / 🙈 Nascosto).
@@ -223,22 +240,39 @@ I mostri con lo stesso nome vengono numerati automaticamente (Orco 1, Orco 2...)
 
 ### 7.2 Token selezionato
 
-Selezionando un token si apre il pannello **🎯 Token Selezionato**:
+Selezionando un token sulla mappa si apre il pannello **🎯 Token Selezionato** nella barra a sinistra (in blocco unico con **📐 Barra Icone**, oppure nei 3 sotto-tab **⚔️ Combat / ✨ Auree/Stati / ⚙️ Dettagli** con **📋 Con Testo**):
 
 - **Nome** e **visibilità della targhetta** (A tutti / Solo DM / Spento).
 - **Taglia** (da 1×1 a 4×4).
 - **➕ Assegna Player...:** assegna il controllo del token a uno o più giocatori del party. Solo i proprietari possono muoverlo dal proprio schermo.
-- **📁 Cartella** (Mostri, PNG, Personaggi, Vari, ✨ Evocazioni) e **💾 In Libreria** per salvarlo nella libreria permanente.
+- **📁 Cartella** (Mostri, PNG, Personaggi, Vari, ✨ Evocazioni) e **💾 In Libreria** per salvarlo nella libreria permanente. Spostare un token in **PNG** o **Vari** lo esclude dall'elenco dei PG giocabili all'accesso e dal riporto automatico sulle nuove mappe.
 - **⏳ Durata Token:** numero di round dopo cui il token scompare da solo (vuoto = permanente). Utile per evocazioni ed effetti temporanei.
-- **📋 Duplica** (anche Ctrl+D), **👁️ Visib.** (mostra/nasconde ai giocatori), **⚔️ + Iniz.** (aggiunge al tracker).
+- **📋 Duplica** (anche Ctrl+D), **👁️ Visib.** (mostra/nasconde ai giocatori), **⚔️ + Iniz.** (aggiunge al tracker, anche a Sequenza 7th Sea già avviata).
 - **🗑️ Mappa** toglie il token solo dalla mappa attuale; **🗑️ Campagna** lo elimina definitivamente dal roster salvato della campagna.
-- **📜 Mostro** apre la scheda creatura/antagonista assegnata; **🧙 Scheda PG** apre la scheda del personaggio (cap. 15 e 16).
+- **📜 Mostro / Antagonista** apre la scheda creatura/antagonista assegnata (nascosto nei sistemi senza compendio mostri come NCS); **🧙 Scheda PG** apre la scheda del personaggio (cap. 15, 16 e 17).
+- **🕵️ Area Segreta + tendina `🗺️ Mappa` / `🌍 Campagna`:** sposta subito il token selezionato nell'Area Segreta nella destinazione scelta (cap. 7.4).
 
-### 7.3 Spostamento
+### 7.3 Spostamento e protezione dai bordi
 
 - I token si agganciano alla griglia al rilascio. Tenendo premuto **Shift** al rilascio vengono posati liberamente, senza aggancio.
+- **Aggancio ai bordi mappa (anti-smarrimento):** se rilasci un token oltre il confine della mappa (nello sfondo nero), il token si aggancia automaticamente al bordo visibile più vicino senza mai perdersi fuori schermo. Fa eccezione il rilascio diretto dentro la finestra dell'**Area Segreta** (anche quando posizionata fuori mappa).
 - **Shift + clic** aggiunge token alla selezione; trascinando una selezione multipla si muove tutto il gruppo.
 - I movimenti dei giocatori arrivano al Master e agli altri in tempo reale, senza scatti all'indietro.
+
+### 7.4 Area Segreta (Solo DM — Core, tutti i sistemi)
+
+Una **zona franca riservata esclusivamente al Master** per parcheggiare mostri, PNG, rinforzi e incontri preparati senza lasciarli sul tavolo. Si apre dal pulsante rotondo **🕵️** nel dock in basso a destra (tra Token e Chat), che mostra il badge con il conteggio dei token archiviati.
+
+- **Finestra flessibile:** trascinabile liberamente sopra o fuori mappa, ridimensionabile e comprimibile alla sola intestazione con il pulsante **▴ / ▾**.
+- **Doppio archivio nella stessa finestra:**
+  - **🗺️ Questa Mappa:** i token vengono salvati insieme alla singola mappa.
+  - **🌍 Campagna:** i token restano disponibili su tutte le mappe della campagna e viaggiano nell'esportazione JSON della campagna.
+- **Come spostare i token:** trascina uno o più token dalla mappa direttamente sopra la finestra dell'Area Segreta (funziona anche se la finestra sta nella zona nera fuori mappa), oppure usa il pulsante **🕵️ Area Segreta** con la tendina **🗺️ Mappa / 🌍 Campagna** nel pannello del token selezionato.
+- **Come riportarli in mappa:** trascina la scheda del token dall'Area Segreta sulla mappa (si aggancia alla griglia nel punto di rilascio) oppure premi **→**.
+- **Azioni rapide su ogni scheda:** **→** (schiera in mappa), **👁️ / 🙈** (pre-imposta visibilità prima del rientro), **📋** (solo in Campagna: duplica in mappa lasciando intatto il modello), **⇄** (sposta tra Questa Mappa e Campagna), **✕** (elimina).
+- **Isolamento assoluto e zero fuga di effetti:** i token parcheggiati vengono rimossi dalla scena attiva — auree, condizioni ed effetti spariscono subito dal canvas, i giocatori (`player.html` / `STATE_SYNC`) non ricevono né vedono mai nulla dell'Area Segreta, e al rientro in mappa il token conserva il 100% delle sue impostazioni (visibilità, auree, condizioni, PV, statblock, taglia).
+- **Protezione dei Personaggi Giocatori (PG):** l'Area Segreta accetta solo mostri, PNG, sgherri ed evocazioni. Se provi a spostarci un PG, l'azione viene bloccata con un avviso e, in caso di drag su finestra fuori mappa, il PG torna al suo punto di partenza.
+- **Iniziativa intelligente (5e, 7th Sea e futuri moduli):** se parcheggi un token durante un combattimento o una Sequenza attiva, esce temporaneamente dal Tracker (nascosto ai giocatori) senza spostare il turno attivo ma conserva il suo tiro; se rientra nello **stesso** scontro, riprende esattamente la sua posizione. Se lo scontro termina o ne inizia uno nuovo mentre è nell'Area Segreta, il vecchio tiro viene azzerato e il token rientra normalmente.
 
 ---
 
@@ -253,7 +287,7 @@ Nel pannello del token, sezione **❤️ Punti Ferita**:
 - **💙 PV Temp** (solo 5e): punti ferita temporanei, assorbono i danni prima dei PV normali e compaiono come bordo azzurro.
 - **🛡️ CA** (solo 5e): classe armatura del token.
 - **Stile:** Barra, Aura (alone colorato attorno al token) o Entrambi. Lo stile predefinito per i giocatori si sceglie nel pannello Libreria Token (**Stile PV (Giocatori)**).
-- **Colori della barra:** azzurro a PV pieni, verde sopra i 2/3, giallo sopra 1/3, rosso sotto; a 0 PV il token diventa grigio con 💀.
+- **Colori della barra (5e / generico):** azzurro a PV pieni, verde sopra i 2/3, giallo sopra 1/3, rosso sotto; a 0 PV il token diventa grigio con 💀. Nelle campagne **7th Sea** i token usano barre dedicate a Soglie Drammatiche / tasselli Sgherri (vedi cap. 16.3).
 
 ### 8.2 Aure
 
@@ -288,8 +322,8 @@ Si apre con **⚔️ Tracker Iniziativa** in alto. Questo capitolo descrive il t
 - Nella tabella si modificano iniziativa e PV (**HP +/−**) di ogni partecipante.
 - **Avvia Combattimento**, **◀ Precedente**, **Prossimo Turno ▶** gestiscono turni e round; il turno attivo viene evidenziato sulla mappa.
 - **Durate automatiche:** a ogni round scalano le durate di zone d'effetto, aure, condizioni e token temporanei; allo scadere spariscono da soli. Un effetto non perde un round nel turno stesso in cui è stato creato.
-- **Ferma/Reset** termina il combattimento ed elimina gli effetti a tempo, lasciando quelli permanenti.
-- **Mostra ai Giocatori** rende visibile l'ordine di iniziativa sugli schermi giocatori, nella posizione scelta (in alto, in basso, a sinistra, a destra). I token nascosti non compaiono.
+- **Ferma/Reset** termina il combattimento ed elimina gli effetti a tempo (e azzera eventuali iniziative parcheggiate nell'Area Segreta), lasciando gli effetti permanenti.
+- **Mostra ai Giocatori** rende visibile l'ordine di iniziativa sugli schermi giocatori, nella posizione scelta (in alto, in basso, a sinistra, a destra). I token nascosti e quelli nell'Area Segreta non compaiono.
 
 ---
 
@@ -302,7 +336,7 @@ Si apre con **⚔️ Tracker Iniziativa** in alto. Questo capitolo descrive il t
 - **🎲 Tira Dadi**, **🔄 Ripeti** per rifare l'ultimo tiro, **✕ Azzera** per svuotare.
 - Il 20 naturale viene evidenziato (**★ Naturale 20! ★**).
 
-**💬 Storico Tiri (chat):** raccoglie tutti i tiri, compresi quelli dalle schede e dai compendi. I tiri del Master sono **segreti** per impostazione predefinita: spunta **Invia a Player** per mostrarli ai giocatori. Ogni tiro compare una sola volta, anche se arriva da più canali.
+**💬 Storico Tiri (chat):** raccoglie tutti i tiri, compresi quelli dalle schede, dai compendi e dai conflitti di Non Cedere al Sonno. I tiri del Master sono **segreti** per impostazione predefinita: spunta **Invia a Player** per mostrarli ai giocatori. Ogni tiro compare una sola volta, anche se arriva da più canali.
 
 ---
 
@@ -316,19 +350,21 @@ Si apre con **⚔️ Tracker Iniziativa** in alto. Questo capitolo descrive il t
 
 ## 13. Audio: musica ed effetti
 
-Pannello **🎵 Audio & Soundboard**.
+Pannello **🎵 Audio & Soundboard** (dock a destra). **Soundboard e playlist sono separate per sistema di gioco** (5e, 7th Sea, Non Cedere al Sonno…), così cambiando campagna ritrovi subito i suoni e le tracce di quel gioco. I file audio locali vengono salvati come veri file binari (Blob) in un archivio IndexedDB separato dalle mappe.
 
 ### 13.1 Musica d'ambiente (BGM)
 
 - **Preset in streaming:** 🍻 Taverna Vivace, 🌧️ Pioggia & Tuoni, 🕯️ Dungeon & Cripta, ⚔️ Tamburi di Guerra, 🌲 Bosco Incantato (richiedono internet).
-- **Nuova Traccia:** incolla l'URL di un file audio (mp3/ogg) oppure scegli un file dal PC, dai un nome, scegli se ripeterla in loop e premi **▶ Suona**; **+ Playlist** la salva nella playlist della campagna. Per il gioco online è preferibile un URL: un file locale deve essere inviato per intero ai giocatori.
-- **▶ Riprendi**, **⏸ Pausa**, **⏹ Stop**. Chi si collega a partita iniziata riceve la traccia in corso.
+- **Nuova Traccia:** incolla l'URL di un file audio (mp3/ogg) oppure scegli un file dal PC (limite **20 MB** per brano), dai un nome, scegli se ripeterla in loop e premi **▶ Suona**; **+ Playlist** la salva nella playlist del sistema attivo. Per il gioco online è preferibile un URL: un file locale deve essere inviato per intero ai giocatori.
+- **▶ Riprendi**, **⏸ Pausa**, **⏹ Stop**, più spostamento su/giù ed eliminazione dei brani in playlist. Chi si collega a partita iniziata riceve la traccia in corso.
 
-### 13.2 Soundboard (SFX)
+### 13.2 Soundboard (SFX), Modifica ed Esporta/Importa
 
-- 8 effetti generati direttamente dal browser, senza file e senza banda: ⚔️ Spada, 💥 Esplosione, ⚡ Fulmine, 🚪 Porta, 🐺 Ruggito, 🔔 Rintocco, ✨ Magia, 🎺 Vittoria.
-- **+ Aggiungi Pad** crea pad personalizzati con i tuoi suoni.
+- **8 effetti predefiniti** generati direttamente dal browser, senza file e senza banda: ⚔️ Spada, 💥 Esplosione, ⚡ Fulmine, 🚪 Porta, 🐺 Ruggito, 🔔 Rintocco, ✨ Magia, 🎺 Vittoria.
+- **+ Aggiungi Pad** crea pad personalizzati con i tuoi file audio (limite **2 MB**, consigliati file brevi sotto i **300 KB**).
 - Un clic su un pad lo riproduce subito per tutti; mentre suona un effetto, la musica si abbassa automaticamente e poi torna al volume normale.
+- **✏️ Modifica / ✔ Fine modifica:** entra in modalità modifica per rinominare un pad con un clic sul nome, riordinarli trascinandoli o con **◀ ▶**, oppure eliminarli senza farli suonare per errore. **↺ Ripristina predefiniti** rimette gli 8 suoni originali eventualmente eliminati.
+- **⬇️ Esporta / ⬆️ Importa:** salva soundboard e playlist in un file `.json` (puoi scegliere se esportare **solo il sistema attivo** o **tutti i sistemi**) e reimportale scegliendo **➕ Aggiungi ai pad attuali** oppure **♻️ Sostituisci**.
 
 ### 13.3 Volume
 
@@ -345,7 +381,7 @@ Si apre con il pulsante 🛠️ o il tasto **H**:
 | Pulsante | Funzione |
 |---|---|
 | 🎨 Colore | Il tuo colore per disegni e ping |
-| 🧙 | Apre la scheda del tuo personaggio |
+| 🧙 | Apre la scheda del tuo personaggio (5e, 7th Sea o Non Cedere al Sonno) |
 | 💬 | Chat e storico tiri |
 | 🖐️ Muovi | Muove i token che ti sono stati assegnati |
 | ✏️ Disegna | Disegno a mano libera visibile a tutti |
@@ -403,21 +439,21 @@ Si apre con **📜 Mostro** dal pannello token o dal pulsante Compendio della li
 
 ## 16. Sistema 7th Sea 2e
 
-Disponibile nelle campagne create con il sistema **7th Sea 2ª Edizione**. Tutti i contenuti provengono dai manuali ufficiali (Manuale Base e Nazioni di Théah Vol. 1 e 2): nessuna regola inventata. Il database comprende 100 Background, 103 Vantaggi, 20 Stili di Duello, 20 Arcani, 9 Stregonerie, 10 Società Segrete e 90 Antagonisti.
+Disponibile nelle campagne create con il sistema **7th Sea 2ª Edizione**. Tutti i contenuti provengono dai manuali ufficiali (Manuale Base e Nazioni di Théah Vol. 1 e 2): nessuna regola o creatura inventata. Il database comprende **10 Nazioni** (più *Numa* descrittiva), **100 Background**, **103 Vantaggi**, **20 Stili di Duello**, **20 Arcani**, **9 Stregonerie**, **8 Fedi**, **10 Società Segrete** e **88 voci ufficiali nel Compendio** (**40 Eroi**, **40 Malvagi**, **5 Squadre di Sgherri** e **3 Mostri**). Per mantenere leggero l'avvio, i testi completi dei 40 Eroi (`heroes_data.js`) e dei 40 Malvagi (`villains_data.js`) vengono caricati su richiesta solo quando vengono aperti.
 
-In una campagna 7th Sea il pannello token nasconde i campi propri della 5e (CA, PV temporanei) e i pulsanti scheda aprono la scheda Eroe e il compendio Antagonisti.
+In una campagna 7th Sea il pannello token nasconde i campi propri della 5e (CA, PV temporanei) e i pulsanti scheda aprono la scheda Eroe e il compendio Antagonisti & Eroi.
 
 ### 16.1 Scheda Eroe
 
 **Intestazione:** nome, nazione, Punti Eroe, 💰 Ricchezza, Favore con la Società Segreta (con − / +), lucchetto 🔓/🔒, **⚡ Esempio (Kasper)** per provare il gioco con un eroe già pronto, **🗑️ Scheda Vergine** per ricominciare (con conferma), **Esporta / Importa** `.json` nella barra del titolo.
 
-**🛠️ Pannello Creazione** (visibile con la scheda sbloccata): nome, concetto, religione/fede, nazione d'origine con il relativo +1 a un Tratto, stregoneria, due Background (con ricerca e filtri per manuale), Scuola di Scherma, Virtù, Superbia e Società Segreta. Contatori di Tratti, Abilità e punti Vantaggio spesi. Il pulsante di fase passa da **Creazione (Cap 3)** — Tratti e Abilità al massimo a 3 — ad **Avanzamento** in campagna — fino a 5.
+**🛠️ Pannello Creazione** (visibile con la scheda sbloccata): nome, concetto, religione/fede, nazione d'origine con il relativo +1 a un Tratto (inclusa *Numa* descrittiva), stregoneria con dettagli, due Background (con tendina ricercabile, filtri per manuale e popup di anteprima al passaggio del mouse), Scuola di Scherma (anche Stili di Duello multipli e manovre *Studioso di Lotta*), **Virtù** e **Superbia / Hubris** con tendine personalizzate ricercabili e popup laterale con testo ufficiale e regole di attivazione, Peculiarità, Note di gioco e Società Segreta. Contatori di Tratti, Abilità e punti Vantaggio spesi. Il pulsante di fase passa da **Creazione (Cap 3)** — Tratti e Abilità al massimo a 3 — ad **Avanzamento** in campagna — fino a 5.
 
 **4 schede:**
 1. **⚔️ Scheda Principale & Rischi** — i 5 Tratti, le 16 Abilità, ferite, Virtù e Superbia, lancio del Rischio.
-2. **📜 Vantaggi, Duelli & Società** — Vantaggi acquisiti (dal catalogo o personalizzati), Scuola di Duello con le manovre, Stregoneria, Società Segreta con statuto e favori.
+2. **📜 Vantaggi, Duelli & Società** — Vantaggi acquisiti (dal catalogo o personalizzati), Scuole di Duello con le manovre, Stregoneria, Società Segreta con statuto e favori.
 3. **📖 Storie & Avanzamento** — le Storie dell'Eroe.
-4. **📓 Giornale & Note** — diario di bordo dell'Eroe.
+4. **📓 Giornale & Note** — diario di bordo e note di gioco dell'Eroe.
 
 ### 16.2 Lancio del Rischio e Incrementi
 
@@ -428,12 +464,17 @@ In una campagna 7th Sea il pannello token nasconde i campi propri della 5e (CA, 
    - **Ritiro del Grado 3:** clicca il dado da ritirare oppure **Auto-Ritira Peggiore**. Il pulsante prova tutti i risultati possibili e ritira il dado che dà più Incrementi in media (anche con set da 15, +1 ai dadi ed esplosioni): per questo non sempre sceglie il dado più basso, che spesso fa già parte di un Incremento. Se nessun ritiro può darti un Incremento in più, consiglia di tenere il tiro (puoi comunque ritirare a mano).
 5. Il risultato viene inviato in chat.
 
-### 16.3 Ferite
+### 16.3 Ferite e barre sui token sulla mappa
 
-- Ogni **5 ferite** si subisce una **Ferita Drammatica** (fino a 4, oppure 5 con il Vantaggio che lo consente). Le Ferite Drammatiche si attivano e disattivano da sole quando le ferite salgono o scendono.
+- Ogni **5 ferite** si subisce una **Ferita Drammatica** (fino a 4, oppure 5 con il Vantaggio *Duro da Uccidere*). Le Ferite Drammatiche si attivano e disattivano da sole quando le ferite salgono o scendono.
 - Effetti: **1ª** +1 dado ai Rischi, **2ª** i nemici ottengono 2 dadi in più contro l'Eroe, **3ª** i tuoi 10 esplodono, **4ª** l'Eroe è **Inerme**.
 - **+1 Ferita / −1**, e **Azzera** a fine Scena d'Azione: cancella le ferite ordinarie mantenendo le Ferite Drammatiche.
 - **Cedi (+1 PE):** quando l'Eroe cede alla propria Superbia riceve un Punto Eroe.
+- **Barre dedicate sui token sulla mappa** (visibili sia al Master sia ai Giocatori senza esporre gli statblock segreti):
+  - **🦸 Eroi (PG):** barra segmentata in **4 Soglie Drammatiche** (o **5** con *Duro da Uccidere*) con riempimento ad accumulo da sinistra a destra e contatori ad alto contrasto nei segmenti (`1`, `2`, `3`, `💀`).
+  - **⚔️ Squadre di Sgherri:** tasselli discreti (uno per sgherro) con indicatore `⚔️ X/Y`.
+  - **👑 Malvagi:** barra in livrea ametista con icona `👑` e 4 Soglie Drammatiche (o 5 per i Malvagi con *Duro da Uccidere*, come *Isentrud der Chegir* e *Jorunn Snø* a 25 Ferite), riconosciuta correttamente anche se il token è in categoria PNG.
+  - **🐙 Mostri & Syrneth:** barra in livrea cremisi con icona `🐙`.
 
 ### 16.4 Storie
 
@@ -450,18 +491,23 @@ Per evitare che modifiche lunghe arrivino a pezzi e in ritardo, la scheda 7th Se
 - **Durante il gioco** (scheda bloccata) le variazioni rapide — ferite, Punti Eroe, risorse — vengono inviate automaticamente, raggruppate ogni mezzo secondo circa.
 - Il **Giornale** viaggia separatamente dalla scheda, così un appunto non sovrascrive mai altri dati.
 
-### 16.6 Compendio Antagonisti
+### 16.6 Compendio Antagonisti ed Eroi
 
 Si apre con il pulsante scheda del token o il pulsante Compendio della libreria.
 
-- **Categorie:** ⚔️ Sgherri (squadre di sgherri, dove la **Forza è anche il numero di PV del token**: ogni Incremento inflitto toglie 1 Forza), 👑 Malvagi (Forza, Influenza, Grado), 🐙 Mostri & Syrneth. La categoria 👥 PNG & Alleati è predisposta ma non ancora popolata.
-- **Archetipi rapidi** (Pirati, Guardie, Assassini, Bruti, Moschettieri, Duellanti, Malvagi, Mostri...) che compilano tratti e capacità speciali, da personalizzare con **✏️ Modifica / Personalizza Scheda**.
+- **4 Categorie ufficiali:**
+  - **⚔️ Squadre di Sgherri (5):** la **Forza è anche il numero di PV del token**; i pulsanti **−1 / +1** su Forza (fino a `0`) aggiornano istantaneamente scheda, token sulla mappa e Tracker.
+  - **👑 Malvagi (40 ufficiali):** Forza, Influenza, **Grado** esplicito, Vantaggi, Stregonerie, Società Segrete e sezione **🕊️ Redenzione**; pulsanti **−1 / +1** su **🩸 Salute sul Token** (fino a `0`, con supporto dinamico a 4 o 5 FD).
+  - **🐙 Mostri & Syrneth (3):** Mostro Terribile, Syrneth e Leggendario.
+  - **🦸 Eroi & PNG (40 Eroi ufficiali):** anteprima sintetica con tratti/nazione e creazione/assegnazione di un token Eroe con scheda completa precompilata pronta al gioco.
 - **Lancia Rischio** per l'antagonista con riserva di d10, opzioni **10 Esplodono** e **Set da 15**, tiro **Solo GM** (segreto) e **Dadi Bonus Nemici** calcolati sull'Eroe bersaglio (per esempio quelli dovuti alla sua 2ª Ferita Drammatica). Sulla console del Master, **☠️ +2 dadi** aggiunge 2 dadi al prossimo tiro spendendo 1 Punto Pericolo (cap. 16.7). Il Rischio dell'antagonista entra da solo nella Sequenza d'Azione.
-- Il compendio usa la stessa finestra di quello della 5e: **⚡ Assegna Token** e **♟️ Crea Token** funzionano allo stesso modo, con la **Taglia Token** scelta nella scheda. **⭐ Carica come Scheda PG** permette di usare un antagonista come personaggio.
+- **Assegnazione pulita e scheda fissata:** con **⚡ Assegna** o **♟️ Crea Token**, il nome del token in mappa si aggiorna automaticamente al nome dell'antagonista o dell'Eroe (ripulendo suffissi superflui come `(Squadra Sgherri)`). Una volta assegnato un antagonista a un token, il selettore del catalogo si nasconde lasciando la scheda pulita e pronta all'uso; per cambiare creatura basta premere **🔄 Cambia Antagonista** nell'intestazione. **⭐ Carica come Scheda PG** permette inoltre di usare un profilo del compendio come scheda personaggio.
 
 ### 16.7 Iniziativa in 7th Sea: Sequenza d'Azione e Sequenza Drammatica
 
 In 7th Sea non si tira 1d20: chi agisce prima lo decidono gli **Incrementi** ottenuti con il Rischio (Manuale Base, cap. 4). Nelle campagne 7th Sea il **Tracker Iniziativa** cambia aspetto da solo: i comandi d20 (Avvia Combattimento, Auto-Roll, Prossimo Turno...) spariscono e al loro posto compare la **barra della Sequenza**. Nelle campagne 5e il tracker resta esattamente quello del capitolo 10.
+
+Dal pannello del token, il pulsante **⚔️ + Iniz.** aggiunge il token direttamente alla Sequenza d'Azione (anche se è già avviata) senza chiedere alcun tiro d20.
 
 **Chi c'è nel tracker** (il programma lo riconosce dal token):
 
@@ -478,7 +524,7 @@ In 7th Sea non si tira 1d20: chi agisce prima lo decidono gli **Incrementi** ott
 2. **▶ Azioni** — agisce chi ha **più Incrementi rimasti** (riga verde). A parità vince il Malvagio; tra Eroi alla pari il Master sceglie con **▶ Agisce**. Dopo ogni spesa il tracker si riordina. In questa fase un nuovo Rischio non cambia più gli Incrementi.
 3. **🏁 Fine Round** — quando tutti sono a 0. Si risolve il **Turno degli Sgherri** e si preme **🔄 Nuovo Round** (nuovi tiri). Le durate a Round di zone d'effetto, aure, condizioni ed evocazioni scalano qui, una volta per Round.
 
-**⏹ Termina Sequenza** (premuto due volte, per conferma) chiude tutto come *Ferma/Reset*: tracker svuotato, effetti a tempo tolti, effetti permanenti lasciati.
+**⏹ Termina Sequenza** (premuto due volte, per conferma) chiude tutto come *Ferma/Reset*: tracker svuotato, effetti a tempo tolti, iniziative parcheggiate nell'Area Segreta azzerate, effetti permanenti lasciati.
 
 **Una sola riserva di Incrementi.** Gli Incrementi della scheda e quelli del tracker sono gli stessi: *Spendi 1 Incremento* o una manovra di duello dalla scheda scalano il tracker, e una spesa del Master dal tracker torna sulla scheda. Durante la Fase Tiri la scheda non lascia spendere. Online, solo chi controlla un token può spenderne gli Incrementi.
 
@@ -498,7 +544,7 @@ In 7th Sea non si tira 1d20: chi agisce prima lo decidono gli **Incrementi** ott
 
 **Ferite ed Eroe Inerme**
 - Le Ferite agli Eroi vanno direttamente sulla loro scheda (ogni 5 Ferite una Ferita Drammatica).
-- Ai Malvagi il tracker mostra *Ferite w/F · FD ★☆☆☆*: dopo tante Ferite quanta Forza arriva una Ferita Drammatica; con 4 Ferite Drammatiche il Malvagio è **Sconfitto**. La barra PV del suo token mostra quanto manca.
+- Ai Malvagi il tracker mostra *Ferite w/F · FD ★☆☆☆*: dopo tante Ferite quanta Forza arriva una Ferita Drammatica; con 4 Ferite Drammatiche (o 5 con *Duro da Uccidere*) il Malvagio è **Sconfitto**. La barra ametista sul suo token mostra quanto manca.
 - **Turno degli Sgherri:** a fine Round ogni Squadra ancora in piedi infligge tante Ferite quanta Forza le resta a un Eroe scelto dal Master (**Applica**, una volta per Round).
 - **Eroe Inerme 💀:** ogni Azione gli costa 1 Punto Eroe (scalato da solo); senza Punti Eroe l'Azione è negata. Evitare Ferite non costa Punti Eroe.
 
@@ -534,7 +580,7 @@ Esempio: due Eroi, **Kasper** ed **Elena**, affrontano il **Conte** e una Squadr
 
 **Passo 1 — Carica i partecipanti**
 
-4. Seleziona sulla mappa i token che partecipano (strumento **Seleziona (Lazo)** oppure **Shift + clic**) e premi **🔄 Ricarica** nel tracker. Ogni riga mostra un'icona: 🦸 Eroe, 👑 Malvagio, ⚔️ Squadra. Se manca qualcuno, selezionalo e ricarica; per togliere una riga usa la **✕**.
+4. Seleziona sulla mappa i token che partecipano (strumento **Seleziona (Lazo)** oppure **Shift + clic**) e premi **🔄 Ricarica** nel tracker (oppure aggiungi singoli token con **⚔️ + Iniz.**). Ogni riga mostra un'icona: 🦸 Eroe, 👑 Malvagio, ⚔️ Squadra. Per togliere una riga usa la **✕**.
 
 **Passo 2 — Avvia la Sequenza**
 
@@ -585,17 +631,58 @@ Esempio: due Eroi, **Kasper** ed **Elena**, affrontano il **Conte** e una Squadr
 
 ---
 
-## 17. Tablet e touchscreen
+## 17. Sistema Non Cedere al Sonno (NCS)
+
+Disponibile nelle campagne create con il sistema **🌙 Non Cedere al Sonno**. In queste campagne il pannello token nasconde i campi non pertinenti (CA, PV temporanei e pulsante Mostro) e un doppio clic sul token (o il pulsante scheda) apre direttamente la **Scheda del Protagonista**. L'interfaccia del modulo è tradotta in italiano e inglese.
+
+### 17.1 Scheda del Protagonista
+
+Una scheda compatta su una sola pagina, sincronizzata in tempo reale tra Master e Giocatore (con esportazione/importazione `.json`):
+
+- **Riserve persistenti:** **Disciplina** (0–3 dadi bianchi), **Follia Permanente** (dadi rossi permanenti) e **Sfinimento** (0–6 dadi neri).
+- **Reazioni:** i 3 box **Lotta / Fuggi**; quando sono tutti pieni compare l'avviso che alla prossima Reazione il Protagonista **Schizza**.
+- **Talento di Sfinimento** e **Talento di Follia**.
+- **Le 5 Domande del Protagonista:** *Cosa ti tiene sveglio?*, *Cosa ti è appena successo?*, *Cosa c'è in superficie?*, *Cosa giace in profondità?* e *Qual è la tua strada?*.
+- **Cicatrici:** elenco con **+ Aggiungi Cicatrice** e spunta d'uso nella sessione.
+- **🎲 Tira:** apre subito la finestra di conflitto per quel Protagonista.
+
+### 17.2 Conflitto condiviso e calcolo del tiro
+
+Il conflitto può essere avviato dal Giocatore (**🎲 Tira** dalla scheda) oppure dal Master (**📣 Apri il conflitto**; il Master può tirare anche entrambe le parti per PNG o gioco locale). Si svolge un conflitto alla volta; la finestra si apre al Giocatore coinvolto e al Master, oppure a tutti spuntando **Mostra a tutti**.
+
+- **I 4 pool di dadi a colori:** **⚪ Disciplina** (dalla scheda), **⚫ Sfinimento** (dalla scheda + eventuale `+1 Sfinimento` volontario una volta per tiro, salvato subito sulla scheda), **🔴 Follia** (Follia Permanente + 0–6 dadi scelti per il tiro) e **🟣 Dolore** (impostato e tirato dal Master con **🟣 Tira il Dolore**).
+- **Calcolo automatico:** ogni `1–3` è un successo (**Grado**); vince chi ottiene il Grado più alto (a parità vince il Protagonista). Il pool con il dado più alto **Domina**, con spareggio automatico sui dadi successivi, poi per numero di dadi e infine per priorità **Disciplina > Follia > Sfinimento > Dolore**.
+- **Talento di Sfinimento:** supporta sia l'**uso minore** (Grado almeno pari ai dadi di Sfinimento) sia l'**uso maggiore** (+Grado pari allo Sfinimento).
+- **✔ Concludi:** chiude il conflitto, invia il riepilogo completo in chat e propone pulsanti rapidi a un clic per applicare gli effetti di Dominanza o fallimento (+1 Sfinimento, riempire o liberare una Reazione, −1 Sfinimento).
+
+### 17.3 Coppe, Porta Luce, Ombre, Cicatrici e Aiuto
+
+Nelle campagne NCS compare il pannello delle **due Coppe** (salvato nella campagna e sincronizzato con tutti i giocatori):
+
+- **🌑 Coppa della Disperazione (Master):** guadagna automaticamente **+1 Moneta** quando il Dolore Domina alla conclusione di un conflitto (tranne quando il Dolore Domina grazie a un'Ombra).
+- **🌕 Coppa della Speranza (Giocatori):** riceve le Monete spese dal Master per Gettare un'Ombra a fine conflitto.
+- **Durante un conflitto (prima di `✔ Concludi`):**
+  - **🌑 Gettare un'Ombra (Master):** spende 1 Disperazione per aggiungere (**+6**) o togliere (**−6**) un 6 in un pool che abbia almeno un dado.
+  - **🌕 +1 successo (1 Speranza):** *Migliorare i Successi* — spende 1 Moneta di Speranza (che esce dal gioco) per aggiungere un `1` alla Disciplina del Protagonista.
+  - **🎭 Rievoca una Cicatrice:** permette di ritirare un pool del Protagonista usando una Cicatrice non ancora spesa in questa sessione.
+  - **🤝 Aiuto:** un altro giocatore può tirare i dadi di Disciplina del proprio Protagonista e sommarne i successi al conflitto senza alterare la Forza dei pool.
+- **✨ Porta Luce:** consente ai giocatori (su richiesta approvata/rifiutata dal Master, o direttamente dal Master) di spendere Speranza per **Tirare il Fiato** (`1 Speranza` = −1 Sfinimento oppure libera 1 Reazione) o **Recuperare la Disciplina** (`5 − Disciplina` Speranza = −1 Follia Permanente e +1 Disciplina).
+- **🌙 Fine sessione (Master):** previa conferma, svuota entrambe le Coppe e cancella i segni d'uso delle Cicatrici sulle schede in mappa.
+
+---
+
+## 18. Tablet e touchscreen
 
 - **Pizzica con due dita** per ingrandire; due dita non fanno mai partire il ping per errore.
 - **Trascina** con un dito su un punto vuoto per spostare la mappa, su un token per muoverlo.
 - **Tieni premuto** per il ping.
-- Tutte le finestre (dadi, schede, compendi, tracker) si spostano trascinandone l'intestazione, anche con il dito, e il trascinamento non si interrompe passando sopra altre finestre.
+- **Tocco interrotto dal sistema (`touchcancel`):** se una notifica o un gesto di sistema del tablet interrompe il tocco mentre muovi la mappa o un token, il gesto si chiude in modo pulito senza mai bloccare i comandi del giocatore.
+- Tutte le finestre (dadi, schede, compendi, tracker, Area Segreta) si spostano trascinandone l'intestazione, anche con il dito, e il trascinamento non si interrompe passando sopra altre finestre.
 - Testato su tablet Android (anche in modalità desktop tipo DeX), iPad e TV.
 
 ---
 
-## 18. Scorciatoie e comandi rapidi
+## 19. Scorciatoie e comandi rapidi
 
 | Comando | Azione |
 |---|---|
@@ -612,16 +699,16 @@ Esempio: due Eroi, **Kasper** ed **Elena**, affrontano il **Conte** e una Squadr
 
 ---
 
-## 19. Salvataggi, prestazioni e limiti noti
+## 20. Salvataggi, prestazioni e limiti noti
 
-- **Dove sono i dati:** nel browser del Master. Cancellare i dati di navigazione elimina campagne e mappe: usa **Esporta (JSON)** per i backup e l'esportazione dei personaggi per le schede.
-- **Prestazioni:** mappe ottimizzate a 2560 px, animazioni limitate a 30 fps, messaggi di stato inferiori a 3 KB, immagini dei token ridotte prima dell'invio. Il programma è pensato per girare anche su PC con poca memoria.
+- **Dove sono i dati:** nel browser del Master (IndexedDB per campagne/mappe/token e un database IndexedDB separato per i Blob di soundboard e playlist). Cancellare i dati di navigazione elimina i salvataggi locali: usa **Esporta (JSON)** per le campagne, l'esportazione dei personaggi per le schede e **⬇️ Esporta** nel pannello Audio per soundboard e playlist.
+- **Prestazioni:** mappe ottimizzate a 2560 px, caricamento su richiesta (*lazy-loading*) per Eroi e Malvagi di 7th Sea, animazioni limitate a 30 fps, messaggi di stato inferiori a 3 KB, immagini dei token ridotte prima dell'invio, registro diagnostico a zero costo quando è spento. Il programma è pensato per girare anche su PC con poca memoria.
 - **Limiti noti:**
   - Il collegamento online attraverso reti mobili molto restrittive è ancora in fase di verifica sul campo.
 
 ---
 
-## 20. Licenze, crediti e avvisi
+## 21. Licenze, crediti e avvisi
 
 - **Progetto non ufficiale:** Andr3a VTT è un progetto amatoriale indipendente e non ufficiale, compatibile con la quinta edizione. Non è affiliato, sponsorizzato né approvato dagli editori dei giochi citati; i nomi dei giochi appartengono ai rispettivi proprietari e sono usati solo per indicare la compatibilità.
 - **Materiale di regole (attribuzione):**
@@ -641,21 +728,21 @@ Esempio: due Eroi, **Kasper** ed **Elena**, affrontano il **Conte** e una Squadr
 
 **Andr3a VTT** is a virtual tabletop that runs entirely in the browser: no installation, no server to manage, no accounts. It consists of two pages:
 
-- **`index.html` — GM Console:** prepares maps, moves tokens, manages fog, initiative, audio, sheets and connections.
+- **`index.html` — GM Console:** prepares maps, moves tokens, manages fog, Secret Area, initiative, audio, sheets and connections.
 - **`player.html` — Player Screen:** both the screen to show on a TV or second monitor and the client each player opens on their own PC, tablet or phone to play online.
 
 ### How it is organised
 
-The program is deliberately split into two separate parts:
+The program is deliberately split into two modular layers:
 
-- **The core**, shared by every game: maps, grid, tokens, movement, fog, drawings, areas of effect, initiative, dice, chat, audio, networking and saving.
-- **The game systems**, each with its own ecosystem of sheets, rules and compendiums. There are currently two: **5th Edition (5e)** and **7th Sea 2nd Edition**. Each campaign is tied to a single system (see ch. 4) and the program automatically opens the right sheet and compendium. A change to one system does not affect the other or the core.
+- **The Core**, shared by every game: maps, grid, tokens, GM Secret Area, customisable toolbar layout, movement, fog, drawings, areas of effect, initiative, dice, chat, per-system audio, P2P networking, diagnostics, in-page dialogs and saving.
+- **The game system modules**, each with its own isolated ecosystem of sheets, rules, canvas token bars and compendiums. Three systems are included: **5th Edition (5e)**, **7th Sea 2nd Edition** and **Don't Rest Your Head (NCS)**. Each campaign is tied to a single system (ch. 4) and the program automatically opens the right sheets, compendiums and mechanics. If you open a campaign whose module is not included in a stripped-down build, the program warns you explicitly and never falls back silently to 5e.
 
 ### Design principles
 
-- **Light and smooth** even on old PCs, Android tablets and TVs: maps are optimised on load, animations are capped at 30 frames per second, and the map is panned and zoomed by the graphics card instead of being redrawn.
+- **Light and smooth** even on old PCs, Android tablets and TVs: maps are optimised on load, large catalogues (7th Sea Heroes and Villains) are lazy-loaded on demand, animations are capped at 30 frames per second, and the map is panned and zoomed by the graphics card instead of being redrawn.
 - **Minimal network traffic:** during play only very small messages travel (positions, token state); images, sheets and maps are sent separately, once, in chunks.
-- **Bilingual:** the core and 5e interface is available in Italian and English.
+- **Bilingual:** the core, 5e and Don't Rest Your Head interfaces are available in Italian and English; warnings and confirmations use built-in in-page dialogs with no blocking browser popups.
 
 ---
 
@@ -663,9 +750,9 @@ The program is deliberately split into two separate parts:
 
 - **Browser:** Chrome, Edge or another modern browser (Chrome recommended). Works on Windows, Android, iPad and smart TVs/boxes with a modern browser.
 - **Launch:** open `index.html` for the GM console. The player screen is opened from the console itself (ch. 3) or, for online players, from the `player.html` address of the same installation.
-- **Hosting:** since it is made only of static files, it can be hosted on any static host (for example GitHub Pages) and opened from any device.
+- **Hosting:** since it is made only of static files, it can be hosted on any static host (for example GitHub Pages) and opened from any device. Modular publishing is supported (full build or selected modules only).
 - **Internet connection:** not needed for local play (GM + TV on the same PC). Needed for: online play (the initial connection between devices goes through free public services), online search in the 5e monster compendium, and the preset streaming music tracks.
-- **Data:** campaigns, maps and tokens are saved in the GM's browser (IndexedDB). They stay on the device until browser data is cleared: export your campaigns regularly (ch. 4).
+- **Data:** campaigns, maps and tokens are saved in the GM's browser (IndexedDB); local soundboard and playlist audio files are stored in a separate IndexedDB archive. Everything stays on the device until browser data is cleared: export your campaigns and soundboards regularly (ch. 4 and 13).
 
 ---
 
@@ -677,7 +764,7 @@ The program is deliberately split into two separate parts:
 2. A new window opens with the player screen in TV mode: drag it to the TV or second monitor and make it full screen.
 3. The two windows communicate directly inside the same browser, with no network and no delay.
 
-TV mode shows the map as players see it (fully opaque fog, hidden tokens invisible). With **Nascondi Barra Giocatori (Modalità TV)** (Map & Grid panel) the screen stays clean, with no buttons.
+TV mode shows the map as players see it (fully opaque fog, hidden tokens and the GM Secret Area completely invisible). With **Nascondi Barra Giocatori (Modalità TV)** (Map & Grid panel) the screen stays clean, with no buttons.
 
 The player login screen also offers **Usa Schermo Locale (Offline)**: it opens a named local player connected to the GM in the same browser.
 
@@ -687,13 +774,15 @@ The player login screen also offers **Usa Schermo Locale (Offline)**: it opens a
 1. Select the campaign. In the **🌐 Multiplayer Online (P2P)** box the **Campaign Code** field shows that campaign's fixed code: the first time a random one is suggested (format `ABCD-1234`), but you can type your own (for example `CORVO-2026`, 6 to 24 letters or digits) and confirm with Enter, or generate a new one with 🎲. The code is saved in the campaign and travels with the export; changing it locks out anyone who only knows the old one.
 2. Press **Avvia Stanza** (Start Room): the room always opens with the Campaign Code, so players use the same code every session. If the code is still held by the previous session, the program retries on its own for a few dozen seconds; if it is used by another room, it asks you to change it. **Apri Schermo Online** opens a player screen already joined to the room, useful for testing.
 3. During the session campaign selection is locked (**🔒 Campagna Bloccata**), so nobody receives another campaign's data by mistake.
-4. The **connected players** list shows who is online; the button next to each name kicks that player.
+4. The **connected players** list shows who is online; next to each name is a button to kick that player and, when diagnostics are enabled, a **🩺** button to download their diagnostic log.
 5. **🔴 Chiudi Stanza** ends the online session and disconnects everyone: players see a message and do not try to rejoin.
 6. If you reload the page with the room open, the room restarts on its own with the same code and players rejoin without doing anything (the map must be reloaded as usual).
 
+**🩺 Player diagnostic log:** off by default (zero memory and zero activity when disabled). If an issue appears during an online session (for example on a tablet or unstable connection), the GM can tick **🩺 Player diagnostic log** in the **Regia & Campagna** panel: player clients keep the last 10 minutes of lightweight technical events (no images, no sheet contents, no continuous finger moves), surviving page reloads. Clicking **🩺** next to a player downloads their log file for troubleshooting.
+
 **Player side**
 1. Open `player.html` and enter the **Campaign Code**: case, spaces and hyphens do not matter (`corvo 2026` equals `CORVO-2026`).
-2. The **Choose your Character** menu fills with the campaign's player characters (only real PCs: monsters, NPCs and summons are never listed). Alternatively choose **✍️ Altro nome / Spettatore** and type a name.
+2. The **Choose your Character** menu fills with the campaign's real player characters: monsters, summons and tokens moved into the **NPC** or **Misc** folders (even if they carry a sheet) are never listed as playable at login. Alternatively choose **✍️ Altro nome / Spettatore** and type a name.
 3. Press **Connetti Online**. The GM sends the map, tokens, images and the needed sheets.
 
 **↩️ Rejoin campaign:** after the first join, the login screen shows up to 3 buttons with campaign name and character, valid on later days too: one tap and you are in, without typing anything (the ✕ forgets the entry). If the page reloads in the same tab (common on phones), the player rejoins on their own, with a moment to press **Annulla** (Cancel) to pick another character. With the **Join automatically on this device** box (off by default, to be enabled only on your own phone or PC) you also join on your own when opening the browser the next day.
@@ -710,16 +799,20 @@ Everything lives in the **⚙️ Regia & Campagna** panel (icon in the right-han
 
 ### 4.1 Campaigns and game system
 
-- **Nuova** (New) opens the **📁 Crea Nuova Campagna** window: choose a name and the **Game System** (⚔️ 5th Edition (5e) or ⛵ 7th Sea 2nd Edition).
-- The chosen system is **permanent**: after creation it is locked (**🔒 Fisso**) and the badge next to the title shows the active campaign's system. This way one game's sheets, compendiums and rules never mix with the other's.
+- **Nuova** (New) opens the **📁 Crea Nuova Campagna** window: choose a name and the **Game System**:
+  - **⚔️ 5th Edition (5e)**
+  - **⛵ 7th Sea 2nd Edition**
+  - **🌙 Non Cedere al Sonno (Don't Rest Your Head)**
+- The chosen system is **permanent**: after creation it is locked (**🔒 Fisso**) and the badge next to the title shows the active campaign's system. This way one game's sheets, compendiums, bars and rules never mix with another's.
 - **Elimina** deletes the selected campaign.
-- **Esporta (JSON)** saves the whole campaign (maps, folders, tokens, sheets, Campaign Code) to a `.json` file; **Importa** loads it back.
+- **Esporta (JSON)** saves the whole campaign — maps, folders, tokens, sheets, Campaign Code, **Campaign Secret Area**, Danger Pool (7th Sea) and Despair/Hope Pools (NCS) — to a `.json` file; **Importa** loads it back.
 
 ### 4.2 Maps and folders
 
 - **Folder:** organise the campaign's maps into folders (**+ Cartella**, delete folder: its maps go back to *Senza Cartella*). The filter shows all maps or a single folder.
-- **Campaign maps:** **Carica** loads the selected map (with tokens, fog, drawings and areas of effect); **Sovrascrivi** saves the current state over the loaded map; **Salva Nuova** saves it as a new map; **📁 Sposta in...** moves it to another folder; **Elimina Mappa** deletes it. The badge shows the map in use.
+- **Campaign maps:** **Carica** loads the selected map (with tokens, map Secret Area, fog, drawings and areas of effect); **Sovrascrivi** saves the current state over the loaded map; **Salva Nuova** saves it as a new map; **📁 Sposta in...** moves it to another folder; **Elimina Mappa** deletes it. The badge shows the map in use.
 - **Unsaved changes:** if you switch map with pending changes, a window asks what to do: **✕ Annulla** (cancel), **🗑️ Elimina modifiche** (discard), **➕ Salva come Nuova** (save as new) or **💾 Sovrascrivi Mappa** (overwrite).
+- **Automatic PC carry-over:** when loading a campaign map, true player characters (*Characters* category) are brought onto the map with their freshest campaign data; tokens moved to *NPC* or *Misc* are never auto-placed.
 
 ### 4.3 Party management
 
@@ -753,48 +846,57 @@ In **👥 Gestione Party** enter the players' names. These names are used to ass
 
 ### 5.4 Aligning the grid to a pre-gridded map
 
-1. Select the **Allinea Griglia** (Align Grid) tool in the left bar.
+1. Select the **⊞ Align Grid** tool.
 2. Drag on the map to slide the virtual grid until it matches the drawn one.
-3. With **⚓ Ancora Oggetti alla Griglia** (Anchor objects to grid) on (default), tokens, auras, shapes and notes move with the grid and stay in their cell; with it off, only the grid moves.
+3. With **⚓ Anchor objects to grid** on (default), tokens, auras, shapes and notes move with the grid and stay in their cell; with it off, only the grid moves.
 
 ---
 
-## 6. GM tools and fog of war
+## 6. GM Console, tools and fog of war
 
-**Strumenti Base** bar on the left:
+### 6.1 Customisable GM Console layout (Core — all systems)
 
-| Tool | Function |
-|---|---|
-| **Move/Select** | Click to select a token, drag to move it (snaps to the grid). Dragging on empty space pans the map. |
-| **Lasso Select** | Draw an area to select several tokens and shapes and move them together. |
-| **Align Grid** | See ch. 5.4. |
-| **Ruler (ft/m)** | Drag to measure: shows feet, metres and squares (1 square = 5 ft = 1.5 m). |
-| **Draw (Everyone)** | Freehand drawing visible to all. |
-| **Draw (GM only)** | Freehand drawing visible only to the GM. |
-| **Add Fog / Erase Fog** | Brush to cover or reveal map areas. |
-| **Secret Pin (GM)** | Click the map to place a note with title and text, visible only to the GM. The pin panel lets you edit or delete it. |
-| **Laser Pointer** | Draws a glowing trail visible to all that fades after 5 seconds. |
+The left side of the GM Console is designed so the **Selected Token** panel fits on screen without scrolling:
+
+- **Single-row compact header:** `Andr3a VTT 1.5`, **🇮🇹 IT / 🇬🇧 EN** language toggle and compact **☕ Ko-fi** button.
+- **⚔️ Initiative Tracker** right below, followed by the active-tool bar (**🛠️ …**) with the **layout selector** (saved automatically in the browser):
+  - **📐 Icon Rail (default):** the 10 base tools and 4 quick Fog/Clear actions sit in a slim 46 px vertical rail on the left edge, always one click away; the full sidebar is dedicated to the Selected Token panel open in one block.
+  - **📋 With Labels:** the exact same tools move into a compact 2-column grid with **icon + readable label** right under the Tracker, freeing 46 px of extra map width. The grid always stays open even when selecting or switching tokens, and can be collapsed or expanded manually at any time with **▴ Collapse / ▾ Expand**. In this mode the Selected Token panel switches to **3 compact sub-tabs** (**⚔️ Combat**, **✨ Auras/Status**, **⚙️ Details**) with the token name shown in the header, keeping zero scroll even with all tools open.
+
+### 6.2 Base tools
+
+| Icon | Tool | Function |
+|---|---|---|
+| ↖️ | **Move/Select** | Click to select a token, drag to move it (snaps to the grid). Dragging on empty space pans the map. |
+| ⭕ | **Lasso Select** | Draw an area to select several tokens and shapes and move them together. |
+| ⊞ | **Align Grid** | See ch. 5.4. |
+| 📏 | **Ruler (ft/m)** | Drag to measure: shows feet, metres and squares (1 square = 5 ft = 1.5 m). |
+| ✏️ | **Draw (Everyone)** | Freehand drawing visible to all. |
+| 🔏 | **Draw (GM only)** | Freehand drawing visible only to the GM. |
+| 🌫️ / ☀️ | **Add Fog / Erase Fog** | Brush to cover or reveal map areas. |
+| 📌 | **Secret Pin (GM)** | Click the map to place a note with title and text, visible only to the GM. The pin panel lets you edit or delete it. |
+| 🔴 | **Laser Pointer** | Draws a glowing trail visible to all that fades after 5 seconds. |
 
 **Ping:** press and hold (about 0.6 seconds) on a map point to show a signal to everyone.
 
-**Clearing drawings:** **Pulisci Dis. (Pub)** and **Pulisci Dis. (DM)** clear public and private drawings respectively.
+**Quick actions at the bottom of the tool rail:** **☁️ Cover Fog**, **🌤️ Clear Fog**, **🧹 Clear Pub** and **🧽 Clear DM**.
 
-### Fog of war
+### 6.3 Fog of war
 
-- **Fog settings:** brush shape (Circle / Square) and size (default 150 px).
-- **Copri tutto di Nebbia** covers the whole map; **Rimuovi tutta la Nebbia** removes it.
+- **Fog settings** (appear automatically when Add Fog or Erase Fog is active): brush shape (Circle / Square) and size (default 150 px).
+- **☁️ Cover Fog** covers the whole map; **🌤️ Clear Fog** removes it.
 - The GM sees the fog semi-transparent (about 55%) to work underneath; for players it is fully opaque. Players cannot select, ping or interact with anything under the fog.
 
 ---
 
-## 7. Tokens
+## 7. Tokens and Secret Area
 
 ### 7.1 Token Library
 
-**♟️ Libreria Token** panel:
+**♟️ Libreria Token** panel (right dock):
 
 - **Upload:** choose one or more image files, or a whole folder from your PC; the menu next to it decides the category (👹 Monsters, 🧑 NPCs, 🛡️ Characters, 📦 Misc). You can also drop images on the panel.
-- **Two tabs:** **In Map / Campaign** shows the tokens saved in the active campaign (PCs, NPCs, creatures); **Library** is the global archive of all uploaded images, shared across campaigns.
+- **Two tabs:** **Campaign** shows the tokens saved in the active campaign (PCs, NPCs, creatures); **Library** is the global archive of all uploaded images, shared across campaigns.
 - **Category filters:** All, Monsters, NPCs, PCs, Misc.
 - **Placing a token:** click its card: it appears at the centre of the view, snapped to the grid.
 - **New token placement:** default size (Medium 1×1, Large 2×2, Huge 3×3, Gargantuan 4×4) and initial visibility (👁️ Visible / 🙈 Hidden).
@@ -805,22 +907,39 @@ Monsters with the same name are numbered automatically (Orc 1, Orc 2...); PCs an
 
 ### 7.2 Selected token
 
-Selecting a token opens the **🎯 Token Selezionato** panel:
+Selecting a token opens the **🎯 Token Selezionato** panel in the left sidebar (single block in **📐 Icon Rail** mode, or in 3 sub-tabs **⚔️ Combat / ✨ Auras/Status / ⚙️ Details** in **📋 With Labels** mode):
 
 - **Name** and **name-plate visibility** (Everyone / GM only / Off).
 - **Size** (1×1 to 4×4).
 - **➕ Assign Player...:** gives control of the token to one or more party players. Only owners can move it from their screen.
-- **📁 Folder** (Monsters, NPCs, Characters, Misc, ✨ Summons) and **💾 In Libreria** to save it in the permanent library.
+- **📁 Folder** (Monsters, NPCs, Characters, Misc, ✨ Summons) and **💾 In Libreria** to save it in the permanent library. Moving a token into **NPCs** or **Misc** excludes it from playable characters at login and from automatic map carry-over.
 - **⏳ Token duration:** number of rounds after which the token disappears on its own (empty = permanent). Useful for summons and temporary effects.
-- **📋 Duplicate** (also Ctrl+D), **👁️ Visib.** (show/hide to players), **⚔️ + Init.** (add to tracker).
+- **📋 Duplicate** (also Ctrl+D), **👁️ Visib.** (show/hide to players), **⚔️ + Init.** (add to tracker, including into an active 7th Sea Sequence).
 - **🗑️ Mappa** removes the token from the current map only; **🗑️ Campagna** permanently deletes it from the campaign's saved roster.
-- **📜 Monster** opens the assigned creature/antagonist sheet; **🧙 PC Sheet** opens the character sheet (ch. 15 and 16).
+- **📜 Monster / Antagonist** opens the assigned creature/antagonist sheet (hidden in systems without a monster compendium such as NCS); **🧙 PC Sheet** opens the character sheet (ch. 15, 16 and 17).
+- **🕵️ Secret Area + `🗺️ Map` / `🌍 Campaign` selector:** immediately stashes the selected token into the chosen Secret Area tab (ch. 7.4).
 
-### 7.3 Moving
+### 7.3 Moving and map-edge protection
 
 - Tokens snap to the grid on release. Holding **Shift** on release places them freely, without snapping.
+- **Automatic edge clamping:** releasing a token past the map boundary (in the black area) automatically clamps it to the nearest visible edge so it can never be lost off-map. Dropping directly onto the **Secret Area** window (even when placed off-map) still stashes valid tokens normally.
 - **Shift + click** adds tokens to the selection; dragging a multiple selection moves the whole group.
 - Player movements reach the GM and everyone else in real time, without jumping back.
+
+### 7.4 Secret Area (GM Only — Core, all systems)
+
+A **GM-only staging zone** to hold monsters, NPCs, reinforcements and prepared encounters off the live map. Opened from the round **🕵️** button in the bottom-right dock (between Tokens and Chat), complete with an item counter badge.
+
+- **Flexible floating window:** draggable on or off the map, resizable, and collapsible down to its header bar via **▴ / ▾**.
+- **Two tabs in one window:**
+  - **🗺️ This Map:** saved inside the individual map's state.
+  - **🌍 Campaign:** shared across every map in the campaign and exported with the campaign JSON.
+- **Stashing tokens:** drag one or more tokens from the map onto the Secret Area window (even when the window sits off-map in the black area), or click **🕵️ Secret Area** with the **🗺️ Map / 🌍 Campaign** selector in the selected-token panel.
+- **Deploying back to the map:** drag a token card from the Secret Area onto the map (snaps to grid where dropped) or press **→**.
+- **Per-card quick actions:** **→** (deploy), **👁️ / 🙈** (preset visibility before deploying), **📋** (Campaign tab only: duplicate onto the map while keeping the template), **⇄** (move between This Map and Campaign), **✕** (remove).
+- **Complete player isolation & zero effect bleed:** stashed tokens leave the active canvas — auras, conditions and effects vanish immediately, players (`player.html` / `STATE_SYNC`) never receive or see anything from the Secret Area, and deploying restores 100% of the token's properties (visibility, auras, conditions, HP, statblock, size).
+- **Player Character (PC) protection:** the Secret Area is exclusively for monsters, NPCs, brutes and summons. Attempting to hide a PC is blocked with a toast warning, and if dragged onto an off-map Secret Area window the PC snaps back to its starting position.
+- **Smart initiative (5e, 7th Sea and future modules):** stashing a token during an active combat or Sequence removes it from the tracker (hidden from players) without shifting the active turn while remembering its roll; redeploying during the **same** combat puts it back in its exact spot. If combat ends or a new combat begins while it is stashed, the old roll is cleared and it deploys as a normal token.
 
 ---
 
@@ -835,7 +954,7 @@ In the token panel, **❤️ Punti Ferita** section:
 - **💙 Temp HP** (5e only): absorb damage before normal HP and show as a light-blue border.
 - **🛡️ AC** (5e only): the token's armour class.
 - **Style:** Bar, Aura (coloured glow around the token) or Both. The default style for players is chosen in the Token Library panel (**Stile PV (Giocatori)**).
-- **Bar colours:** cyan at full HP, green above 2/3, yellow above 1/3, red below; at 0 HP the token turns grey with 💀.
+- **Bar colours (5e / default):** cyan at full HP, green above 2/3, yellow above 1/3, red below; at 0 HP the token turns grey with 💀. In **7th Sea** campaigns tokens render dedicated Dramatic Wound / Brute Squad bars (see ch. 16.3).
 
 ### 8.2 Auras
 
@@ -870,8 +989,8 @@ Opened with **⚔️ Tracker Iniziativa** at the top. This chapter describes the
 - The table lets you edit each participant's initiative and HP (**HP +/−**).
 - **Start Combat**, **◀ Previous**, **Next Turn ▶** manage turns and rounds; the active turn is highlighted on the map.
 - **Automatic durations:** every round, the durations of areas of effect, auras, conditions and temporary tokens tick down; when they expire they disappear on their own. An effect does not lose a round during the same turn it was created.
-- **Stop/Reset** ends combat and removes timed effects, keeping permanent ones.
-- **Show to Players** displays the initiative order on the player screens, in the chosen position (top, bottom, left, right). Hidden tokens are never shown.
+- **Stop/Reset** ends combat, removes timed effects (and clears any initiatives stashed in the Secret Area), keeping permanent ones.
+- **Show to Players** displays the initiative order on the player screens, in the chosen position (top, bottom, left, right). Hidden and Secret Area tokens are never shown.
 
 ---
 
@@ -884,7 +1003,7 @@ Opened with **⚔️ Tracker Iniziativa** at the top. This chapter describes the
 - **🎲 Roll**, **🔄 Repeat** to redo the last roll, **✕ Reset** to clear.
 - A natural 20 is highlighted (**★ Naturale 20! ★**).
 
-**💬 Roll history (chat):** collects every roll, including those from sheets and compendiums. GM rolls are **secret** by default: tick **Invia a Player** to show them to players. Every roll appears only once, even if it arrives through more than one channel.
+**💬 Roll history (chat):** collects every roll, including those from sheets, compendiums and Don't Rest Your Head conflicts. GM rolls are **secret** by default: tick **Invia a Player** to show them to players. Every roll appears only once, even if it arrives through more than one channel.
 
 ---
 
@@ -898,19 +1017,21 @@ Opened with **⚔️ Tracker Iniziativa** at the top. This chapter describes the
 
 ## 13. Audio: music and sound effects
 
-**🎵 Audio & Soundboard** panel.
+**🎵 Audio & Soundboard** panel (right dock). **Soundboards and playlists are stored per game system** (5e, 7th Sea, Don't Rest Your Head…), so switching campaigns immediately brings back that game's pads and tracks. Local audio files are saved as binary Blobs in a dedicated IndexedDB store separate from maps.
 
 ### 13.1 Background music (BGM)
 
 - **Streaming presets:** 🍻 Lively Tavern, 🌧️ Rain & Thunder, 🕯️ Dungeon & Crypt, ⚔️ War Drums, 🌲 Enchanted Forest (internet required).
-- **New track:** paste the URL of an audio file (mp3/ogg) or choose a file from your PC, give it a name, choose whether to loop it and press **▶ Suona**; **+ Playlist** saves it in the campaign playlist. For online play a URL is preferable: a local file must be sent in full to the players.
-- **▶ Resume**, **⏸ Pause**, **⏹ Stop**. Players joining mid-session receive the current track.
+- **New track:** paste the URL of an audio file (mp3/ogg) or choose a file from your PC (**20 MB** limit per track), give it a name, choose whether to loop it and press **▶ Suona**; **+ Playlist** saves it in the active system's playlist. For online play a URL is preferable: a local file must be sent in full to the players.
+- **▶ Resume**, **⏸ Pause**, **⏹ Stop**, plus move up/down and delete tracks in the playlist. Players joining mid-session receive the current track.
 
-### 13.2 Soundboard (SFX)
+### 13.2 Soundboard (SFX), Edit mode and Export/Import
 
-- 8 effects generated directly by the browser, with no files and no bandwidth: ⚔️ Sword, 💥 Explosion, ⚡ Lightning, 🚪 Door, 🐺 Roar, 🔔 Bell, ✨ Magic, 🎺 Victory.
-- **+ Aggiungi Pad** creates custom pads with your own sounds.
+- **8 built-in effects** synthesised directly by the browser, with no files and no bandwidth: ⚔️ Sword, 💥 Explosion, ⚡ Lightning, 🚪 Door, 🐺 Roar, 🔔 Bell, ✨ Magic, 🎺 Victory.
+- **+ Aggiungi Pad** creates custom pads with your own audio files (**2 MB** limit; short files under **300 KB** recommended).
 - Clicking a pad plays it immediately for everyone; while an effect plays, the music is automatically lowered and then restored.
+- **✏️ Edit / ✔ Done editing:** enter edit mode to rename pads by tapping their name, reorder them by dragging or with **◀ ▶**, or delete them without triggering playback. **↺ Restore defaults** brings back any of the 8 built-in sounds you deleted.
+- **⬇️ Export / ⬆️ Import:** save soundboard and playlist to a `.json` file (either **active system only** or **all systems**) and re-import choosing **➕ Add to current pads** or **♻️ Replace**.
 
 ### 13.3 Volume
 
@@ -927,7 +1048,7 @@ Opened with the 🛠️ button or the **H** key:
 | Button | Function |
 |---|---|
 | 🎨 Colour | Your colour for drawings and pings |
-| 🧙 | Opens your character sheet |
+| 🧙 | Opens your character sheet (5e, 7th Sea or Don't Rest Your Head) |
 | 💬 | Chat and roll history |
 | 🖐️ Move | Moves the tokens assigned to you |
 | ✏️ Draw | Freehand drawing visible to all |
@@ -985,21 +1106,21 @@ Opened with **📜 Monster** from the token panel or the library's Compendium bu
 
 ## 16. 7th Sea 2e system
 
-Available in campaigns created with the **7th Sea 2nd Edition** system. All content comes from the official books (Core Rulebook and Nations of Théah Vol. 1 and 2): no invented rules. The database includes 100 Backgrounds, 103 Advantages, 20 Dueling Styles, 20 Arcana, 9 Sorceries, 10 Secret Societies and 90 Antagonists. The sheet's labels are in Italian.
+Available in campaigns created with the **7th Sea 2nd Edition** system. All content comes from the official books (Core Rulebook and Nations of Théah Vol. 1 and 2): no invented rules or antagonists. The database includes **10 Nations** (plus descriptive *Numa*), **100 Backgrounds**, **103 Advantages**, **20 Dueling Styles**, **20 Arcana**, **9 Sorceries**, **8 Faiths**, **10 Secret Societies** and **88 official Compendium entries** (**40 Heroes**, **40 Villains**, **5 Brute Squads** and **3 Monsters**). To keep startup fast, the full profiles of the 40 Heroes (`heroes_data.js`) and 40 Villains (`villains_data.js`) are lazy-loaded only when opened. Sheet labels are in Italian.
 
-In a 7th Sea campaign the token panel hides 5e-specific fields (AC, temporary HP) and the sheet buttons open the Hero sheet and the Antagonist compendium.
+In a 7th Sea campaign the token panel hides 5e-specific fields (AC, temporary HP) and the sheet buttons open the Hero sheet and the Antagonist & Hero compendium.
 
 ### 16.1 Hero sheet
 
 **Header:** name, nation, Hero Points, 💰 Wealth, Favour with the Secret Society (with − / +), 🔓/🔒 lock, **⚡ Esempio (Kasper)** to try the game with a ready-made hero, **🗑️ Scheda Vergine** to start over (with confirmation), **Export / Import** `.json` in the title bar.
 
-**🛠️ Creation panel** (visible when the sheet is unlocked): name, concept, religion/faith, nation of origin with its +1 to a Trait, sorcery, two Backgrounds (with search and per-book filters), Fencing School, Virtue, Hubris and Secret Society. Counters for Traits, Skills and Advantage points spent. The phase button switches from **Creation (Cap 3)** — Traits and Skills max 3 — to **Advancement** during the campaign — up to 5.
+**🛠️ Creation panel** (visible when the sheet is unlocked): name, concept, religion/faith, nation of origin with its +1 to a Trait (including descriptive *Numa*), sorcery with full details, two Backgrounds (searchable dropdown, book filters and hover preview popup), Fencing School (supporting multiple Dueling Styles and *Studioso di Lotta* maneuvers), **Virtue** and **Hubris** with custom searchable dropdowns and side hover preview showing official text and activation rules, Peculiarities, Play Notes and Secret Society. Counters for Traits, Skills and Advantage points spent. The phase button switches from **Creation (Cap 3)** — Traits and Skills max 3 — to **Advancement** during the campaign — up to 5.
 
 **4 tabs:**
 1. **⚔️ Main Sheet & Risks** — the 5 Traits, the 16 Skills, wounds, Virtue and Hubris, Risk roll.
-2. **📜 Advantages, Duels & Societies** — acquired Advantages (from the catalogue or custom), Dueling School with its maneuvers, Sorcery, Secret Society with charter and favours.
+2. **📜 Advantages, Duels & Societies** — acquired Advantages (from the catalogue or custom), Dueling Schools with their maneuvers, Sorcery, Secret Society with charter and favours.
 3. **📖 Stories & Advancement** — the Hero's Stories.
-4. **📓 Journal & Notes** — the Hero's logbook.
+4. **📓 Journal & Notes** — the Hero's logbook and play notes.
 
 ### 16.2 Risk roll and Raises
 
@@ -1010,12 +1131,17 @@ In a 7th Sea campaign the token panel hides 5e-specific fields (AC, temporary HP
    - **Rank 3 reroll:** click the die to reroll or **Auto-Ritira Peggiore**. The button tries every possible result and rerolls the die that gives the most Raises on average (also with sets of 15, +1 per die and exploding 10s): that is why it does not always pick the lowest die, which is often already part of a Raise. If no reroll can give you an extra Raise, it suggests keeping the roll (you can still reroll by hand).
 5. The result is posted to chat.
 
-### 16.3 Wounds
+### 16.3 Wounds and canvas token bars
 
-- Every **5 wounds** the Hero takes a **Dramatic Wound** (up to 4, or 5 with the Advantage that allows it). Dramatic Wounds switch on and off by themselves as wounds go up or down.
+- Every **5 wounds** the Hero takes a **Dramatic Wound** (up to 4, or 5 with the *Hard to Kill / Duro da Uccidere* Advantage). Dramatic Wounds switch on and off by themselves as wounds go up or down.
 - Effects: **1st** +1 die on Risks, **2nd** villains get 2 extra dice against the Hero, **3rd** your 10s explode, **4th** the Hero is **Helpless**.
 - **+1 Ferita / −1**, and **Azzera** at the end of an Action Scene: clears ordinary wounds while keeping Dramatic Wounds.
 - **Cedi (+1 PE):** when the Hero gives in to their Hubris they gain a Hero Point.
+- **Dedicated canvas token bars** (visible to both GM and Players without leaking hidden statblocks):
+  - **🦸 Heroes (PCs):** segmented bar with **4 Dramatic Wound thresholds** (or **5** with *Hard to Kill*), filling left-to-right with high-contrast counters inside segments (`1`, `2`, `3`, `💀`).
+  - **⚔️ Brute Squads:** discrete unit blocks (one per brute) with `⚔️ X/Y`.
+  - **👑 Villains:** amethyst bar with `👑` and 4 Dramatic Wound segments (or 5 for Villains with *Hard to Kill*, such as *Isentrud der Chegir* and *Jorunn Snø* at 25 Wounds), recognised even when set to the NPC category.
+  - **🐙 Monsters & Syrneth:** crimson bar with `🐙`.
 
 ### 16.4 Stories
 
@@ -1032,18 +1158,23 @@ To prevent long edits from arriving in pieces and late, the 7th Sea sheet works 
 - **During play** (sheet locked) quick changes — wounds, Hero Points, resources — are sent automatically, grouped roughly every half second.
 - The **Journal** travels separately from the sheet, so a note never overwrites other data.
 
-### 16.6 Antagonist compendium
+### 16.6 Antagonist & Hero compendium
 
 Opened with the token's sheet button or the library's Compendium button.
 
-- **Categories:** ⚔️ Brute Squads (where **Strength is also the token's HP**: each Raise inflicted removes 1 Strength), 👑 Villains (Strength, Influence, Rank), 🐙 Monsters & Syrneth. The 👥 NPCs & Allies category is prepared but not yet populated.
-- **Quick archetypes** (Pirates, Guards, Assassins, Brutes, Musketeers, Duelists, Villains, Monsters...) that fill in traits and special abilities, to be customised with **✏️ Modifica / Personalizza Scheda**.
+- **4 Official Categories:**
+  - **⚔️ Brute Squads (5):** **Strength is also the token's HP**; live **−1 / +1** buttons on Strength (down to `0`) immediately update sheet, map token and Tracker.
+  - **👑 Villains (40 official):** Strength, Influence, explicit **Rank**, Advantages, Sorceries, Secret Societies and **🕊️ Redemption** section; live **−1 / +1** buttons on **🩸 Token Health** (down to `0`, supporting 4 or 5 DW dynamically).
+  - **🐙 Monsters & Syrneth (3):** Terrible, Syrneth and Legendary Monsters.
+  - **🦸 Heroes & NPCs (40 official Heroes):** concise preview and one-click token creation/assignment with a complete pre-filled Hero sheet ready to play.
 - **Lancia Rischio** for the antagonist with a d10 pool, **10s Explode** and **Sets of 15** options, a **GM only** (secret) roll and **Enemy Bonus Dice** computed from the target Hero (for example those from their 2nd Dramatic Wound). On the GM console, **☠️ +2 dadi** adds 2 dice to the next roll for 1 Danger Point (ch. 16.7). The antagonist's Risk enters the Action Sequence by itself.
-- The compendium uses the same window as the 5e one: **⚡ Assign Token** and **♟️ Create Token** work the same way, with the **Token size** chosen in the sheet. **⭐ Load as PC Sheet** lets you use an antagonist as a character.
+- **Clean auto-naming & locked sheet:** clicking **⚡ Assign** or **♟️ Create Token** automatically renames the map token to the assigned Villain, Brute Squad, Monster or Hero (stripping redundant suffixes such as `(Squadra Sgherri)`). Once assigned to a token, the catalogue bar hides to keep the sheet tidy, with a **🔄 Cambia Antagonista** button in the header to unlock selection if needed. **⭐ Load as PC Sheet** also lets you load a compendium profile as a character sheet.
 
 ### 16.7 7th Sea initiative: Action Sequence and Dramatic Sequence
 
 In 7th Sea nobody rolls 1d20: who acts first is decided by the **Raises** earned with the Risk roll (Core Rulebook, ch. 4). In 7th Sea campaigns the **Initiative Tracker** changes by itself: the d20 controls (Start Combat, Auto-Roll, Next Turn...) disappear and the **Sequence bar** takes their place. In 5e campaigns the tracker stays exactly as described in chapter 10.
+
+From the token panel, **⚔️ + Init.** adds the token directly to the Action Sequence (even if already running) without asking for a 5e d20 value.
 
 **Who is in the tracker** (recognised from the token):
 
@@ -1060,7 +1191,7 @@ In 7th Sea nobody rolls 1d20: who acts first is decided by the **Raises** earned
 2. **▶ Actions** — whoever has the **most Raises left** acts (green row). Villains win ties; between tied Heroes the GM picks with **▶ Agisce**. The tracker re-sorts after every spend. In this phase a new Risk roll no longer changes Raises.
 3. **🏁 End of Round** — when everyone is at 0. Resolve the **Brute Squads' turn** and press **🔄 Nuovo Round** (new rolls). Round durations of areas of effect, auras, conditions and summons tick down here, once per Round.
 
-**⏹ Termina Sequenza** (press twice to confirm) closes everything like *Stop/Reset*: tracker emptied, timed effects removed, permanent ones kept.
+**⏹ Termina Sequenza** (press twice to confirm) closes everything like *Stop/Reset*: tracker emptied, timed effects removed, Secret Area stashed initiatives cleared, permanent effects kept.
 
 **One single pool of Raises.** The Raises on the sheet and in the tracker are the same: *Spend 1 Raise* or a duelling manoeuvre on the sheet lowers the tracker, and a GM spend in the tracker goes back to the sheet. During the Rolls phase the sheet does not allow spending. Online, only whoever controls a token can spend its Raises.
 
@@ -1080,7 +1211,7 @@ In 7th Sea nobody rolls 1d20: who acts first is decided by the **Raises** earned
 
 **Wounds and Helpless Heroes**
 - Wounds to Heroes go straight onto their sheet (every 5 Wounds one Dramatic Wound).
-- For Villains the tracker shows *Ferite w/F · FD ★☆☆☆*: after as many Wounds as their Strength comes a Dramatic Wound; with 4 Dramatic Wounds the Villain is **Defeated**. Their token's HP bar shows how far that is.
+- For Villains the tracker shows *Ferite w/F · FD ★☆☆☆*: after as many Wounds as their Strength comes a Dramatic Wound; with 4 Dramatic Wounds (or 5 with *Hard to Kill*) the Villain is **Defeated**. Their token's amethyst bar shows how far that is.
 - **Brute Squads' turn:** at the end of the Round every Squad still standing deals as many Wounds as its remaining Strength to a Hero chosen by the GM (**Applica**, once per Round).
 - **Helpless Hero 💀:** every Action costs them 1 Hero Point (deducted automatically); without Hero Points the Action is denied. Avoiding Wounds costs no Hero Points.
 
@@ -1116,7 +1247,7 @@ Example: two Heroes, **Kasper** and **Elena**, face the **Count** and a Squad of
 
 **Step 1 — Load the participants**
 
-4. Select the participating tokens on the map (**Select (Lasso)** tool or **Shift + click**) and press **🔄 Reload** in the tracker. Each row shows an icon: 🦸 Hero, 👑 Villain, ⚔️ Squad. If someone is missing, select them and reload; use the **✕** to remove a row.
+4. Select the participating tokens on the map (**Select (Lasso)** tool or **Shift + click**) and press **🔄 Reload** in the tracker (or add individual tokens with **⚔️ + Init.**). Each row shows an icon: 🦸 Hero, 👑 Villain, ⚔️ Squad. Use the **✕** to remove a row.
 
 **Step 2 — Start the Sequence**
 
@@ -1167,17 +1298,58 @@ Example: two Heroes, **Kasper** and **Elena**, face the **Count** and a Squad of
 
 ---
 
-## 17. Tablets and touchscreens
+## 17. Don't Rest Your Head (NCS) system
+
+Available in campaigns created with the **🌙 Non Cedere al Sonno** system. In these campaigns the token panel hides irrelevant fields (AC, temporary HP and the Monster button) and double-clicking a token (or clicking its sheet button) opens the **Protagonist Sheet**. The module's UI is bilingual (IT/EN).
+
+### 17.1 Protagonist sheet
+
+A clean one-page sheet synchronised in real time between GM and Player (with `.json` export/import):
+
+- **Persistent pools:** **Discipline** (0–3 white dice), **Permanent Madness** (permanent red dice) and **Exhaustion** (0–6 black dice).
+- **Responses:** the 3 **Fight / Flight** boxes; when all 3 are filled, a warning notes that the next Response causes the Protagonist to **Snap**.
+- **Exhaustion Talent** and **Madness Talent**.
+- **The 5 Protagonist Questions:** *What's been keeping you awake?*, *What just happened to you?*, *What's on the surface?*, *What lies beneath?* and *What's your path?*.
+- **Scars:** list with **+ Add Scar** and per-session used checkboxes.
+- **🎲 Roll:** opens the conflict window for that Protagonist.
+
+### 17.2 Shared conflict and roll calculator
+
+A conflict can be opened by the Player (**🎲 Roll** from their sheet) or by the GM (**📣 Open conflict**; the GM can roll both sides for NPCs or local play). One conflict runs at a time; the window opens for the involved Player and the GM, or for everyone when **Show to all** is ticked.
+
+- **4 colour-coded dice pools:** **⚪ Discipline** (from sheet), **⚫ Exhaustion** (from sheet + optional voluntary `+1 Exhaustion` once per roll, saved immediately to the sheet), **🔴 Madness** (Permanent Madness + 0–6 chosen dice) and **🟣 Pain** (set and rolled by the GM with **🟣 Roll Pain**).
+- **Automatic resolution:** every `1–3` is a success (**Degree**); highest Degree wins (Protagonist wins ties). The pool with the highest die **Dominates**, with automatic tie-breaking by next-highest dice, then die count, then priority **Discipline > Madness > Exhaustion > Pain**.
+- **Exhaustion Talent:** supports both **minor use** (Degree at least equal to Exhaustion dice) and **major use** (+Degree equal to Exhaustion).
+- **✔ Conclude:** finishes the conflict, posts the full summary to chat and offers one-click buttons for Dominance and failure effects (+1 Exhaustion, fill or clear a Response, −1 Exhaustion).
+
+### 17.3 Despair & Hope pools, Bringing Light, Shadows, Scars and Helping
+
+In NCS campaigns the **two Coin Pools** panel appears (saved in the campaign and synced to every player):
+
+- **🌑 Despair Pool (GM):** automatically gains **+1 Coin** when Pain Dominates at the end of a conflict (unless Pain only Dominates thanks to a Shadow).
+- **🌕 Hope Pool (Players):** receives Coins spent by the GM to Cast a Shadow when the conflict concludes.
+- **During a conflict (before `✔ Conclude`):**
+  - **🌑 Cast a Shadow (GM):** spends 1 Despair to add (**+6**) or remove (**−6**) a 6 in any active pool with at least one die.
+  - **🌕 +1 success (1 Hope):** *Improve Successes* — spends 1 Hope Coin (removed from play) to add a `1` to the Protagonist's Discipline pool.
+  - **🎭 Invoke a Scar:** rerolls one of the Protagonist's pools using a Scar not yet spent this session.
+  - **🤝 Help:** another player can roll their own Protagonist's Discipline dice and add their successes to the conflict without affecting pool dominance.
+- **✨ Bring Light:** lets players (via GM approval/rejection, or directly by the GM) spend Hope to **Catch Your Breath** (`1 Hope` = −1 Exhaustion or clear 1 Response) or **Recover Discipline** (`5 − Discipline` Hope = −1 Permanent Madness and +1 Discipline).
+- **🌙 End session (GM):** after confirmation, empties both Coin Pools and clears used Scar marks on all map sheets.
+
+---
+
+## 18. Tablets and touchscreens
 
 - **Pinch with two fingers** to zoom; two fingers never trigger a ping by mistake.
 - **Drag** with one finger on empty space to pan, on a token to move it.
 - **Press and hold** to ping.
-- Every window (dice, sheets, compendiums, tracker) can be moved by dragging its header, also by finger, and dragging is not interrupted when passing over other windows.
+- **Interrupted touch (`touchcancel`):** if a tablet notification or system edge gesture interrupts a touch while moving the map or a token, the gesture closes cleanly so the player never loses token control.
+- Every window (dice, sheets, compendiums, tracker, Secret Area) can be moved by dragging its header, also by finger, and dragging is not interrupted when passing over other windows.
 - Tested on Android tablets (including DeX-style desktop mode), iPad and TVs.
 
 ---
 
-## 18. Shortcuts and quick controls
+## 19. Shortcuts and quick controls
 
 | Control | Action |
 |---|---|
@@ -1194,16 +1366,16 @@ Example: two Heroes, **Kasper** and **Elena**, face the **Count** and a Squad of
 
 ---
 
-## 19. Saving, performance and known limits
+## 20. Saving, performance and known limits
 
-- **Where the data lives:** in the GM's browser. Clearing browsing data deletes campaigns and maps: use **Esporta (JSON)** for backups and the character export for sheets.
-- **Performance:** maps optimised to 2560 px, animations capped at 30 fps, state messages under 3 KB, token images shrunk before sending. The program is designed to run even on low-memory PCs.
+- **Where the data lives:** in the GM's browser (IndexedDB for campaigns/maps/tokens and a separate IndexedDB store for soundboard/playlist audio Blobs). Clearing browsing data deletes local saves: use **Esporta (JSON)** for campaigns, the character export for sheets and **⬇️ Export** in the Audio panel for soundboards and playlists.
+- **Performance:** maps optimised to 2560 px, on-demand lazy-loading for 7th Sea Heroes and Villains, animations capped at 30 fps, state messages under 3 KB, token images shrunk before sending, zero-overhead diagnostic log when off. The program is designed to run even on low-memory PCs.
 - **Known limits:**
   - Online connection through very restrictive mobile networks is still being field-tested.
 
 ---
 
-## 20. Licences, credits and notices
+## 21. Licences, credits and notices
 
 - **Unofficial project:** Andr3a VTT is an independent, unofficial fan project, compatible with fifth edition. It is not affiliated with, sponsored or endorsed by the publishers of the games mentioned; game names belong to their respective owners and are used only to indicate compatibility.
 - **Rules material (attribution):**

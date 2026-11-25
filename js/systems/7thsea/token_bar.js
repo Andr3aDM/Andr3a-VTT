@@ -414,12 +414,180 @@
         return drawSegmentedWoundsBar(ctx, token, opts, role);
     }
 
+    function applySeventhSeaWoundDelta(token, delta, mode) {
+        if (!token) return false;
+        const role = classifySeventhSeaToken(token);
+
+        if (role === 'brute') {
+            const sbStr = (token.statblock && token.statblock.s7Strength !== undefined) ? parseInt(token.statblock.s7Strength, 10) : NaN;
+            const hpMax = Math.max(1, parseInt(token.hpMax, 10) || (Number.isFinite(sbStr) && sbStr > 0 ? sbStr : 6));
+            const curStr = Number.isFinite(Number(token.hpCurrent))
+                ? Math.max(0, Math.min(hpMax, parseInt(token.hpCurrent, 10)))
+                : hpMax;
+            const nextStr = Math.max(0, Math.min(hpMax, curStr + delta));
+            token.hpMax = hpMax;
+            token.hpCurrent = nextStr;
+            if (token.statblock && typeof token.statblock === 'object') {
+                token.statblock.s7Strength = nextStr;
+            }
+            return false;
+        }
+
+        if (role === 'hero') {
+            const ps = (token.pcSheet && typeof token.pcSheet === 'object') ? token.pcSheet : null;
+            const maxW = hasDuroDaUccidere(token, parseInt(token.hpMax, 10) || 20) ? 25 : 20;
+            const curWounds = ps
+                ? Math.max(0, Math.min(maxW, parseInt(ps.currentWounds, 10) || 0))
+                : Math.max(0, Math.min(maxW, maxW - (Number.isFinite(Number(token.hpCurrent)) ? parseInt(token.hpCurrent, 10) : maxW)));
+            const nextWounds = (mode === 'clearOrdinary')
+                ? Math.floor(curWounds / 5) * 5
+                : Math.max(0, Math.min(maxW, curWounds + delta));
+
+            token.hpMax = maxW;
+            token.hpCurrent = Math.max(0, maxW - nextWounds);
+
+            if (ps) {
+                ps.currentWounds = nextWounds;
+                if (!Array.isArray(ps.dramaticWounds)) ps.dramaticWounds = [false, false, false, false, false];
+                while (ps.dramaticWounds.length < 5) ps.dramaticWounds.push(false);
+                const thresholds = (maxW >= 25) ? [5, 10, 15, 20, 25] : [5, 10, 15, 20];
+                thresholds.forEach((th, i) => { ps.dramaticWounds[i] = nextWounds >= th; });
+                if (maxW < 25) ps.dramaticWounds[4] = false;
+                ps.updatedAt = Date.now();
+                if (typeof window !== 'undefined' && window.seventhSeaSheetManager && typeof window.seventhSeaSheetManager.refreshIfOpen === 'function') {
+                    window.seventhSeaSheetManager.refreshIfOpen(token.id);
+                }
+                return true; // syncSheet
+            }
+            return false;
+        }
+
+        // 'villain' o 'monster'
+        const hpMax = Math.max(1, parseInt(token.hpMax, 10) || 20);
+        const hpCurr = Number.isFinite(Number(token.hpCurrent))
+            ? Math.max(0, Math.min(hpMax, parseInt(token.hpCurrent, 10)))
+            : hpMax;
+        const curWounds = Math.max(0, Math.min(hpMax, hpMax - hpCurr));
+        const nextWounds = Math.max(0, Math.min(hpMax, curWounds + delta));
+        token.hpMax = hpMax;
+        token.hpCurrent = Math.max(0, hpMax - nextWounds);
+        return false;
+    }
+
+    function renderSeventhSeaTokenHealthControls(container, token, targets, helpers) {
+        if (!container || !token) return false;
+        const role = classifySeventhSeaToken(token);
+        const targetList = (Array.isArray(targets) && targets.length > 0) ? targets : [token];
+        const headerEl = helpers && helpers.headerLabelEl;
+
+        const btnBase = 'padding:0; height:24px; display:inline-flex; align-items:center; justify-content:center; font-size:11.5px; font-weight:bold; border-radius:4px; cursor:pointer; line-height:1; user-select:none;';
+
+        if (role === 'brute') {
+            const sbStr = (token.statblock && token.statblock.s7Strength !== undefined) ? parseInt(token.statblock.s7Strength, 10) : NaN;
+            const hpMax = Math.max(1, parseInt(token.hpMax, 10) || (Number.isFinite(sbStr) && sbStr > 0 ? sbStr : 6));
+            const curStr = Number.isFinite(Number(token.hpCurrent))
+                ? Math.max(0, Math.min(hpMax, parseInt(token.hpCurrent, 10)))
+                : hpMax;
+            if (headerEl) {
+                headerEl.textContent = '⚔️ Forza Squadra';
+                headerEl.style.color = '#fbbf24';
+            }
+            container.innerHTML = `
+                <div style="display:flex; align-items:center; gap:5px; background:#1c1a16; border:1px solid #5c4520; border-radius:5px; padding:4px 6px;">
+                    <button type="button" id="s7-panel-hp-minus" style="${btnBase} width:34px; background:#b91c1c; color:#fff; border:1px solid #ef4444;" title="Infliggi 1 Incremento (−1 Forza)">−1</button>
+                    <div style="flex:1; text-align:center; font-size:12px; font-weight:bold; color:${curStr === 0 ? '#ef5350' : '#fde68a'};">
+                        ⚔️ <span id="s7-panel-hp-val">${curStr}</span> / ${hpMax}
+                    </div>
+                    <button type="button" id="s7-panel-hp-plus" style="${btnBase} width:34px; background:#2e7d32; color:#fff; border:1px solid #4caf50;" title="Ripristina +1 Forza">+1</button>
+                </div>`;
+            const runDelta = (d) => {
+                targetList.forEach(t => applySeventhSeaWoundDelta(t, d));
+                if (helpers && typeof helpers.onMutate === 'function') helpers.onMutate(targetList, { syncSheet: false });
+            };
+            container.querySelector('#s7-panel-hp-minus').addEventListener('click', () => runDelta(-1));
+            container.querySelector('#s7-panel-hp-plus').addEventListener('click', () => runDelta(+1));
+            return true;
+        }
+
+        // Eroe, Malvagio o Mostro (accumulo Ferite 0 -> maxW + Soglie Drammatiche)
+        const ps = (role === 'hero' && token.pcSheet && typeof token.pcSheet === 'object') ? token.pcSheet : null;
+        const rawMax = parseInt(token.hpMax, 10) || 20;
+        const maxW = (role === 'hero') ? (hasDuroDaUccidere(token, rawMax) ? 25 : 20) : Math.max(1, rawMax);
+        const curWounds = ps
+            ? Math.max(0, Math.min(maxW, parseInt(ps.currentWounds, 10) || 0))
+            : Math.max(0, Math.min(maxW, maxW - (Number.isFinite(Number(token.hpCurrent)) ? parseInt(token.hpCurrent, 10) : maxW)));
+
+        const numSegs = (role === 'hero')
+            ? (maxW >= 25 ? 5 : 4)
+            : (role === 'villain')
+                ? ((maxW >= 25 && maxW % 5 === 0) ? Math.min(5, Math.round(maxW / 5)) : 4)
+                : ((maxW >= 10 && maxW <= 30 && maxW % 5 === 0) ? Math.max(2, Math.min(5, Math.round(maxW / 5))) : 0);
+        const perSeg = numSegs > 0 ? Math.max(1, maxW / numSegs) : 5;
+        const dwReached = numSegs > 0 ? Math.floor(curWounds / perSeg) : 0;
+
+        if (headerEl) {
+            if (role === 'villain') { headerEl.textContent = '👑 Ferite Malvagio'; headerEl.style.color = '#c084fc'; }
+            else if (role === 'monster') { headerEl.textContent = '🐙 Ferite Mostro'; headerEl.style.color = '#fb7185'; }
+            else { headerEl.textContent = '🩸 Ferite & Soglie'; headerEl.style.color = '#f59e0b'; }
+        }
+
+        const accentBorder = role === 'villain' ? '#7e22ce' : (role === 'monster' ? '#be123c' : '#854d0e');
+        const accentFill = role === 'villain' ? '#9333ea' : (role === 'monster' ? '#e11d48' : '#d97706');
+        let segsHtml = '';
+        if (numSegs > 0) {
+            const pills = [];
+            for (let i = 0; i < numSegs; i++) {
+                const full = curWounds >= Math.round((i + 1) * perSeg);
+                const partial = !full && curWounds > Math.round(i * perSeg);
+                const isLast = i === numSegs - 1;
+                const bg = full ? (isLast ? '#b91c1c' : accentFill) : (partial ? 'rgba(245,158,11,0.28)' : '#232328');
+                const clr = full ? '#fff' : (partial ? '#fde68a' : '#777');
+                const lbl = isLast && full ? '💀' : `${i + 1}ª`;
+                pills.push(`<span style="flex:1; text-align:center; font-size:9.5px; font-weight:bold; padding:1px 0; border-radius:3px; background:${bg}; color:${clr}; border:1px solid ${full ? 'rgba(255,255,255,0.25)' : '#38383f'};">${lbl}</span>`);
+            }
+            segsHtml = `<div style="display:flex; gap:3px; margin-top:4px;">${pills.join('')}</div>`;
+        }
+
+        const clearBtnHtml = (role === 'hero')
+            ? `<button type="button" id="s7-panel-hp-clear" style="${btnBase} padding:0 6px; font-size:10px; background:#263238; color:#b0bec5; border:1px solid #455a64;" title="Fine Scena: azzera le ferite ordinarie mantenendo le Ferite Drammatiche">Azzera</button>`
+            : '';
+
+        container.innerHTML = `
+            <div style="background:#1c1a20; border:1px solid ${accentBorder}; border-radius:5px; padding:4px 6px;">
+                <div style="display:flex; align-items:center; gap:4px;">
+                    <button type="button" id="s7-panel-hp-minus" style="${btnBase} width:32px; background:#2e7d32; color:#fff; border:1px solid #4caf50;" title="Togli 1 Ferita (−1)">−1</button>
+                    <div style="flex:1; text-align:center; font-size:12px; font-weight:bold; color:${curWounds >= maxW ? '#ef5350' : '#f3f4f6'}; white-space:nowrap;">
+                        🩸 <span id="s7-panel-hp-val">${curWounds}</span>/${maxW}${numSegs > 0 ? ` <span style="font-size:10px; color:#cbd5e1;">(${dwReached}/${numSegs} FD)</span>` : ''}
+                    </div>
+                    <button type="button" id="s7-panel-hp-plus" style="${btnBase} width:32px; background:#b91c1c; color:#fff; border:1px solid #ef4444;" title="Aggiungi 1 Ferita (+1)">+1</button>
+                    ${clearBtnHtml}
+                </div>
+                ${segsHtml}
+            </div>`;
+
+        const runOp = (delta, mode) => {
+            let needSheetSync = false;
+            targetList.forEach(t => {
+                if (applySeventhSeaWoundDelta(t, delta, mode)) needSheetSync = true;
+            });
+            if (helpers && typeof helpers.onMutate === 'function') {
+                helpers.onMutate(targetList, { syncSheet: needSheetSync });
+            }
+        };
+        container.querySelector('#s7-panel-hp-minus').addEventListener('click', () => runOp(-1));
+        container.querySelector('#s7-panel-hp-plus').addEventListener('click', () => runOp(+1));
+        const clrBtn = container.querySelector('#s7-panel-hp-clear');
+        if (clrBtn) clrBtn.addEventListener('click', () => runOp(0, 'clearOrdinary'));
+        return true;
+    }
+
     function attachToSeventhSeaAdapter() {
         if (typeof window === 'undefined' || !window.systemManager) return false;
         const adapter = window.systemManager.getAdapter('7thsea');
         if (!adapter) return false;
         adapter.drawTokenHpBar = drawSeventhSeaTokenHpBar;
         adapter.getTokenNetworkMeta = getSeventhSeaTokenNetworkMeta;
+        adapter.renderTokenHealthControls = renderSeventhSeaTokenHealthControls;
         return true;
     }
 
@@ -427,6 +595,8 @@
         classifySeventhSeaToken,
         getSeventhSeaTokenNetworkMeta,
         drawSeventhSeaTokenHpBar,
+        applySeventhSeaWoundDelta,
+        renderSeventhSeaTokenHealthControls,
         attachToSeventhSeaAdapter
     };
 

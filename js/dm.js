@@ -4421,6 +4421,48 @@ window.updateSelectedTokenControls = function(ent) {
     const hpModInput = document.getElementById('token-hp-mod');
     if (hpModInput) hpModInput.value = '';
 
+    // Controlli salute specifici del sistema di gioco (es. 7th Sea: Ferite/FD o Forza Sgherri con -1/+1).
+    // Se il sistema attivo non definisce renderTokenHealthControls (5e, NCS...), restano i controlli standard.
+    const hpDefBox = document.getElementById('token-hp-controls-default');
+    const hpCustBox = document.getElementById('token-hp-controls-custom');
+    const hpHdrLbl = document.getElementById('token-hp-header-label');
+    let handledCustomHp = false;
+    if (hpCustBox && window.systemManager && typeof window.systemManager.renderTokenHealthControls === 'function') {
+        handledCustomHp = window.systemManager.renderTokenHealthControls(hpCustBox, ent, targets, {
+            headerLabelEl: hpHdrLbl,
+            onMutate(updatedTargets, opts = {}) {
+                const list = Array.isArray(updatedTargets) && updatedTargets.length > 0 ? updatedTargets : targets;
+                list.forEach(t => {
+                    if (!t) return;
+                    if (engine.initiative && Array.isArray(engine.initiative.participants)) {
+                        const part = engine.initiative.participants.find(p => p.tokenId === t.id);
+                        if (part) {
+                            part.hpCurrent = t.hpCurrent;
+                            part.hpMax = t.hpMax;
+                        }
+                    }
+                    if (typeof window.upsertTokenInCampaign === 'function') window.upsertTokenInCampaign(t);
+                    if (opts.syncSheet && t.pcSheet && typeof window.broadcastPcSheetSync === 'function') {
+                        window.broadcastPcSheetSync(t);
+                    }
+                });
+                if (typeof engine.renderAll === 'function') engine.renderAll();
+                if (typeof renderTrackerList === 'function') renderTrackerList({ skipRenderAndSync: true });
+                if (typeof syncState === 'function') syncState(true, false);
+                if (currentMapBase64) markMapDirty(true);
+                if (typeof window.updateSelectedTokenControls === 'function') {
+                    window.updateSelectedTokenControls(ent);
+                }
+            }
+        });
+    }
+    if (hpDefBox) hpDefBox.style.display = handledCustomHp ? 'none' : 'flex';
+    if (hpCustBox) hpCustBox.style.display = handledCustomHp ? 'block' : 'none';
+    if (hpHdrLbl && !handledCustomHp) {
+        hpHdrLbl.textContent = (typeof window.t === 'function') ? window.t('❤️ Punti Ferita') : '❤️ Punti Ferita';
+        hpHdrLbl.style.color = '#ef5350';
+    }
+
     // Testi e caselle del sistema di gioco attivo, forniti dal suo adattatore (Fase B: nessun "if 7th Sea" nel nucleo)
     const sysUi = (window.systemManager && typeof window.systemManager.ui === 'function') ? window.systemManager.ui() : {
         hideAc: false, hideTempHp: false, statblockIcon: '📜', statblockLabel: '📜 Mostro', statblockTitle: 'Cerca e assegna scheda statistiche mostro',
@@ -8116,17 +8158,21 @@ function renderSecretAreaUI() {
 (function initDmToolsLayoutSwitcher() {
     const STORAGE_MODE_KEY = 'vtt_dm_tools_layout';
     const STORAGE_OPEN_KEY = 'vtt_dm_tools_inline_open';
+    const STORAGE_TOKVIEW_KEY = 'vtt_dm_token_view';
 
     const rail = document.getElementById('dm-tool-rail');
     const sidebar = document.getElementById('sidebar');
     const inlineSlot = document.getElementById('dm-inline-tools-slot');
     const layoutSelect = document.getElementById('dm-tools-layout-select');
     const btnToggleInline = document.getElementById('btn-toggle-inline-tools');
+    const tokViewSelect = document.getElementById('dm-token-view-select');
     const tokControls = document.getElementById('selected-token-controls');
     if (!rail || !sidebar || !inlineSlot || !layoutSelect) return;
 
     let currentMode = 'rail';
     let inlineOpen = true;
+    let tokView = 'full';           // 'full' (Pagina Unica) | 'tabs' (3 Sotto-Tab)
+    let tokViewExplicit = false;    // true se scelto esplicitamente dall'utente
     let activeTokTab = 'combat';
 
     try {
@@ -8134,6 +8180,13 @@ function renderSecretAreaUI() {
         if (savedMode === 'inline' || savedMode === 'rail') currentMode = savedMode;
         const savedOpen = localStorage.getItem(STORAGE_OPEN_KEY);
         if (savedOpen === '0') inlineOpen = false;
+        const savedTokView = localStorage.getItem(STORAGE_TOKVIEW_KEY);
+        if (savedTokView === 'full' || savedTokView === 'tabs') {
+            tokView = savedTokView;
+            tokViewExplicit = true;
+        } else {
+            tokView = (currentMode === 'inline') ? 'tabs' : 'full';
+        }
     } catch (e) {}
 
     function setTokenTab(tab) {
@@ -8148,6 +8201,19 @@ function renderSecretAreaUI() {
         });
     }
 
+    function applyTokenView(persist = true) {
+        if (tokViewSelect && tokViewSelect.value !== tokView) {
+            tokViewSelect.value = tokView;
+        }
+        if (tokControls) {
+            tokControls.classList.toggle('tok-tabbed', tokView === 'tabs');
+            if (tokView === 'tabs') setTokenTab(activeTokTab);
+        }
+        if (persist && tokViewExplicit) {
+            try { localStorage.setItem(STORAGE_TOKVIEW_KEY, tokView); } catch (e) {}
+        }
+    }
+
     function applyLayout(persist = true) {
         if (layoutSelect.value !== currentMode) layoutSelect.value = currentMode;
 
@@ -8158,7 +8224,6 @@ function renderSecretAreaUI() {
                 document.body.insertBefore(rail, sidebar);
             }
             if (btnToggleInline) btnToggleInline.style.display = 'none';
-            if (tokControls) tokControls.classList.remove('tok-tabbed');
         } else {
             rail.classList.add('inline-mode');
             if (rail.parentNode !== inlineSlot) {
@@ -8174,9 +8239,12 @@ function renderSecretAreaUI() {
                 btnToggleInline.style.borderColor = inlineOpen ? '#7b1fa2' : '#0288d1';
                 btnToggleInline.style.color = inlineOpen ? '#e1bee7' : '#81d4fa';
             }
-            if (tokControls) tokControls.classList.add('tok-tabbed');
-            setTokenTab(activeTokTab);
         }
+
+        if (!tokViewExplicit) {
+            tokView = (currentMode === 'inline') ? 'tabs' : 'full';
+        }
+        applyTokenView(persist);
 
         if (persist) {
             try {
@@ -8199,6 +8267,17 @@ function renderSecretAreaUI() {
         if (currentMode === 'inline') inlineOpen = true;
         applyLayout(true);
     });
+
+    if (tokViewSelect) {
+        // Impedisce che il clic sulla tendina attivi il collasso della sezione <h3>Tokens</h3>
+        tokViewSelect.addEventListener('click', (e) => e.stopPropagation());
+        tokViewSelect.addEventListener('mousedown', (e) => e.stopPropagation());
+        tokViewSelect.addEventListener('change', () => {
+            tokView = (tokViewSelect.value === 'tabs') ? 'tabs' : 'full';
+            tokViewExplicit = true;
+            applyTokenView(true);
+        });
+    }
 
     if (btnToggleInline) {
         btnToggleInline.addEventListener('click', () => {
@@ -8227,6 +8306,12 @@ function renderSecretAreaUI() {
         setInlineOpen: (open) => {
             inlineOpen = !!open;
             applyLayout(true);
+        },
+        getTokenView: () => tokView,
+        setTokenView: (v) => {
+            tokView = (v === 'tabs') ? 'tabs' : 'full';
+            tokViewExplicit = true;
+            applyTokenView(true);
         },
         getTokenTab: () => activeTokTab,
         setTokenTab
